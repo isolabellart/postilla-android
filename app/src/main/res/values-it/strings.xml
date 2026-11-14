@@ -821,7 +821,11 @@
     <string name="marketplace_sats_unavailable">Stima Lightning non disponibile. L’importo finale dipende dalla fattura del venditore.</string>
     <string name="drawer_set_up_wallet">Configura il portafoglio</string>
 
-    <string name="marketplace_search_hint">Cerca prodotti, autori e idee</string>
+    <string name="marketplace_search_hint">Cerca prodotti, autori o incolla un naddr</string>
+    <string name="marketplace_naddr_loading">Ricerca dell’annuncio sui relay Nostr…</string>
+    <string name="marketplace_naddr_invalid">L’indirizzo naddr non è valido o è incompleto.</string>
+    <string name="marketplace_naddr_unsupported">Questo naddr non identifica un annuncio Marketplace supportato.</string>
+    <string name="marketplace_naddr_not_found">Nessun annuncio corrispondente è stato restituito dai relay raggiunti. Potrebbe essere temporaneamente non disponibile.</string>
     <string name="marketplace_categories">Esplora le categorie</string>
     <string name="marketplace_no_results">Nessun annuncio corrisponde alla ricerca.</string>
     <string name="marketplace_storefront">Vetrina</string>
