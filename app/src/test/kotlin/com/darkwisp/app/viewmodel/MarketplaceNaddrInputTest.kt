@@ -30,6 +30,7 @@ class MarketplaceNaddrInputTest {
     fun `returns idle for an empty query`() {
         assertNull(normalizeMarketplaceNaddrInput("   "))
     }
+
     @Test
     fun `decodes the supplied Marketplace naddr coordinate and relay hints`() {
         val address = Nip19.naddrDecode(
@@ -51,5 +52,4 @@ class MarketplaceNaddrInputTest {
             address.relays
         )
     }
-
 }
