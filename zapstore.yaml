@@ -3,6 +3,7 @@ release_filter: '^v[0-9]+\.[0-9]+\.[0-9]+$'
 match: '(?i)^Postilla-v[0-9]+\.[0-9]+\.[0-9]+\.apk$'
 
 name: Postilla
+icon: ./assets/postilla-icon.png
 summary: An independent Android Nostr client for social conversations, private messaging, Lightning and a NIP-99 marketplace.
 description: |
   Postilla is an independent, open-source Android Nostr client designed as a calm, editorial space for conversations, discovery and exchange.
