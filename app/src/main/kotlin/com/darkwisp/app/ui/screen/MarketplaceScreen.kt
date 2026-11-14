@@ -116,6 +116,7 @@ import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.repo.BookmarkSetRepository
+import com.darkwisp.app.viewmodel.MarketplaceNaddrLookupState
 import com.darkwisp.app.viewmodel.MarketplaceScope
 import com.darkwisp.app.viewmodel.MarketplaceViewModel
 
@@ -149,6 +150,11 @@ fun MarketplaceScreen(
     val categories by viewModel.availableCategories.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val naddrLookup by viewModel.naddrLookupState.collectAsState()
+
+    LaunchedEffect(searchQuery, eventRepository) {
+        viewModel.resolveMarketplaceNaddrQuery(searchQuery, eventRepository)
+    }
 
     LaunchedEffect(selectedScope, followedPubkeys, userPubkey, sellerPubkey, relayListRepository) {
         viewModel.load(selectedScope, relayPool, eventRepository, followedPubkeys, userPubkey, relayListRepository, sellerPubkey)
@@ -336,48 +342,103 @@ fun MarketplaceScreen(
                 }
             }
 
-            when {
-                loading && listings.isEmpty() -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.CircularProgressIndicator()
-                }
-                error != null && listings.isEmpty() -> Box(
+            when (val lookup = naddrLookup) {
+                MarketplaceNaddrLookupState.Loading -> Box(
                     Modifier.fillMaxSize().padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(stringResource(R.string.marketplace_load_error, error ?: ""))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                        Text(
+                            stringResource(R.string.marketplace_naddr_loading),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                listings.isEmpty() -> Box(
+                is MarketplaceNaddrLookupState.Found -> LazyColumn(
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp)
+                ) {
+                    item(key = Nip99.addressTag(lookup.event)) {
+                        MarketplaceListingCard(
+                            event = lookup.event,
+                            eventRepository = eventRepository,
+                            onClick = { onOpenListing(lookup.event) }
+                        )
+                    }
+                }
+                MarketplaceNaddrLookupState.Invalid -> Box(
                     Modifier.fillMaxSize().padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(if (searchQuery.isNotBlank() || selectedCategory != null) stringResource(R.string.marketplace_no_results)
-                            else stringResource(R.string.marketplace_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (sellerPubkey != null && canCreateListing && searchQuery.isBlank() && selectedCategory == null) {
-                            OutlinedButton(onClick = onCreateListing) {
-                                Icon(Icons.Default.Add, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.marketplace_add_listing))
+                    Text(
+                        stringResource(R.string.marketplace_naddr_invalid),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                MarketplaceNaddrLookupState.Unsupported -> Box(
+                    Modifier.fillMaxSize().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        stringResource(R.string.marketplace_naddr_unsupported),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                MarketplaceNaddrLookupState.NotFound -> Box(
+                    Modifier.fillMaxSize().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        stringResource(R.string.marketplace_naddr_not_found),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                MarketplaceNaddrLookupState.Idle -> when {
+                    loading && listings.isEmpty() -> Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    }
+                    error != null && listings.isEmpty() -> Box(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(stringResource(R.string.marketplace_load_error, error ?: ""))
+                    }
+                    listings.isEmpty() -> Box(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (searchQuery.isNotBlank() || selectedCategory != null) stringResource(R.string.marketplace_no_results)
+                                else stringResource(R.string.marketplace_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (sellerPubkey != null && canCreateListing && searchQuery.isBlank() && selectedCategory == null) {
+                                OutlinedButton(onClick = onCreateListing) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.marketplace_add_listing))
+                                }
                             }
                         }
                     }
-                }
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(listings, key = { Nip99.addressTag(it) }) { event ->
-                        val bookmarkCount = storefrontBookmarkCounts[Nip99.addressTag(event)]
-                        MarketplaceListingCard(
-                            event = event,
-                            eventRepository = eventRepository,
-                            bookmarkCount = bookmarkCount,
-                            onClick = { onOpenListing(event) }
-                        )
+                    else -> LazyColumn(
+                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(listings, key = { Nip99.addressTag(it) }) { event ->
+                            val bookmarkCount = storefrontBookmarkCounts[Nip99.addressTag(event)]
+                            MarketplaceListingCard(
+                                event = event,
+                                eventRepository = eventRepository,
+                                bookmarkCount = bookmarkCount,
+                                onClick = { onOpenListing(event) }
+                            )
+                        }
                     }
                 }
             }
