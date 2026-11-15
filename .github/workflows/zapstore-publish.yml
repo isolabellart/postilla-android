@@ -3,6 +3,13 @@ name: Publish Postilla release to Zapstore
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Exact published GitHub release tag to publish (for example v1.0.17)"
+        required: true
+        type: string
+        default: "v1.0.17"
 
 permissions:
   contents: read
@@ -14,7 +21,7 @@ concurrency:
 jobs:
   publish:
     name: Validate and publish release
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -42,21 +49,57 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch v2.0.1 https://github.com/zapstore/zsp.git "$RUNNER_TEMP/zsp"
 
-      - name: Verify release metadata and APK
+      - name: Verify exact published release and prepare targeted config
         shell: bash
         env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.release.tag_name }}
           GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "::error::Unexpected release tag: $RELEASE_TAG"
+            echo "::error::Unexpected release tag. Expected vX.Y.Z."
             exit 1
           }
+
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          API_TAG="$(jq -r '.tag_name' <<< "$RELEASE_DATA")"
+          IS_DRAFT="$(jq -r '.draft' <<< "$RELEASE_DATA")"
+          IS_PRERELEASE="$(jq -r '.prerelease' <<< "$RELEASE_DATA")"
+          RELEASE_URL="$(jq -r '.html_url' <<< "$RELEASE_DATA")"
+          PUBLISHED_AT="$(jq -r '.published_at' <<< "$RELEASE_DATA")"
+
+          [[ "$API_TAG" == "$RELEASE_TAG" && "$IS_DRAFT" == "false" && "$IS_PRERELEASE" == "false" ]] || {
+            echo "::error::The requested tag is not a published stable GitHub release."
+            exit 1
+          }
+
           echo "Zapstore source release: $RELEASE_URL"
           echo "Release tag: $RELEASE_TAG"
-          zsp check zapstore.yaml
+          echo "Published at: $PUBLISHED_AT"
+
+          # zsp normally selects the latest matching release. Narrow the
+          # temporary config to this exact tag so a manual run cannot publish
+          # a different version. Keep it in the repository root so relative
+          # Fastlane image paths continue to resolve.
+          python3 - "$RELEASE_TAG" "$GITHUB_WORKSPACE/zapstore.yaml" "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          tag, source_path, target_path = sys.argv[1:]
+          source = pathlib.Path(source_path).read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r"(?m)^release_filter:\s*.*$",
+              "release_filter: '^" + re.escape(tag) + "$'",
+              source,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one release_filter in zapstore.yaml")
+          pathlib.Path(target_path).write_text(updated, encoding="utf-8")
+          print("Prepared exact release filter for " + tag)
+          PY
+
+          zsp check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml"
 
       - name: Verify Postilla bunker identity and publish to Zapstore
         shell: bash
@@ -134,5 +177,5 @@ jobs:
           go run ./.ci-bunker-check
           cd "$GITHUB_WORKSPACE"
 
-          echo "Bunker identity verified; starting Zapstore publication."
-          zsp publish -q zapstore.yaml
+          echo "Bunker identity verified; publishing the exact selected release."
+          zsp publish -q "$GITHUB_WORKSPACE/.zapstore-targeted.yaml"
