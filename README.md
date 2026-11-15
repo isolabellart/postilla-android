@@ -12,7 +12,6 @@
   <a href="https://github.com/barrydeen/dark-wisp-android">Original Dark Wisp project</a>
 </p>
 
-> **Project status — 14 November 2026:** Postilla is the new public identity of the independently maintained Dark Wisp Enhanced codebase. The latest verified staging build is **#184**. The current source configuration is still version **1.0.10 (version code 11)**; the planned public Postilla release is **v1.0.15**. It has not been published yet. The existing stable release remains the previous Dark Wisp Enhanced v1.0.10 release until the new signed release is explicitly prepared and published.
 
 Postilla is a downstream project built on the foundations of the original [Dark Wisp Android client](https://github.com/barrydeen/dark-wisp-android). It is independently maintained and is **not an official release of the upstream project**.
 
