@@ -57,11 +57,35 @@ jobs:
         shell: bash
         env:
           SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+          BUNKER_CLIENT_KEY: ${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ -z "$SIGN_WITH" ]]; then
-            echo "::error::Missing GitHub Actions secret ZAPSTORE_SIGN_WITH. Configure a dedicated Zapstore delegate signer; do not use the primary Nostr secret."
+            echo "::error::Missing GitHub Actions secret ZAPSTORE_SIGN_WITH."
             exit 1
           fi
+          if [[ "$SIGN_WITH" != bunker://* ]]; then
+            echo "::error::ZAPSTORE_SIGN_WITH must contain the dedicated Postilla delegate bunker URL."
+            exit 1
+          fi
+          if [[ ! "$BUNKER_CLIENT_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Missing or invalid GitHub Actions secret ZAPSTORE_BUNKER_CLIENT_KEY (expected 64 hexadecimal characters)."
+            exit 1
+          fi
+
+          BUNKER_TARGET="${SIGN_WITH#bunker://}"
+          BUNKER_TARGET="${BUNKER_TARGET%%\?*}"
+          if [[ ! "$BUNKER_TARGET" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::The configured bunker URL has an invalid target public key."
+            exit 1
+          fi
+
+          # zsp persists a per-bunker NIP-46 client key on disk. Restore the
+          # same dedicated key from GitHub Secrets on every ephemeral runner.
+          install -d -m 700 "$HOME/.config/zsp/bunker-keys"
+          printf '%s\n' "$BUNKER_CLIENT_KEY" > "$HOME/.config/zsp/bunker-keys/$BUNKER_TARGET.key"
+          chmod 600 "$HOME/.config/zsp/bunker-keys/$BUNKER_TARGET.key"
+          unset BUNKER_CLIENT_KEY
+
           zsp publish -q zapstore.yaml
