@@ -1,0 +1,143 @@
+name: Postilla signing certificate audit
+
+on:
+  push:
+    branches:
+      - "audit/postilla-signature-compare-20261115"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postilla-signature-audit
+  cancel-in-progress: false
+
+jobs:
+  compare-signing-certificates:
+    name: Compare v1.0.16 and v1.0.17 signing certificates
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check required signing secrets
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [[ -z "$KEYSTORE_B64" ]] && missing+=("DARK_WISP_ENHANCED_KEYSTORE_BASE64")
+          [[ -z "$STORE_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_STORE_PASSWORD")
+          [[ -z "$KEY_ALIAS" ]] && missing+=("DARK_WISP_ENHANCED_KEY_ALIAS")
+          [[ -z "$KEY_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_KEY_PASSWORD")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Check out Postilla v1.0.17 source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Decode permanent Postilla signing keystore
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+        run: |
+          KEYSTORE_PATH="$RUNNER_TEMP/postilla-release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          {
+            echo "RELEASE_STORE_FILE=$KEYSTORE_PATH"
+            echo "RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Download and verify official v1.0.16 APK
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/isolabellart/postilla-android/releases/download/v1.0.16/Postilla-v1.0.16.apk" \
+            --output "$RUNNER_TEMP/Postilla-v1.0.16.apk"
+          ACTUAL_APK_SHA256="$(sha256sum "$RUNNER_TEMP/Postilla-v1.0.16.apk" | awk '{print $1}')"
+          EXPECTED_APK_SHA256="86d01c1e0e1cce699400cdca763e8a2d2c5562b23a6923dca779818748f817d4"
+          echo "v1.0.16 APK SHA-256: $ACTUAL_APK_SHA256"
+          if [[ "$ACTUAL_APK_SHA256" != "$EXPECTED_APK_SHA256" ]]; then
+            echo "::error::The downloaded v1.0.16 APK does not match the previously recorded official SHA-256."
+            exit 1
+          fi
+
+      - name: Build signed Postilla v1.0.17 APK
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            assembleRelease --stacktrace
+
+      - name: Compare APK signing certificates
+        id: compare
+        shell: bash
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$APKSIGNER"
+
+          OLD_APK="$RUNNER_TEMP/Postilla-v1.0.16.apk"
+          NEW_APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$NEW_APK"
+
+          OLD_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$OLD_APK" 2>&1)"
+          NEW_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$NEW_APK" 2>&1)"
+          printf '%s\n' "=== Postilla v1.0.16 ===" "$OLD_OUTPUT"
+          printf '%s\n' "=== Postilla v1.0.17 rebuild ===" "$NEW_OUTPUT"
+
+          extract_sha256() {
+            printf '%s\n' "$1" \
+              | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
+              | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          }
+
+          OLD_CERT_SHA256="$(extract_sha256 "$OLD_OUTPUT")"
+          NEW_CERT_SHA256="$(extract_sha256 "$NEW_OUTPUT")"
+
+          if [[ -z "$OLD_CERT_SHA256" || -z "$NEW_CERT_SHA256" ]]; then
+            echo "::error::Could not extract the SHA-256 certificate fingerprint from one of the APKs."
+            exit 1
+          fi
+
+          echo "v1.0.16 certificate SHA-256: $OLD_CERT_SHA256"
+          echo "v1.0.17 certificate SHA-256: $NEW_CERT_SHA256"
+          echo "User-reported local v1.0.17 APK SHA-256: 380958df2ca17fc672fce69c5170a472ede752e14a459918e188fea46519ac29"
+
+          {
+            echo "## Postilla signing certificate audit"
+            echo
+            echo "- v1.0.16 certificate SHA-256: `$OLD_CERT_SHA256`"
+            echo "- v1.0.17 rebuild certificate SHA-256: `$NEW_CERT_SHA256`"
+            echo "- User-reported local v1.0.17 APK SHA-256: `380958df2ca17fc672fce69c5170a472ede752e14a459918e188fea46519ac29`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$OLD_CERT_SHA256" != "$NEW_CERT_SHA256" ]]; then
+            echo "::error::Signing certificates differ between v1.0.16 and the v1.0.17 rebuild."
+            exit 1
+          fi
+
+          echo "success=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::The v1.0.17 rebuild uses the same signing certificate as the official v1.0.16 APK."
