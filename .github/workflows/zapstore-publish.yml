@@ -34,11 +34,13 @@ jobs:
         run: |
           go install github.com/zapstore/zsp/v2/cmd/zsp@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          "$(go env GOPATH)/bin/zsp" --version
+          "$(go env GOPATH)/bin/zsp" -v
 
       - name: Verify release metadata and APK
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
         run: |
@@ -55,10 +57,11 @@ jobs:
         shell: bash
         env:
           SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ -z "$SIGN_WITH" ]]; then
             echo "::error::Missing GitHub Actions secret ZAPSTORE_SIGN_WITH. Configure a dedicated Zapstore delegate signer; do not use the primary Nostr secret."
             exit 1
           fi
-          zsp publish zapstore.yaml
+          zsp publish -y zapstore.yaml
