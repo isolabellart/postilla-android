@@ -123,7 +123,7 @@ jobs:
           # The bunker URL host identifies the remote signer, not the
           # delegated Nostr account returned by NIP-46 get_public_key.
           BUNKER_TARGET="${SIGN_WITH#bunker://}"
-          BUNKER_TARGET="${BUNKER_TARGET%%\\?*}"
+          BUNKER_TARGET="${BUNKER_TARGET%%\?*}"
           BUNKER_TARGET="${BUNKER_TARGET,,}"
           if [[ ! "$BUNKER_TARGET" =~ ^[0-9a-f]{64}$ ]]; then
             echo "::error::The bunker URL does not contain a valid hex remote-signer public key."
