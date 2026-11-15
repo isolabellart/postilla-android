@@ -1273,7 +1273,19 @@ fun WispNavHost(
                 onBack = { navController.popBackStack() },
                 onPublished = { event ->
                     marketplaceViewModel.addOrUpdate(event)
-                    navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}") {
+
+                    // The editor is opened on top of the source screen. After editing,
+                    // remove both the editor and its stale detail destination before
+                    // opening the newly published revision. Otherwise Back reveals the
+                    // editor again, followed by the obsolete detail revision.
+                    navController.popBackStack() // Remove MarketplaceEditorScreen.
+                    if (existingEvent != null) {
+                        navController.popBackStack() // Replace the detail screen being edited.
+                    }
+
+                    navController.navigate(
+                        "marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}"
+                    ) {
                         launchSingleTop = true
                     }
                 },
