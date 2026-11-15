@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: zapstore-publish-${{ github.event.release.tag_name }}
+  group: zapstore-publish
   cancel-in-progress: false
 
 jobs:
