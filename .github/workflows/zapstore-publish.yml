@@ -64,4 +64,4 @@ jobs:
             echo "::error::Missing GitHub Actions secret ZAPSTORE_SIGN_WITH. Configure a dedicated Zapstore delegate signer; do not use the primary Nostr secret."
             exit 1
           fi
-          zsp publish -y zapstore.yaml
+          zsp publish -q zapstore.yaml
