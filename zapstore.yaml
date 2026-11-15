@@ -1,17 +1,23 @@
-repository: https://github.com/isolabellart/dark-wisp-android
-release_filter: '^v[0-9]+\.[0-9]+\.[0-9]+$'
-match: '(?i)^(Dark-Wisp-Enhanced-v[0-9]+\.[0-9]+\.[0-9]+\.apk|app-release\.apk)$'
+repository: https://github.com/isolabellart/postilla-android
+release_filter: '^v[0-9]+\\.[0-9]+\\.[0-9]+$'
+match: '(?i)^Postilla-v[0-9]+\\.[0-9]+\\.[0-9]+\\.apk$'
 
-name: Dark Wisp Enhanced
-summary: An independent Android Nostr client with translation, a NIP-99 marketplace, and Lightning wallet access.
+name: Postilla
+summary: An independent Android Nostr client for social conversations, private messaging, Lightning and a NIP-99 marketplace.
 description: |
-  Dark Wisp Enhanced is an independent Android Nostr client built on the foundations of the original Dark Wisp project.
+  Postilla is an independent, open-source Android Nostr client designed as a calm, editorial space for conversations, discovery and exchange.
 
-  It adds a customizable left/right navigation drawer, online-user and connected-relay indicators, integrated DeepL translation, improvements to the Conversations feed, a NIP-99 marketplace with private seller contact, and convenient access to the integrated Lightning wallet.
+  It brings together Nostr social feeds, NIP-17 private messaging, DeepL translation, a Lightning wallet and a NIP-99 marketplace for products and services.
 
-  Dark Wisp Enhanced is a separate application with its own Android package ID. It is an independent downstream project, not an official release of the upstream Dark Wisp project.
+  Postilla continues the work of the original Dark Wisp Android project as an independently maintained downstream fork. The Android application ID remains com.isolabellart.darkwispenhanced and keeps its existing signing identity so current installations can receive future Postilla updates. Postilla is not an official upstream Dark Wisp release.
 license: MIT
-website: https://github.com/isolabellart/dark-wisp-android/releases/latest
+website: https://github.com/isolabellart/postilla-android/releases/latest
+images:
+  - ./fastlane/metadata/android/en-US/images/phoneScreenshots/01.png
+  - ./fastlane/metadata/android/en-US/images/phoneScreenshots/02.png
+  - ./fastlane/metadata/android/en-US/images/phoneScreenshots/03.png
+  - ./fastlane/metadata/android/en-US/images/phoneScreenshots/04.png
+  - ./fastlane/metadata/android/en-US/images/phoneScreenshots/05.png
 tags:
   - android
   - nostr
@@ -52,5 +58,4 @@ supported_nips:
   - "88"
   - "99"
 metadata_sources:
-  - fastlane
   - github
