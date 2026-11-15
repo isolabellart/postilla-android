@@ -32,7 +32,7 @@ jobs:
       - name: Install Zapstore CLI
         shell: bash
         run: |
-          go install github.com/zapstore/zsp/v2/cmd/zsp@latest
+          go install github.com/zapstore/zsp/v2/cmd/zsp@v2.0.1
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           "$(go env GOPATH)/bin/zsp" -v
 
@@ -40,7 +40,6 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
         run: |
@@ -59,6 +58,7 @@ jobs:
           SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
           BUNKER_CLIENT_KEY: ${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_BUNKER_PUBKEY: 8af9683c5868749cc3a261a0e006f3f53e4bea0aa81f31f0f027d684e7f0c0c8
         run: |
           set -euo pipefail
           if [[ -z "$SIGN_WITH" ]]; then
@@ -78,6 +78,11 @@ jobs:
           BUNKER_TARGET="${BUNKER_TARGET%%\?*}"
           if [[ ! "$BUNKER_TARGET" =~ ^[0-9a-fA-F]{64}$ ]]; then
             echo "::error::The configured bunker URL has an invalid target public key."
+            exit 1
+          fi
+
+          if [[ "${BUNKER_TARGET,,}" != "$EXPECTED_BUNKER_PUBKEY" ]]; then
+            echo "::error::The configured bunker does not belong to the expected Postilla delegate identity."
             exit 1
           fi
 
