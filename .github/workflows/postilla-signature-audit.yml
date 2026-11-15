@@ -102,6 +102,15 @@ jobs:
           OLD_APK="$RUNNER_TEMP/Postilla-v1.0.16.apk"
           NEW_APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$NEW_APK"
+          NEW_APK_SHA256="$(sha256sum "$NEW_APK" | cut -c1-64)"
+          USER_APK_SHA256="380958df2ca17fc672fce69c5170a472ede752e14a459918e188fea46519ac29"
+          echo "v1.0.17 audit-build APK SHA-256: $NEW_APK_SHA256"
+          echo "User-reported local v1.0.17 APK SHA-256: $USER_APK_SHA256"
+          if [[ "$NEW_APK_SHA256" == "$USER_APK_SHA256" ]]; then
+            echo "The audit build is byte-for-byte identical to the local APK."
+          else
+            echo "The audit build differs byte-for-byte from the local APK; certificate comparison still checks signing-key continuity."
+          fi
 
           OLD_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$OLD_APK" 2>&1)"
           NEW_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$NEW_APK" 2>&1)"
