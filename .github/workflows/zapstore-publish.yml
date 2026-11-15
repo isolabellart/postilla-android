@@ -1,0 +1,64 @@
+name: Publish Postilla release to Zapstore
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zapstore-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish release
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository metadata
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install Zapstore CLI
+        shell: bash
+        run: |
+          go install github.com/zapstore/zsp/v2/cmd/zsp@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/zsp" --version
+
+      - name: Verify release metadata and APK
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Unexpected release tag: $RELEASE_TAG"
+            exit 1
+          }
+          echo "Zapstore source release: $RELEASE_URL"
+          echo "Release tag: $RELEASE_TAG"
+          zsp check zapstore.yaml
+
+      - name: Publish to Zapstore
+        shell: bash
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SIGN_WITH" ]]; then
+            echo "::error::Missing GitHub Actions secret ZAPSTORE_SIGN_WITH. Configure a dedicated Zapstore delegate signer; do not use the primary Nostr secret."
+            exit 1
+          fi
+          zsp publish zapstore.yaml
