@@ -11,6 +11,7 @@ on:
       - "feature/postilla-visual-identity"
       - "rebrand/postilla-public-identity"
       - "feature/postilla-commerce-on-rebrand"
+      - "staging/marketplace-naddr-backstack-20261115"
     paths:
       - "app/**"
       - "gradle/**"
