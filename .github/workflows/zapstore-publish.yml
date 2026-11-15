@@ -28,7 +28,7 @@ jobs:
       - name: Check out repository metadata
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Set up Go
@@ -52,8 +52,8 @@ jobs:
       - name: Verify exact published release and prepare targeted config
         shell: bash
         env:
-          RELEASE_TAG: \${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.release.tag_name }}
-          GITHUB_TOKEN: \${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.release.tag_name }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
@@ -104,9 +104,9 @@ jobs:
       - name: Verify Postilla bunker identity and publish to Zapstore
         shell: bash
         env:
-          SIGN_WITH: \${{ secrets.ZAPSTORE_SIGN_WITH }}
-          BUNKER_CLIENT_KEY: \${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
-          GITHUB_TOKEN: \${{ github.token }}
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+          BUNKER_CLIENT_KEY: ${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           EXPECTED_BUNKER_PUBKEY="8af9683c5868749cc3a261a0e006f3f53e4bea0aa81f31f0f027d684e7f0c0c8"
@@ -122,9 +122,9 @@ jobs:
 
           # The bunker URL host identifies the remote signer, not the
           # delegated Nostr account returned by NIP-46 get_public_key.
-          BUNKER_TARGET="\${SIGN_WITH#bunker://}"
-          BUNKER_TARGET="\${BUNKER_TARGET%%\\?*}"
-          BUNKER_TARGET="\${BUNKER_TARGET,,}"
+          BUNKER_TARGET="${SIGN_WITH#bunker://}"
+          BUNKER_TARGET="${BUNKER_TARGET%%\\?*}"
+          BUNKER_TARGET="${BUNKER_TARGET,,}"
           if [[ ! "$BUNKER_TARGET" =~ ^[0-9a-f]{64}$ ]]; then
             echo "::error::The bunker URL does not contain a valid hex remote-signer public key."
             exit 1
