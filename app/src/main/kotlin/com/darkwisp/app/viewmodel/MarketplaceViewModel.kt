@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip99
+import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip01EventOrder
 import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.NostrEvent
@@ -16,6 +17,8 @@ import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.PeerRelayListLookup
 import com.darkwisp.app.repo.RelayListRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,6 +32,26 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
 
 enum class MarketplaceScope { ALL, FOLLOWING, MINE }
+
+sealed class MarketplaceNaddrLookupState {
+    object Idle : MarketplaceNaddrLookupState()
+    object Loading : MarketplaceNaddrLookupState()
+    data class Found(val event: NostrEvent) : MarketplaceNaddrLookupState()
+    object Invalid : MarketplaceNaddrLookupState()
+    object Unsupported : MarketplaceNaddrLookupState()
+    object NotFound : MarketplaceNaddrLookupState()
+}
+
+/** Accept a bare naddr or its NIP-21 nostr: URI form from the Marketplace search field. */
+internal fun normalizeMarketplaceNaddrInput(query: String): String? {
+    var value = query.trim()
+    if (value.startsWith("nostr:", ignoreCase = true)) {
+        value = value.substringAfter(':').trim()
+    }
+    return value
+        .takeIf { it.startsWith("naddr1", ignoreCase = true) }
+        ?.lowercase()
+}
 
 class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private val _listings = MutableStateFlow<List<NostrEvent>>(emptyList())
@@ -50,6 +73,13 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private val _availableCategories = MutableStateFlow<List<String>>(emptyList())
     val availableCategories: StateFlow<List<String>> = _availableCategories
 
+    private val _naddrLookupState = MutableStateFlow<MarketplaceNaddrLookupState>(
+        MarketplaceNaddrLookupState.Idle
+    )
+    val naddrLookupState: StateFlow<MarketplaceNaddrLookupState> = _naddrLookupState
+
+    private val naddrLookupGeneration = AtomicLong()
+    private var naddrLookupJob: Job? = null
     private val subscriptionSequence = AtomicLong()
     private val cachedByAddress = linkedMapOf<String, NostrEvent>()
     private val cacheLock = Any()
@@ -66,6 +96,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         private const val EOSE_DRAIN_GRACE_MS = 6_000L
         private const val MINIMUM_EOSE_COUNT = 6
         private const val MAX_CACHED_LISTINGS = 1000
+        private const val NADDR_LOOKUP_DEBOUNCE_MS = 350L
+        // MetadataFetcher performs an exact coordinate lookup and, when necessary,
+        // a bounded paginated seller-history fallback (up to 25 seconds).
+        private const val NADDR_LOOKUP_TIMEOUT_MS = 42_000L
+        private const val NADDR_LOOKUP_SETTLE_MS = 1_200L
+        private val HEX_PUBKEY_REGEX = Regex("^[0-9a-f]{64}$")
 
     }
 
@@ -110,6 +146,152 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     fun setSelectedCategory(category: String?) {
         _selectedCategory.value = category
         publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
+    }
+
+    /**
+     * Resolve a pasted NIP-19 address from the Marketplace search field.
+     *
+     * Relay routing stays in EventRepository/MetadataFetcher: naddr hints are tried
+     * immediately, while the existing resolver also uses the seller's NIP-65 relays,
+     * account/indexer relays and a paged exact-coordinate fallback when needed.
+     */
+    fun resolveMarketplaceNaddrQuery(query: String, eventRepository: EventRepository) {
+        val naddr = normalizeMarketplaceNaddrInput(query)
+        naddrLookupJob?.cancel()
+        val generation = naddrLookupGeneration.incrementAndGet()
+
+        if (naddr == null) {
+            _naddrLookupState.value = MarketplaceNaddrLookupState.Idle
+            return
+        }
+
+        _naddrLookupState.value = MarketplaceNaddrLookupState.Loading
+        naddrLookupJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(NADDR_LOOKUP_DEBOUNCE_MS)
+            if (naddrLookupGeneration.get() != generation) return@launch
+
+            val address = try {
+                Nip19.naddrDecode(naddr)
+            } catch (_: Exception) {
+                publishNaddrLookupState(generation, MarketplaceNaddrLookupState.Invalid)
+                return@launch
+            }
+
+            val author = address.author
+            val kind = address.kind
+            if (
+                author == null ||
+                !HEX_PUBKEY_REGEX.matches(author) ||
+                kind == null ||
+                address.dTag.isBlank()
+            ) {
+                publishNaddrLookupState(generation, MarketplaceNaddrLookupState.Invalid)
+                return@launch
+            }
+
+            if (!Nip99.isMarketplaceKind(kind)) {
+                publishNaddrLookupState(generation, MarketplaceNaddrLookupState.Unsupported)
+                return@launch
+            }
+
+            val updates = Channel<NostrEvent>(Channel.CONFLATED)
+            val observer = launch(start = CoroutineStart.UNDISPATCHED) {
+                eventRepository.observeAddressableEvent(kind, author, address.dTag).collect { event ->
+                    if (
+                        event != null &&
+                        isUsableMarketplaceAddressEvent(event, kind, author, address.dTag, eventRepository)
+                    ) {
+                        updates.trySend(event)
+                    }
+                }
+            }
+
+            try {
+                var best = eventRepository.findAddressableEvent(kind, author, address.dTag)
+                    ?.takeIf {
+                        isUsableMarketplaceAddressEvent(it, kind, author, address.dTag, eventRepository)
+                    }
+
+                if (best == null) {
+                    best = eventRepository.findPersistedMarketplaceListing(kind, author, address.dTag)
+                        ?.takeIf {
+                            isUsableMarketplaceAddressEvent(it, kind, author, address.dTag, eventRepository)
+                        }
+                    if (best != null) eventRepository.cacheEvent(best)
+                }
+
+                if (best != null) {
+                    publishNaddrLookupState(generation, MarketplaceNaddrLookupState.Found(best))
+                }
+
+                // Start network resolution even when a cached revision is available:
+                // the relay lookup may reveal a newer version of the same listing.
+                eventRepository.requestAddressableEvent(kind, author, address.dTag, address.relays)
+                eventRepository.requestProfileIfMissing(author)
+
+                val lookupDeadline = System.currentTimeMillis() + NADDR_LOOKUP_TIMEOUT_MS
+                var quietDeadline = if (best == null) {
+                    lookupDeadline
+                } else {
+                    minOf(lookupDeadline, System.currentTimeMillis() + NADDR_LOOKUP_SETTLE_MS)
+                }
+
+                while (System.currentTimeMillis() < quietDeadline) {
+                    val remaining = (quietDeadline - System.currentTimeMillis()).coerceAtLeast(1L)
+                    val candidate = withTimeoutOrNull(remaining) { updates.receive() } ?: break
+                    if (!isUsableMarketplaceAddressEvent(candidate, kind, author, address.dTag, eventRepository)) {
+                        continue
+                    }
+
+                    val previous = best
+                    if (previous == null || Nip01EventOrder.isNewer(candidate, previous)) {
+                        best = candidate
+                        publishNaddrLookupState(generation, MarketplaceNaddrLookupState.Found(candidate))
+                        // Give additional relay responses a short window to provide a newer revision.
+                        quietDeadline = minOf(
+                            lookupDeadline,
+                            System.currentTimeMillis() + NADDR_LOOKUP_SETTLE_MS
+                        )
+                    }
+                }
+
+                if (best == null) {
+                    publishNaddrLookupState(generation, MarketplaceNaddrLookupState.NotFound)
+                } else {
+                    publishNaddrLookupState(generation, MarketplaceNaddrLookupState.Found(best))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("MarketplaceVM", "Could not resolve Marketplace naddr", error)
+                publishNaddrLookupState(generation, MarketplaceNaddrLookupState.NotFound)
+            } finally {
+                observer.cancelAndJoin()
+                updates.close()
+            }
+        }
+    }
+
+    private fun isUsableMarketplaceAddressEvent(
+        event: NostrEvent,
+        kind: Int,
+        author: String,
+        dTag: String,
+        eventRepository: EventRepository
+    ): Boolean =
+        event.kind == kind &&
+            event.pubkey == author &&
+            Nip99.dTag(event) == dTag &&
+            Nip99.status(event) != "hidden" &&
+            eventRepository.isEventVisibleToUser(event)
+
+    private fun publishNaddrLookupState(
+        generation: Long,
+        state: MarketplaceNaddrLookupState
+    ) {
+        if (naddrLookupGeneration.get() == generation) {
+            _naddrLookupState.value = state
+        }
     }
 
     fun load(
@@ -357,6 +539,8 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         activeSubscriptionId = null
         loadJob?.cancel()
+        naddrLookupGeneration.incrementAndGet()
+        naddrLookupJob?.cancel()
         super.onCleared()
     }
 }
