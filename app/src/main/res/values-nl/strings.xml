@@ -901,4 +901,5 @@
     <string name="wallet_default_subtitle">Afgeleid van je Nostr-sleutel — een extra back-up is niet nodig.</string>
     <string name="wallet_switch_wallet_body">Ontkoppel deze wallet om je standaardwallet te gebruiken of een andere te herstellen. Je tegoed blijft veilig: je kunt deze wallet altijd opnieuw verbinden met de herstelzin.</string>
     <string name="wallet_default_seed_info">Deze wallet is afgeleid van je Nostr-sleutel. De zin hieronder is daarom alleen bedoeld om naar andere wallet-apps te exporteren. Je hoeft deze niet te back-uppen: je nsec is de back-up.</string>
+    <string name="marketplace_search_hint">Zoeken</string>
 </resources>

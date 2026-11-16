@@ -901,4 +901,5 @@
     <string name="wallet_default_subtitle">Nostrキーから生成されるため、追加のバックアップは不要です。</string>
     <string name="wallet_switch_wallet_body">このウォレットを切断すると、デフォルトのウォレットを使用するか、別のウォレットを復元できます。資金は安全です。復元フレーズを入力すれば、いつでも再接続できます。</string>
     <string name="wallet_default_seed_info">このウォレットはNostrキーから生成されています。下のフレーズは他のウォレットアプリへのエクスポート専用です。バックアップは不要です。nsecがバックアップになります。</string>
+    <string name="marketplace_search_hint">検索</string>
 </resources>

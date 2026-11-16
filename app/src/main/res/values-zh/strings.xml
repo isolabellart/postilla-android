@@ -902,4 +902,5 @@
     <string name="wallet_default_subtitle">由你的 Nostr 密钥派生，无需额外备份。</string>
     <string name="wallet_switch_wallet_body">断开此钱包后，你可以使用默认钱包或恢复其他钱包。资金仍然安全：随时输入恢复短语即可重新连接此钱包。</string>
     <string name="wallet_default_seed_info">此钱包由你的 Nostr 密钥派生，因此下方短语仅用于导出到其他钱包应用。无需备份它：你的 nsec 就是备份。</string>
+    <string name="marketplace_search_hint">搜索</string>
 </resources>

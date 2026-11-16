@@ -901,4 +901,5 @@
     <string name="wallet_default_subtitle">Derivada da sua chave Nostr — não é necessária outra cópia de segurança.</string>
     <string name="wallet_switch_wallet_body">Desligue esta carteira para usar a predefinida ou restaurar outra. Os seus fundos permanecem seguros: pode voltar a ligar esta carteira a qualquer momento introduzindo a frase de recuperação.</string>
     <string name="wallet_default_seed_info">Esta carteira deriva da sua chave Nostr, por isso a frase abaixo serve apenas para exportação para outras aplicações. Não precisa de a guardar em backup: o seu nsec é a cópia de segurança.</string>
+    <string name="marketplace_search_hint">Pesquisar</string>
 </resources>
