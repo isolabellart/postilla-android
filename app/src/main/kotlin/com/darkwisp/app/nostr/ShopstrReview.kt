@@ -74,10 +74,13 @@ object ShopstrReview {
         if (ratings.isEmpty()) return null
         val thumb = ratings["thumb"]
         val remaining = ratings.filterKeys { it != "thumb" }.values
+        // Match Shopstr's storefront formula: thumb always contributes 50%;
+        // the remaining criteria share the other 50%, even when thumb is absent.
+        val thumbScore = (thumb ?: 0.0) * 0.5
         return when {
-            thumb != null && remaining.isNotEmpty() -> thumb * 0.5 + remaining.average() * 0.5
-            thumb != null -> thumb
-            else -> ratings.values.average()
+            remaining.isNotEmpty() -> thumbScore + remaining.average() * 0.5
+            thumb != null -> thumbScore
+            else -> null
         }
     }
 }
