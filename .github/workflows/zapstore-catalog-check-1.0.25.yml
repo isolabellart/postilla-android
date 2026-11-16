@@ -1,0 +1,86 @@
+name: Zapstore catalog check for Postilla 1.0.25
+
+on:
+  push:
+    branches:
+      - diagnostics/zapstore-check-1.0.25-20261116
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Inspect Postilla package in Zapstore catalog (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out diagnostic branch and metadata
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify Zapstore source metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s zapstore.yaml
+          grep -F 'repository: https://github.com/isolabellart/postilla-android' zapstore.yaml
+          grep -F "release_filter: '^v[0-9]+\\.[0-9]+\\.[0-9]+$'" zapstore.yaml
+          grep -F "match: '(?i)^Postilla-v[0-9]+\\.[0-9]+\\.[0-9]+\\.apk$'" zapstore.yaml
+
+      - name: Set up Go required by zsp v2
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+
+      - name: Install read-only Zapstore CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/zapstore/zsp/v2/cmd/zsp@v2.0.1
+          "$(go env GOPATH)/bin/zsp" --version
+
+      - name: Check signed release against the Zapstore catalog
+        id: catalog
+        shell: bash
+        run: |
+          set +e
+          "$(go env GOPATH)/bin/zsp" --json check > "$RUNNER_TEMP/zsp-check.json" 2> "$RUNNER_TEMP/zsp-check.stderr"
+          rc=$?
+          set -e
+
+          echo "zsp_check_exit_code=$rc" >> "$GITHUB_OUTPUT"
+          echo "## Zapstore catalog check" >> "$GITHUB_STEP_SUMMARY"
+          echo "CLI exit code: $rc" >> "$GITHUB_STEP_SUMMARY"
+          echo '### Structured result' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -s "$RUNNER_TEMP/zsp-check.json" ]]; then
+            cat "$RUNNER_TEMP/zsp-check.json"
+            cat "$RUNNER_TEMP/zsp-check.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No JSON result was returned."
+            echo "No JSON result was returned." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -s "$RUNNER_TEMP/zsp-check.stderr" ]]; then
+            echo "### Diagnostics (stderr)"
+            cat "$RUNNER_TEMP/zsp-check.stderr"
+            {
+              echo '### Diagnostics (stderr)'
+              cat "$RUNNER_TEMP/zsp-check.stderr"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if (( rc != 0 )); then
+            echo "::warning::zsp check returned exit code $rc; inspect the structured diagnostics."
+          fi
+
+      - name: Preserve diagnostic output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postilla-zapstore-check-1.0.25
+          path: |
+            ${{ runner.temp }}/zsp-check.json
+            ${{ runner.temp }}/zsp-check.stderr
+          if-no-files-found: warn
+          retention-days: 14
