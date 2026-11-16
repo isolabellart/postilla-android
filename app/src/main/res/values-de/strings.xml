@@ -766,6 +766,10 @@
     <string name="marketplace_physical">Physisch</string>
     <string name="marketplace_hide_sold">Verkaufte ausblenden</string>
     <string name="marketplace_locations">Orte</string>
+    <string name="marketplace_visibility_label">Sichtbarkeit</string>
+    <string name="marketplace_on_sale">Im Verkauf</string>
+    <string name="marketplace_pre_order">Vorbestellung</string>
+    <string name="marketplace_hidden">Ausgeblendet</string>
     <string name="marketplace_photos">Fotos</string>
     <string name="marketplace_add_photos">Fotos hinzufügen</string>
     <string name="marketplace_uploading">Fotos werden hochgeladen…</string>

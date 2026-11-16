@@ -36,3 +36,20 @@ fun MarketplaceAvailabilityBadge(availability: Nip99.Availability, modifier: Mod
         Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
     }
 }
+
+/** Shown next to the availability badge for listings published with `visibility = pre-order`. */
+@Composable
+fun MarketplacePreOrderBadge(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Text(
+            stringResource(R.string.marketplace_pre_order),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium
+        )
+    }
+}

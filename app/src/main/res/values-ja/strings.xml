@@ -765,6 +765,10 @@
     <string name="marketplace_physical">物理</string>
     <string name="marketplace_hide_sold">売却済みを隠す</string>
     <string name="marketplace_locations">場所</string>
+    <string name="marketplace_visibility_label">表示設定</string>
+    <string name="marketplace_on_sale">販売中</string>
+    <string name="marketplace_pre_order">予約受付</string>
+    <string name="marketplace_hidden">非表示</string>
     <string name="marketplace_photos">写真</string>
     <string name="marketplace_add_photos">写真を追加</string>
     <string name="marketplace_uploading">写真をアップロード中…</string>

@@ -21,6 +21,9 @@ object Nip99 {
     const val KIND_LEGACY_PRODUCT = 30018
     val MARKETPLACE_KINDS = listOf(KIND_LISTING, KIND_LEGACY_PRODUCT)
 
+    /** Spec values for the `visibility` tag. */
+    val VISIBILITIES = listOf("on-sale", "hidden", "pre-order")
+
     data class Price(val amount: String, val currency: String, val frequency: String? = null)
     enum class AvailabilityState { AVAILABLE, SOLD_OUT, UNKNOWN }
     /** Missing, malformed or ambiguous stock is unknown, never zero. */
@@ -189,7 +192,8 @@ object Nip99 {
         images: List<String>,
         status: String,
         stock: Int? = null,
-        format: String = "digital"
+        format: String = "digital",
+        visibility: String = "on-sale"
     ): List<List<String>> {
         require(stock == null || stock >= 0) { "Stock cannot be negative" }
         val sold = status.equals("sold", true)
@@ -201,7 +205,7 @@ object Nip99 {
             listOf("summary", summary.trim()),
             listOf("published_at", publishedAt),
             listOf("type", "simple", if (format.equals("physical", true)) "physical" else "digital"),
-            listOf("visibility", "on-sale")
+            listOf("visibility", if (visibility in VISIBILITIES) visibility else "on-sale")
         )
         if (publishedStock != null) result.add(listOf("stock", publishedStock.toString()))
         if (location.isNotBlank()) result.add(listOf("location", location.trim()))

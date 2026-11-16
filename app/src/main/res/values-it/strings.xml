@@ -776,6 +776,10 @@
     <string name="marketplace_physical">Fisico</string>
     <string name="marketplace_hide_sold">Nascondi venduti</string>
     <string name="marketplace_locations">Luoghi</string>
+    <string name="marketplace_visibility_label">Visibilità</string>
+    <string name="marketplace_on_sale">In vendita</string>
+    <string name="marketplace_pre_order">Preordine</string>
+    <string name="marketplace_hidden">Nascosto</string>
     <string name="marketplace_withdraw_listing">Ritira annuncio</string>
     <string name="marketplace_withdraw_title">Ritirare questo annuncio?</string>
     <string name="marketplace_withdraw_confirmation">Pubblicheremo una richiesta di cancellazione NIP-09 per questo annuncio. I relay compatibili saranno invitati a rimuoverne tutte le versioni, ma non possiamo garantire che ogni relay o client rispetti la richiesta.</string>

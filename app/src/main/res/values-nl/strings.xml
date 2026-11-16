@@ -765,6 +765,10 @@
     <string name="marketplace_physical">Fysiek</string>
     <string name="marketplace_hide_sold">Verkocht verbergen</string>
     <string name="marketplace_locations">Locaties</string>
+    <string name="marketplace_visibility_label">Zichtbaarheid</string>
+    <string name="marketplace_on_sale">Te koop</string>
+    <string name="marketplace_pre_order">Voorbestelling</string>
+    <string name="marketplace_hidden">Verborgen</string>
     <string name="marketplace_photos">Foto’s</string>
     <string name="marketplace_add_photos">Foto’s toevoegen</string>
     <string name="marketplace_uploading">Foto’s uploaden…</string>

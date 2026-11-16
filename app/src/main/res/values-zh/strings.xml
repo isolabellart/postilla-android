@@ -766,6 +766,10 @@
     <string name="marketplace_physical">实体</string>
     <string name="marketplace_hide_sold">隐藏已售出</string>
     <string name="marketplace_locations">地点</string>
+    <string name="marketplace_visibility_label">可见性</string>
+    <string name="marketplace_on_sale">在售</string>
+    <string name="marketplace_pre_order">预售</string>
+    <string name="marketplace_hidden">隐藏</string>
     <string name="marketplace_photos">照片</string>
     <string name="marketplace_add_photos">添加照片</string>
     <string name="marketplace_uploading">正在上传照片…</string>

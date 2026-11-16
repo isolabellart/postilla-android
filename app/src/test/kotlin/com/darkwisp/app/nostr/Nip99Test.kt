@@ -266,4 +266,18 @@ class Nip99Test {
         assertTrue(Nip99.isSold(event(listOf(listOf("d", "a"), listOf("stock", "0")))))
         assertFalse(Nip99.isSold(event(listOf(listOf("d", "a"), listOf("visibility", "pre-order")))))
     }
+
+    @Test
+    fun `buildTags publishes hidden and pre-order visibility and rejects unknown values`() {
+        fun tagsFor(v: String) = Nip99.buildTags(
+            dTag = "x", title = "X", summary = "", publishedAt = "1800000000",
+            amount = "1", currency = "EUR", location = "", category = "", images = emptyList(),
+            status = "active", visibility = v
+        )
+        assertTrue(tagsFor("hidden").contains(listOf("visibility", "hidden")))
+        assertTrue(tagsFor("pre-order").contains(listOf("visibility", "pre-order")))
+        assertTrue(tagsFor("bogus").contains(listOf("visibility", "on-sale")))
+        assertEquals("hidden", Nip99.status(event(listOf(listOf("d", "x"), listOf("visibility", "hidden")))))
+        assertEquals("pre-order", Nip99.status(event(listOf(listOf("d", "x"), listOf("visibility", "pre-order")))))
+    }
 }

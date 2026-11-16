@@ -766,6 +766,10 @@
     <string name="marketplace_physical">실물</string>
     <string name="marketplace_hide_sold">판매 완료 숨기기</string>
     <string name="marketplace_locations">위치</string>
+    <string name="marketplace_visibility_label">공개 상태</string>
+    <string name="marketplace_on_sale">판매 중</string>
+    <string name="marketplace_pre_order">예약 판매</string>
+    <string name="marketplace_hidden">숨김</string>
     <string name="marketplace_photos">사진</string>
     <string name="marketplace_add_photos">사진 추가</string>
     <string name="marketplace_uploading">사진 업로드 중…</string>

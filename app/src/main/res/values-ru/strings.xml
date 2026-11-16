@@ -726,6 +726,10 @@
     <string name="marketplace_physical">Физический</string>
     <string name="marketplace_hide_sold">Скрыть проданное</string>
     <string name="marketplace_locations">Места</string>
+    <string name="marketplace_visibility_label">Видимость</string>
+    <string name="marketplace_on_sale">В продаже</string>
+    <string name="marketplace_pre_order">Предзаказ</string>
+    <string name="marketplace_hidden">Скрыто</string>
     <string name="marketplace_photos">Фотографии</string>
     <string name="marketplace_add_photos">Добавить фотографии</string>
     <string name="marketplace_uploading">Загрузка фотографий…</string>

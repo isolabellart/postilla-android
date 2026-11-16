@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.ui.component.MarketplaceAvailabilityBadge
+import com.darkwisp.app.ui.component.MarketplacePreOrderBadge
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
@@ -460,6 +461,7 @@ internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRep
                     Text(Nip99.priceLabel(event).orEmpty(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
+                if (Nip99.status(event) == "pre-order") MarketplacePreOrderBadge()
                 MarketplaceAvailabilityBadge(availability)
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {
@@ -996,6 +998,7 @@ fun MarketplaceDetailScreen(
                     )
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
+                if (Nip99.status(event) == "pre-order") MarketplacePreOrderBadge()
                 MarketplaceAvailabilityBadge(availability)
                 if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.titleMedium)
                 val location = Nip99.location(event)

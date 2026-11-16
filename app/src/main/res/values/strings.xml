@@ -1016,6 +1016,10 @@
     <string name="marketplace_physical">Physical</string>
     <string name="marketplace_hide_sold">Hide sold</string>
     <string name="marketplace_locations">Locations</string>
+    <string name="marketplace_visibility_label">Visibility</string>
+    <string name="marketplace_on_sale">On sale</string>
+    <string name="marketplace_pre_order">Pre-order</string>
+    <string name="marketplace_hidden">Hidden</string>
     <string name="marketplace_withdraw_listing">Withdraw listing</string>
     <string name="marketplace_withdraw_title">Withdraw this listing?</string>
     <string name="marketplace_withdraw_confirmation">This publishes a NIP-09 deletion request for this listing. Compatible relays are asked to remove every version, but not every relay or client is guaranteed to honor the request.</string>

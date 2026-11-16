@@ -9,6 +9,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +68,7 @@ import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.MarketplaceCurrencies
 import com.darkwisp.app.ui.screen.MarketplaceLightningEstimate
 import com.darkwisp.app.ui.component.MarketplaceAvailabilityBadge
+import com.darkwisp.app.ui.component.MarketplacePreOrderBadge
 
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
@@ -107,6 +110,9 @@ fun MarketplaceEditorScreen(
     var images by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.images(it) } ?: emptyList()) }
     var status by remember(existingEvent?.id) { mutableStateOf(if (existingEvent != null && Nip99.isSold(existingEvent)) "sold" else "active") }
     var format by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.productFormat(it) } ?: "physical") }
+    var visibility by remember(existingEvent?.id) {
+        mutableStateOf(existingEvent?.let { Nip99.status(it) }?.takeIf { it in Nip99.VISIBILITIES } ?: "on-sale")
+    }
     var stock by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.stock(it)?.toString() }.orEmpty()) }
     val dTag = remember(existingEvent?.id) {
         existingEvent?.let { Nip99.dTag(it) }?.takeIf { it.isNotBlank() }
@@ -318,6 +324,21 @@ fun MarketplaceEditorScreen(
                             )
                         }
                     }
+                    item {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(stringResource(R.string.marketplace_visibility_label), style = MaterialTheme.typography.titleSmall)
+                            FilterChip(selected = visibility == "on-sale", onClick = { visibility = "on-sale" },
+                                label = { Text(stringResource(R.string.marketplace_on_sale)) })
+                            FilterChip(selected = visibility == "pre-order", onClick = { visibility = "pre-order" },
+                                label = { Text(stringResource(R.string.marketplace_pre_order)) })
+                            FilterChip(selected = visibility == "hidden", onClick = { visibility = "hidden" },
+                                label = { Text(stringResource(R.string.marketplace_hidden)) })
+                        }
+                    }
                     if (existingEvent != null && existingEvent.pubkey == userPubkey) {
                         item {
                             TextButton(
@@ -385,7 +406,8 @@ fun MarketplaceEditorScreen(
                     item {
                         MarketplaceDraftPreview(
                             title = title, summary = summary, amount = amount, currency = currency,
-                            location = location, images = images, status = status, stock = stock.toIntOrNull()
+                            location = location, images = images, status = status, stock = stock.toIntOrNull(),
+                            preOrder = visibility == "pre-order"
                         )
                     }
                     if (error != null) {
@@ -431,7 +453,8 @@ fun MarketplaceEditorScreen(
                                     images = images,
                                     status = status,
                                     stock = declaredStock,
-                                    format = format
+                                    format = format,
+                                    visibility = visibility
                                 )
                                 val latestKnownCreatedAt = eventRepository.findAddressableEvent(
                                     kind = Nip99.KIND_LISTING,
@@ -559,7 +582,7 @@ fun MarketplaceEditorScreen(
     }
 }
 @Composable
-private fun MarketplaceDraftPreview(title: String, summary: String, amount: String, currency: String, location: String, images: List<String>, status: String, stock: Int?) {
+private fun MarketplaceDraftPreview(title: String, summary: String, amount: String, currency: String, location: String, images: List<String>, status: String, stock: Int?, preOrder: Boolean = false) {
     val availability = Nip99.availability(status, stock)
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -589,6 +612,7 @@ private fun MarketplaceDraftPreview(title: String, summary: String, amount: Stri
             Text(title.ifBlank { stringResource(R.string.marketplace_preview_untitled) }, style = MaterialTheme.typography.titleLarge, maxLines = 2)
             if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
             if (amount.isNotBlank()) Text("$amount $currency", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            if (preOrder) MarketplacePreOrderBadge()
             MarketplaceAvailabilityBadge(availability)
             if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

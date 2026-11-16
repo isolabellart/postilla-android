@@ -192,7 +192,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                         limit = 2_000
                     ).filter {
                         Nip99.dTag(it).isNotBlank() &&
-                            Nip99.status(it) != "hidden" &&
+                            (Nip99.status(it) != "hidden" || it.pubkey == userPubkey) &&
                             eventRepository.isEventVisibleToUser(it)
                     }
                     synchronized(cacheLock) {
@@ -251,7 +251,8 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                             val dTag = Nip99.dTag(event)
                             // NIP-99 recommends a title tag, but it is not a hard
                             // validity requirement. Do not hide otherwise valid listings.
-                            if (dTag.isBlank() || Nip99.status(event) == "hidden") return@collect
+                            // Hidden listings are not shown to buyers, but sellers keep their own to edit.
+                            if (dTag.isBlank() || (Nip99.status(event) == "hidden" && event.pubkey != userPubkey)) return@collect
 
                             eventRepository.addEvent(event)
                             eventRepository.requestProfileIfMissing(event.pubkey)
