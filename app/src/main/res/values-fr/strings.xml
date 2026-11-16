@@ -880,4 +880,23 @@
     <string name="wallet_switch_wallet">Changer de portefeuille</string>
     <string name="wallet_disconnect_section">Déconnecter le portefeuille</string>
     <string name="wallet_switch_wallet_caption">Votre portefeuille par défaut est lié à votre clé et peut toujours être restauré. Le changement connecte un autre portefeuille.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">Connectez un portefeuille Lightning pour envoyer et recevoir des sats. Collez une chaîne NWC fournie par votre portefeuille.</string>
+    <string name="wallet_recommended">Portefeuilles recommandés</string>
+    <string name="wallet_lightning_address_setup">Configurer votre adresse Lightning</string>
+    <string name="wallet_get_username">Obtenir une adresse username@breez.tips</string>
+    <string name="wallet_spark_subtitle">Autogéré et intégré. Utilisez votre portefeuille par défaut ou restaurez-le depuis la phrase ou les relais.</string>
+    <string name="wallet_nwc_restore_subtitle">Sauvegarde NWC chiffrée depuis un autre appareil</string>
+    <string name="wallet_receive_invoice_tab">Facture</string>
+    <string name="wallet_share_address">Partager l’adresse</string>
+    <string name="wallet_share">Partager</string>
+    <string name="wallet_powered_by">Propulsé par</string>
+    <string name="wallet_welcome_title">Protégé par votre clé Nostr</string>
+    <string name="wallet_welcome_body">Votre portefeuille peut être restauré sur n’importe quel appareil lorsque vous vous connectez. Touchez pour enregistrer également votre phrase de récupération.</string>
+    <string name="wallet_generate_invoice">Générer une facture</string>
+    <string name="wallet_use_default">Utiliser mon portefeuille par défaut</string>
+    <string name="wallet_default_subtitle">Dérivé de votre clé Nostr : aucune sauvegarde supplémentaire n’est nécessaire.</string>
+    <string name="wallet_switch_wallet_body">Déconnectez ce portefeuille pour utiliser votre portefeuille par défaut ou en restaurer un autre. Vos fonds restent en sécurité : vous pouvez reconnecter ce portefeuille à tout moment avec sa phrase de récupération.</string>
+    <string name="wallet_default_seed_info">Ce portefeuille est dérivé de votre clé Nostr ; la phrase ci-dessous sert uniquement à l’exporter vers d’autres applications. Vous n’avez pas besoin de la sauvegarder : votre nsec constitue la sauvegarde.</string>
 </resources>
