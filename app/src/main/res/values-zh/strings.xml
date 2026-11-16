@@ -880,4 +880,23 @@
     <string name="wallet_switch_wallet">切换到其他钱包</string>
     <string name="wallet_disconnect_section">断开钱包连接</string>
     <string name="wallet_switch_wallet_caption">默认钱包与你的密钥关联，始终可以恢复。切换后将连接另一个钱包。</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">连接 Lightning 钱包以发送和接收 sats。粘贴钱包服务提供商提供的 NWC 连接字符串。</string>
+    <string name="wallet_recommended">推荐的钱包</string>
+    <string name="wallet_lightning_address_setup">设置 Lightning 地址</string>
+    <string name="wallet_get_username">获取 username@breez.tips 地址</string>
+    <string name="wallet_spark_subtitle">内置自托管。使用默认钱包，或通过助记词/中继恢复。</string>
+    <string name="wallet_nwc_restore_subtitle">来自另一台设备的加密 NWC 备份</string>
+    <string name="wallet_receive_invoice_tab">发票</string>
+    <string name="wallet_share_address">分享地址</string>
+    <string name="wallet_share">分享</string>
+    <string name="wallet_powered_by">技术支持</string>
+    <string name="wallet_welcome_title">由你的 Nostr 密钥保护</string>
+    <string name="wallet_welcome_body">登录后可在任何设备上恢复。轻触还可将助记词保存为备份。</string>
+    <string name="wallet_generate_invoice">生成发票</string>
+    <string name="wallet_use_default">使用我的默认钱包</string>
+    <string name="wallet_default_subtitle">由你的 Nostr 密钥派生，无需额外备份。</string>
+    <string name="wallet_switch_wallet_body">断开此钱包后，你可以使用默认钱包或恢复其他钱包。资金仍然安全：随时输入恢复短语即可重新连接此钱包。</string>
+    <string name="wallet_default_seed_info">此钱包由你的 Nostr 密钥派生，因此下方短语仅用于导出到其他钱包应用。无需备份它：你的 nsec 就是备份。</string>
 </resources>
