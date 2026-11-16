@@ -786,4 +786,45 @@
     <string name="marketplace_storefront_sold">販売済み</string>
     <string name="marketplace_storefront_rating">評価</string>
     <string name="marketplace_storefront_since">初出品</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">設定</string>
+    <string name="wallet_lightning_address_title">Lightningアドレス</string>
+    <string name="wallet_copy_address">アドレスをコピー</string>
+    <string name="wallet_qr_code">QRコード</string>
+    <string name="wallet_change">変更</string>
+    <string name="wallet_remove_lightning_address">Lightningアドレスを削除</string>
+    <string name="wallet_setup_lightning_address">Lightningアドレスを設定</string>
+    <string name="wallet_connection">ウォレット接続</string>
+    <string name="wallet_info">ウォレット情報</string>
+    <string name="wallet_display">表示</string>
+    <string name="wallet_balance_unit">残高の単位</string>
+    <string name="wallet_security">セキュリティ</string>
+    <string name="wallet_backup_recovery_phrase">リカバリーフレーズをバックアップ</string>
+    <string name="wallet_backup_to_nostr_relays">Nostrリレーにバックアップ</string>
+    <string name="wallet_delete_wallet_backup_relays">リレーからウォレットのバックアップを削除</string>
+    <string name="wallet_custody_disclaimer">重要：Postillaがユーザーの資金を預かることはありません。ウォレットはご自身で管理し、適切な保護に責任を持ってください。</string>
+    <string name="wallet_withdraw_onchain">オンチェーン出金</string>
+    <string name="wallet_withdraw_onchain_description">すべてBitcoinアドレスに送金</string>
+    <string name="wallet_delete_connection_backup_relays">リレーから接続バックアップを削除</string>
+    <string name="wallet_delete_wallet">ウォレットを削除</string>
+    <string name="wallet_built_on_spark">Spark上に構築</string>
+    <string name="wallet_wallet_id">ウォレットID</string>
+    <string name="wallet_network">ネットワーク</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">SDKバージョン</string>
+    <string name="wallet_service_pubkey">サービス公開鍵</string>
+    <string name="wallet_client_pubkey">クライアント公開鍵</string>
+    <string name="wallet_relay">リレー</string>
+    <string name="wallet_encryption">暗号化</string>
+    <string name="wallet_supported_methods">対応メソッド</string>
+    <string name="wallet_collapse">折りたたむ</string>
+    <string name="wallet_expand">展開</string>
+    <string name="wallet_copy">コピー</string>
+    <string name="wallet_backup_deleted_toast">リレーからバックアップを削除しました</string>
+    <string name="wallet_delete_backup_title">リレーからバックアップを削除</string>
+    <string name="wallet_delete_backup_body">保存済みのウォレットバックアップをリレーから削除しますか？リカバリーフレーズを使えばいつでも再接続または復元できますが、別の端末からリレー経由で利用できなくなります。</string>
+    <string name="wallet_delete">削除</string>
+    <string name="wallet_cancel">キャンセル</string>
+    <string name="wallet_deleting">削除中…</string>
 </resources>
