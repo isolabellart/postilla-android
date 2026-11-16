@@ -787,4 +787,45 @@
     <string name="marketplace_storefront_sold">판매 완료</string>
     <string name="marketplace_storefront_rating">평점</string>
     <string name="marketplace_storefront_since">시작</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">설정</string>
+    <string name="wallet_lightning_address_title">라이트닝 주소</string>
+    <string name="wallet_copy_address">주소 복사</string>
+    <string name="wallet_qr_code">QR 코드</string>
+    <string name="wallet_change">변경</string>
+    <string name="wallet_remove_lightning_address">라이트닝 주소 삭제</string>
+    <string name="wallet_setup_lightning_address">라이트닝 주소 설정</string>
+    <string name="wallet_connection">지갑 연결</string>
+    <string name="wallet_info">지갑 정보</string>
+    <string name="wallet_display">표시</string>
+    <string name="wallet_balance_unit">잔액 단위</string>
+    <string name="wallet_security">보안</string>
+    <string name="wallet_backup_recovery_phrase">복구 문구 백업</string>
+    <string name="wallet_backup_to_nostr_relays">Nostr 릴레이에 백업</string>
+    <string name="wallet_delete_wallet_backup_relays">릴레이에서 지갑 백업 삭제</string>
+    <string name="wallet_custody_disclaimer">중요: Postilla는 사용자의 자금을 보관하지 않습니다. 지갑은 사용자가 직접 관리하며 안전하게 보호할 책임이 있습니다.</string>
+    <string name="wallet_withdraw_onchain">온체인 출금</string>
+    <string name="wallet_withdraw_onchain_description">모든 금액을 Bitcoin 주소로 보내기</string>
+    <string name="wallet_delete_connection_backup_relays">릴레이에서 연결 백업 삭제</string>
+    <string name="wallet_delete_wallet">지갑 삭제</string>
+    <string name="wallet_built_on_spark">Spark 기반</string>
+    <string name="wallet_wallet_id">지갑 ID</string>
+    <string name="wallet_network">네트워크</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">SDK 버전</string>
+    <string name="wallet_service_pubkey">서비스 공개 키</string>
+    <string name="wallet_client_pubkey">클라이언트 공개 키</string>
+    <string name="wallet_relay">릴레이</string>
+    <string name="wallet_encryption">암호화</string>
+    <string name="wallet_supported_methods">지원되는 메서드</string>
+    <string name="wallet_collapse">접기</string>
+    <string name="wallet_expand">펼치기</string>
+    <string name="wallet_copy">복사</string>
+    <string name="wallet_backup_deleted_toast">릴레이에서 백업을 삭제했습니다</string>
+    <string name="wallet_delete_backup_title">릴레이에서 백업 삭제</string>
+    <string name="wallet_delete_backup_body">저장된 지갑 백업을 릴레이에서 삭제할까요? 복구 문구를 사용해 언제든 다시 연결하거나 복원할 수 있지만 다른 기기에서 릴레이를 통해 사용할 수 없게 됩니다.</string>
+    <string name="wallet_delete">삭제</string>
+    <string name="wallet_cancel">취소</string>
+    <string name="wallet_deleting">삭제 중…</string>
 </resources>
