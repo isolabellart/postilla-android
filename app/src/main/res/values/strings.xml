@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">My Profile</string>
+    <string name="drawer_my_storefront">My storefront</string>
     <string name="drawer_set_up_wallet">Set up wallet</string>
     <string name="drawer_feeds">Feeds</string>
     <string name="drawer_lists">Lists</string>
@@ -1096,6 +1097,8 @@
     <string name="postilla_appearance_body">One visual identity. Choose light or dark mode here.</string>
     <string name="marketplace_storefront_sold">Sold</string>
     <string name="marketplace_storefront_rating">Rating</string>
+    <string name="marketplace_storefront_reviews">%1$d reviews</string>
+    <string name="marketplace_storefront_no_reviews">No reviews</string>
     <string name="marketplace_storefront_since">Since</string>
 
     <!-- Wallet settings and presentation localization -->

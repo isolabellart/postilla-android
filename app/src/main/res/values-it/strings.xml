@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">Il mio Profilo</string>
+    <string name="drawer_my_storefront">La mia vetrina</string>
     <string name="drawer_feeds">Feed</string>
     <string name="drawer_lists">Liste</string>
     <string name="drawer_drafts">Bozze &amp; Programmati</string>
@@ -857,6 +858,8 @@
     <string name="postilla_appearance_body">Un’unica identità visiva. Scegli qui il tema chiaro o scuro.</string>
     <string name="marketplace_storefront_sold">Venduti</string>
     <string name="marketplace_storefront_rating">Valutazione</string>
+    <string name="marketplace_storefront_reviews">%1$d recensioni</string>
+    <string name="marketplace_storefront_no_reviews">Nessuna recensione</string>
     <string name="marketplace_storefront_since">Dal</string>
 
     <!-- Wallet settings and presentation localization -->

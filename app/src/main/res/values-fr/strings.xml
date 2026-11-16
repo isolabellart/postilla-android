@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">Mon Profil</string>
+    <string name="drawer_my_storefront">Ma vitrine</string>
     <string name="drawer_feeds">Flux</string>
     <string name="drawer_lists">Listes</string>
     <string name="drawer_drafts">Brouillons &amp; Planifiés</string>
@@ -786,6 +787,8 @@
     <string name="drawer_set_up_wallet">Configurer le portefeuille</string>
     <string name="marketplace_storefront_sold">Vendus</string>
     <string name="marketplace_storefront_rating">Note</string>
+    <string name="marketplace_storefront_reviews">%1$d avis</string>
+    <string name="marketplace_storefront_no_reviews">Aucun avis</string>
     <string name="marketplace_storefront_since">Depuis</string>
 
     <!-- Wallet settings and presentation localization -->
