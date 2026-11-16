@@ -40,7 +40,7 @@ class MarketplaceReviewRepository(
         if (sellerPubkey.isBlank()) return@coroutineScope null
         val addresses = sellerListings.asSequence()
             .filter { it.kind == Nip99.KIND_LISTING }
-            .map(Nip99::addressTag)
+            .map { Nip99.addressTag(it) }
             .filter { it.startsWith("${Nip99.KIND_LISTING}:$sellerPubkey:") }
             .distinct().toList()
         val filters = mutableListOf(
@@ -54,7 +54,7 @@ class MarketplaceReviewRepository(
         }
 
         val targets = (relayPool.getReadRelayUrls() + RelayConfig.DEFAULT_INDEXER_RELAYS + MarketplaceRelays.READ)
-            .filter(RelayConfig::isValidUrl).distinct()
+            .filter { RelayConfig.isValidUrl(it) }.distinct()
         if (targets.isEmpty()) return@coroutineScope null
 
         val subId = "marketplace-reviews-${sequence.incrementAndGet()}"
