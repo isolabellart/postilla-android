@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">Meu Perfil</string>
+    <string name="drawer_my_storefront">Minha vitrine</string>
     <string name="drawer_feeds">Feeds</string>
     <string name="drawer_lists">Listas</string>
     <string name="drawer_drafts">Rascunhos &amp; Agendados</string>
@@ -785,6 +786,8 @@
     <string name="drawer_set_up_wallet">Configurar carteira</string>
     <string name="marketplace_storefront_sold">Vendidos</string>
     <string name="marketplace_storefront_rating">Avaliação</string>
+    <string name="marketplace_storefront_reviews">%1$d avaliações</string>
+    <string name="marketplace_storefront_no_reviews">Sem avaliações</string>
     <string name="marketplace_storefront_since">Desde</string>
 
     <!-- Wallet settings and presentation localization -->

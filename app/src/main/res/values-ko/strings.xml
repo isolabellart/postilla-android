@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">내 프로필</string>
+    <string name="drawer_my_storefront">내 상점</string>
     <string name="drawer_feeds">피드</string>
     <string name="drawer_lists">리스트</string>
     <string name="drawer_drafts">임시 저장 &amp; 예약됨</string>
@@ -786,6 +787,8 @@
     <string name="drawer_set_up_wallet">지갑 설정</string>
     <string name="marketplace_storefront_sold">판매 완료</string>
     <string name="marketplace_storefront_rating">평점</string>
+    <string name="marketplace_storefront_reviews">리뷰 %1$d개</string>
+    <string name="marketplace_storefront_no_reviews">리뷰 없음</string>
     <string name="marketplace_storefront_since">시작</string>
 
     <!-- Wallet settings and presentation localization -->

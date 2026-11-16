@@ -6,6 +6,7 @@
     <string name="nav_messages">Сообщения</string>
     <string name="nav_notifications">Уведомления</string>
     <string name="drawer_my_profile">Мой профиль</string>
+    <string name="drawer_my_storefront">Моя витрина</string>
     <string name="drawer_feeds">Ленты</string>
     <string name="drawer_lists">Списки</string>
     <string name="drawer_drafts">Черновики &amp; Запланированные</string>
@@ -746,6 +747,8 @@
     <string name="drawer_set_up_wallet">Настроить кошелёк</string>
     <string name="marketplace_storefront_sold">Продано</string>
     <string name="marketplace_storefront_rating">Рейтинг</string>
+    <string name="marketplace_storefront_reviews">%1$d отзывов</string>
+    <string name="marketplace_storefront_no_reviews">Нет отзывов</string>
     <string name="marketplace_storefront_since">С</string>
 
     <!-- Wallet settings and presentation localization -->

@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">マイプロフィール</string>
+    <string name="drawer_my_storefront">マイストア</string>
     <string name="drawer_feeds">フィード</string>
     <string name="drawer_lists">リスト</string>
     <string name="drawer_drafts">下書き &amp; 予約済み</string>
@@ -785,6 +786,8 @@
     <string name="drawer_set_up_wallet">ウォレットを設定</string>
     <string name="marketplace_storefront_sold">販売済み</string>
     <string name="marketplace_storefront_rating">評価</string>
+    <string name="marketplace_storefront_reviews">%1$d 件のレビュー</string>
+    <string name="marketplace_storefront_no_reviews">レビューなし</string>
     <string name="marketplace_storefront_since">初出品</string>
 
     <!-- Wallet settings and presentation localization -->

@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">Mijn Profiel</string>
+    <string name="drawer_my_storefront">Mijn etalage</string>
     <string name="drawer_feeds">Feeds</string>
     <string name="drawer_lists">Lijsten</string>
     <string name="drawer_drafts">Concepten &amp; Gepland</string>
@@ -785,6 +786,8 @@
     <string name="drawer_set_up_wallet">Wallet instellen</string>
     <string name="marketplace_storefront_sold">Verkocht</string>
     <string name="marketplace_storefront_rating">Beoordeling</string>
+    <string name="marketplace_storefront_reviews">%1$d beoordelingen</string>
+    <string name="marketplace_storefront_no_reviews">Geen beoordelingen</string>
     <string name="marketplace_storefront_since">Sinds</string>
 
     <!-- Wallet settings and presentation localization -->
