@@ -1,0 +1,80 @@
+name: Verify Postilla v1.0.18 Zapstore listing
+
+on:
+  push:
+    branches:
+      - "ops/postilla-v1.0.18-zapstore-verify"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postilla-v1.0.18-zapstore-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Wait for Zapstore relay to list version 18
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Check out Zapstore metadata
+        uses: actions/checkout@v4
+        with:
+          ref: feature/postilla-commerce-on-rebrand
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install pinned Zapstore CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/zapstore/zsp/v2/cmd/zsp@v2.0.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare exact v1.0.18 verification config
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_WORKSPACE/zapstore.yaml" "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          source_path, target_path = sys.argv[1:]
+          source = pathlib.Path(source_path).read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r"(?m)^release_filter:\s*.*$",
+              "release_filter: '^v1\\.0\\.18$'",
+              source,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one release_filter in zapstore.yaml")
+          pathlib.Path(target_path).write_text(updated, encoding="utf-8")
+          PY
+
+      - name: Poll relay listing without republishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION_CODE=18
+          for attempt in $(seq 1 20); do
+            echo "Zapstore listing check $attempt/20"
+            CHECK_JSON="$(zsp check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml")"
+            echo "$CHECK_JSON" | jq '{app_id: .apk.app_id, version_name: .apk.version_name, version_code: .apk.version_code, listed: .listed, published_version_code: .published_version_code}'
+            PUBLISHED_VERSION_CODE="$(jq -r '.published_version_code' <<< "$CHECK_JSON")"
+            if [[ "$PUBLISHED_VERSION_CODE" == "$EXPECTED_VERSION_CODE" ]]; then
+              echo "Confirmed: Zapstore relay lists Postilla version 1.0.18 (18)."
+              exit 0
+            fi
+            if (( attempt < 20 )); then
+              echo "Release event is still pending relay processing; waiting 30 seconds."
+              sleep 30
+            fi
+          done
+          echo "::error::Zapstore has not listed version code 18 after 10 minutes. The release event may still be pending or may have been refused."
+          exit 1
