@@ -787,4 +787,44 @@
     <string name="marketplace_storefront_sold">已售</string>
     <string name="marketplace_storefront_rating">评分</string>
     <string name="marketplace_storefront_since">始于</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">设置</string>
+    <string name="wallet_lightning_address_title">闪电地址</string>
+    <string name="wallet_qr_code">二维码</string>
+    <string name="wallet_change">更改</string>
+    <string name="wallet_remove_lightning_address">移除闪电地址</string>
+    <string name="wallet_setup_lightning_address">设置闪电地址</string>
+    <string name="wallet_connection">钱包连接</string>
+    <string name="wallet_info">钱包信息</string>
+    <string name="wallet_display">显示</string>
+    <string name="wallet_balance_unit">余额单位</string>
+    <string name="wallet_security">安全</string>
+    <string name="wallet_backup_recovery_phrase">备份恢复短语</string>
+    <string name="wallet_backup_to_nostr_relays">备份到 Nostr 中继</string>
+    <string name="wallet_delete_wallet_backup_relays">从中继删除钱包备份</string>
+    <string name="wallet_custody_disclaimer">重要提示：Postilla 从不托管用户资金。你自行管理钱包，并负责妥善保护钱包安全。</string>
+    <string name="wallet_withdraw_onchain">链上提现</string>
+    <string name="wallet_withdraw_onchain_description">将全部资金发送到 Bitcoin 地址</string>
+    <string name="wallet_delete_connection_backup_relays">从中继删除连接备份</string>
+    <string name="wallet_delete_wallet">删除钱包</string>
+    <string name="wallet_built_on_spark">基于 Spark 构建</string>
+    <string name="wallet_wallet_id">钱包 ID</string>
+    <string name="wallet_network">网络</string>
+    <string name="wallet_mainnet">主网</string>
+    <string name="wallet_sdk_version">SDK 版本</string>
+    <string name="wallet_service_pubkey">服务公钥</string>
+    <string name="wallet_client_pubkey">客户端公钥</string>
+    <string name="wallet_relay">中继</string>
+    <string name="wallet_encryption">加密</string>
+    <string name="wallet_supported_methods">支持的方法</string>
+    <string name="wallet_collapse">收起</string>
+    <string name="wallet_expand">展开</string>
+    <string name="wallet_copy">复制</string>
+    <string name="wallet_backup_deleted_toast">已从中继删除备份</string>
+    <string name="wallet_delete_backup_title">从中继删除备份</string>
+    <string name="wallet_delete_backup_body">要从你的中继中移除已保存的钱包备份吗？你可以随时使用恢复短语重新连接或恢复钱包，但其他设备将无法再通过中继获取该备份。</string>
+    <string name="wallet_delete">删除</string>
+    <string name="wallet_cancel">取消</string>
+    <string name="wallet_deleting">正在删除…</string>
 </resources>
