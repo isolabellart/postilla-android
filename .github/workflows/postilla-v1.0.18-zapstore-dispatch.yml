@@ -1,0 +1,73 @@
+name: Dispatch Postilla v1.0.18 to Zapstore
+
+on:
+  push:
+    branches:
+      - "ops/postilla-v1.0.18-zapstore-dispatch"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: postilla-v1.0.18-zapstore-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch and verify exact Zapstore publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate the published GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing DARK_WISP_ENHANCED_RELEASE_TOKEN."
+            exit 1
+          fi
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.18")"
+          [[ "$(jq -r '.draft' <<< "$RELEASE_DATA")" == "false" ]]
+          [[ "$(jq -r '.prerelease' <<< "$RELEASE_DATA")" == "false" ]]
+          [[ "$(jq -r '.tag_name' <<< "$RELEASE_DATA")" == "v1.0.18" ]]
+          jq -e '.assets[]? | select(.name == "Postilla-v1.0.18.apk" and .state == "uploaded" and .size > 0)' \
+            <<< "$RELEASE_DATA" >/dev/null
+          echo "Verified published stable release v1.0.18 and its APK asset."
+
+      - name: Dispatch Zapstore workflow for v1.0.18
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          PREVIOUS_RUN_ID="43695790266"
+          gh workflow run zapstore-publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref feature/postilla-commerce-on-rebrand \
+            --field release_tag=v1.0.18
+
+          RUN_ID=""
+          for attempt in $(seq 1 30); do
+            CANDIDATE="$(gh run list \
+              --workflow zapstore-publish.yml \
+              --branch feature/postilla-commerce-on-rebrand \
+              --limit 1 \
+              --json databaseId,event \
+              --jq '.[0] | select(.event == "workflow_dispatch") | .databaseId // empty')"
+            if [[ -n "$CANDIDATE" && "$CANDIDATE" -gt "$PREVIOUS_RUN_ID" ]]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$RUN_ID" ]]; then
+            echo "::error::Zapstore workflow dispatch did not create a new run."
+            exit 1
+          fi
+          echo "Zapstore workflow run: $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo "Zapstore workflow completed successfully for v1.0.18."
