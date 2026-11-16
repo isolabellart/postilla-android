@@ -43,20 +43,24 @@ class Nip99Test {
     }
 
     @Test
-    fun `reads legacy NIP15 product JSON fields without exposing raw JSON`() {
-        val legacy = event(listOf(listOf("d", "legacy-product"), listOf("t", "art"))).copy(
+    fun `reads the CLIFF REMAINS legacy listing payload used by the Marketplace feed`() {
+        val legacy = event(listOf(listOf("d", "cliff-remains"))).copy(
             kind = Nip99.KIND_LEGACY_PRODUCT,
-            content = """{"name":"Vintage camera","description":"A working film camera","images":["https://example.com/camera.jpg"],"price":120,"currency":"EUR","quantity":2}"""
+            content = """{"name":"CLIFF REMAINS","summary":"Oil on board - 2025","description":"Oil on board - 2025","price":{"amount":"600000","currency":"SATS"},"currency":"SATS","location":"Italy","categories":["art"],"images":["https://blossom.isolabellart.it.com/fb7a6511cb0b7dc945a3ac29f1df63860820f9d712eb9a6ef45eec09cbc574df.jpg"],"status":"active","quantity":1,"published_at":"1757668715"}"""
         )
+
         assertTrue(Nip99.isMarketplaceKind(legacy.kind))
-        assertEquals("Vintage camera", Nip99.title(legacy))
-        assertEquals("Vintage camera", Nip99.displayTitle(legacy, "Untitled"))
-        assertEquals("A working film camera", Nip99.description(legacy))
-        assertEquals(listOf("https://example.com/camera.jpg"), Nip99.images(legacy))
-        assertEquals("120 EUR", Nip99.priceLabel(legacy))
-        assertEquals(2, Nip99.stock(legacy))
-        assertEquals(Nip99.AvailabilityState.AVAILABLE, Nip99.availability(legacy).state)
+        assertEquals("CLIFF REMAINS", Nip99.title(legacy))
+        assertEquals("CLIFF REMAINS", Nip99.displayTitle(legacy, "Untitled"))
+        assertEquals("Oil on board - 2025", Nip99.summary(legacy))
+        assertEquals("Oil on board - 2025", Nip99.description(legacy))
+        assertEquals("600000 SATS", Nip99.priceLabel(legacy))
+        assertEquals("Italy", Nip99.location(legacy))
         assertEquals(listOf("art"), Nip99.categories(legacy))
+        assertEquals(listOf("https://blossom.isolabellart.it.com/fb7a6511cb0b7dc945a3ac29fdf63860820f9d712eb9a6ef45eec09cbc574df.jpg"), Nip99.images(legacy))
+        assertEquals("active", Nip99.status(legacy))
+        assertEquals(1, Nip99.stock(legacy))
+        assertEquals(Nip99.AvailabilityState.AVAILABLE, Nip99.availability(legacy).state)
     }
 
     @Test
@@ -332,4 +336,12 @@ class Nip99Test {
         assertFalse(Nip99.isOwnedListing(modern, ""))
     }
 
+    @Test
+    fun `identifies only supported Marketplace kinds for feed rendering`() {
+        assertTrue(Nip99.isMarketplaceKind(Nip99.KIND_LISTING))
+        assertTrue(Nip99.isMarketplaceKind(Nip99.KIND_LEGACY_PRODUCT))
+        assertFalse(Nip99.isMarketplaceKind(1))
+        assertFalse(Nip99.isMarketplaceKind(30023))
+        assertFalse(Nip99.isMarketplaceKind(Nip99.KIND_DRAFT))
+    }
 }
