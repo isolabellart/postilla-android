@@ -880,4 +880,23 @@
     <string name="wallet_switch_wallet">다른 지갑으로 전환</string>
     <string name="wallet_disconnect_section">지갑 연결 해제</string>
     <string name="wallet_switch_wallet_caption">기본 지갑은 키에 연결되어 언제든 복원할 수 있습니다. 전환하면 다른 지갑이 연결됩니다.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">sats를 보내고 받으려면 Lightning 지갑을 연결하세요. 지갑 제공업체의 NWC 연결 문자열을 붙여넣으세요.</string>
+    <string name="wallet_recommended">추천 지갑</string>
+    <string name="wallet_lightning_address_setup">Lightning 주소 설정</string>
+    <string name="wallet_get_username">username@breez.tips 주소 받기</string>
+    <string name="wallet_spark_subtitle">내장된 자기 보관형 지갑입니다. 기본 지갑을 사용하거나 시드 문구/릴레이에서 복원하세요.</string>
+    <string name="wallet_nwc_restore_subtitle">다른 기기의 암호화된 NWC 백업</string>
+    <string name="wallet_receive_invoice_tab">인보이스</string>
+    <string name="wallet_share_address">주소 공유</string>
+    <string name="wallet_share">공유</string>
+    <string name="wallet_powered_by">제공</string>
+    <string name="wallet_welcome_title">Nostr 키로 보호됨</string>
+    <string name="wallet_welcome_body">로그인하면 어떤 기기에서도 복원됩니다. 탭하면 시드 문구도 백업으로 저장할 수 있습니다.</string>
+    <string name="wallet_generate_invoice">인보이스 생성</string>
+    <string name="wallet_use_default">내 기본 지갑 사용</string>
+    <string name="wallet_default_subtitle">Nostr 키에서 파생되므로 추가 백업이 필요하지 않습니다.</string>
+    <string name="wallet_switch_wallet_body">이 지갑의 연결을 해제하면 기본 지갑을 사용하거나 다른 지갑을 복원할 수 있습니다. 자금은 안전하며 복구 문구를 입력하면 언제든 이 지갑을 다시 연결할 수 있습니다.</string>
+    <string name="wallet_default_seed_info">이 지갑은 Nostr 키에서 파생되므로 아래 문구는 다른 지갑 앱으로 내보내기 위한 것입니다. 별도 백업은 필요하지 않습니다. nsec가 백업입니다.</string>
 </resources>
