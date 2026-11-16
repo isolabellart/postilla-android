@@ -57,7 +57,7 @@ class Nip99Test {
         assertEquals("600000 SATS", Nip99.priceLabel(legacy))
         assertEquals("Italy", Nip99.location(legacy))
         assertEquals(listOf("art"), Nip99.categories(legacy))
-        assertEquals(listOf("https://blossom.isolabellart.it.com/fb7a6511cb0b7dc945a3ac29fdf63860820f9d712eb9a6ef45eec09cbc574df.jpg"), Nip99.images(legacy))
+        assertEquals(listOf("https://blossom.isolabellart.it.com/fb7a6511cb0b7dc945a3ac29f1df63860820f9d712eb9a6ef45eec09cbc574df.jpg"), Nip99.images(legacy))
         assertEquals("active", Nip99.status(legacy))
         assertEquals(1, Nip99.stock(legacy))
         assertEquals(Nip99.AvailabilityState.AVAILABLE, Nip99.availability(legacy).state)
