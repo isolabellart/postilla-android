@@ -613,6 +613,10 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                             val previous = cachedByAddress[address]
                             if (previous == null || Nip01EventOrder.isNewer(event, previous)) {
                                 cachedByAddress[address] = event
+                                while (cachedByAddress.size > MAX_CACHED_LISTINGS) {
+                                    val oldestKey = cachedByAddress.minByOrNull { it.value.created_at }?.key ?: break
+                                    cachedByAddress.remove(oldestKey)
+                                }
                             }
                         }
                     }
@@ -693,6 +697,10 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                         val previous = cachedByAddress[address]
                         if (previous == null || Nip01EventOrder.isNewer(event, previous)) {
                             cachedByAddress[address] = event
+                            while (cachedByAddress.size > MAX_CACHED_LISTINGS) {
+                                val oldestKey = cachedByAddress.minByOrNull { it.value.created_at }?.key ?: break
+                                cachedByAddress.remove(oldestKey)
+                            }
                         }
                     }
                 }
