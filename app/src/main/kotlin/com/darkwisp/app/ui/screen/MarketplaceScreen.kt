@@ -536,7 +536,7 @@ private fun firstMarketplaceListingYear(listings: List<NostrEvent>, sellerPubkey
 private fun StorefrontHeader(
     bannerUrl: String?,
     pictureUrl: String?,
-    soldCount: Int,
+    soldCount: Int?,
     firstListingYear: String?
 ) {
     Box(
