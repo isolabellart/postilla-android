@@ -98,7 +98,7 @@ fun MarketplaceEditorScreen(
 
     var title by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.title(it) } ?: "") }
     var summary by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.summary(it) } ?: "") }
-    var description by remember(existingEvent?.id) { mutableStateOf(existingEvent?.content ?: "") }
+    var description by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.description(it) } ?: "") }
     var amount by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.price(it)?.amount } ?: "") }
     var currency by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.price(it)?.currency }?.uppercase() ?: "BTC") }
     var currencyMenuExpanded by remember(existingEvent?.id) { mutableStateOf(false) }
