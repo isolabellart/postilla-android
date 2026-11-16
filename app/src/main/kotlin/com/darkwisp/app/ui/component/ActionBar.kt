@@ -100,6 +100,8 @@ fun ActionBar(
     val fiatMode = com.darkwisp.app.ui.util.isFiatMode()
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showRepostMenu by remember { mutableStateOf(false) }
+    // Keep the active repost indicator consistently orange in both themes.
+    val repostActiveColor = Color(0xFFFF9800)
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onReply) {
@@ -185,7 +187,7 @@ fun ActionBar(
                     Icon(
                         Icons.Outlined.Repeat,
                         contentDescription = stringResource(R.string.cd_repost),
-                        tint = if (hasUserReposted) WispThemeColors.repostColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (hasUserReposted) repostActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -208,7 +210,7 @@ fun ActionBar(
                 Text(
                     text = repostCount.toString(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (hasUserReposted) WispThemeColors.repostColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (hasUserReposted) repostActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
             }
