@@ -783,4 +783,7 @@
     <string name="marketplace_dm_relay_required">Este vendedor não publicou uma lista de relays DM NIP-17 (kind 10050). Para proteger sua privacidade, o Postilla não usará relays alternativos.</string>
     <string name="marketplace_seller_label">Vendedor</string>
     <string name="drawer_set_up_wallet">Configurar carteira</string>
+    <string name="marketplace_storefront_sold">Vendidos</string>
+    <string name="marketplace_storefront_rating">Avaliação</string>
+    <string name="marketplace_storefront_since">Desde</string>
 </resources>
