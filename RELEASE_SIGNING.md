@@ -1,6 +1,6 @@
-# Dark Wisp Enhanced — release signing and publishing
+# Postilla — release signing and publishing
 
-This document describes the permanent signing identity and the release process for the independent Dark Wisp Enhanced Android application.
+This document describes the permanent signing identity and the release process for the independent Postilla Android application.
 
 ## Current release identity
 
@@ -8,19 +8,16 @@ This document describes the permanent signing identity and the release process f
 |---|---|
 | Application ID | `com.isolabellart.darkwispenhanced` |
 | Staging application ID | `com.isolabellart.darkwispenhanced.staging` |
-| Current published stable version | `1.0.5` |
-| Current published version code | `6` |
-| Prepared next stable version | `1.0.10` |
-| Prepared next version code | `11` |
-| Staging validation | `#119` — successful, manually tested on device |
+| Current stable version | `1.0.10` |
+| Current version code | `11` |
 | Minimum Android version | Android 8.0 (API 26) |
 | Packaged ABI | `arm64-v8a` |
 
-The Enhanced application ID is intentionally separate from the upstream Dark Wisp package. It allows both applications to be installed side by side, with separate local application data.
+The Postilla Android application ID is intentionally preserved from the former Dark Wisp Enhanced installation line. It remains separate from the upstream Dark Wisp package, so both applications can coexist with separate local application data.
 
 ## Permanent APK signing identity
 
-Every public Enhanced APK update must be signed with the same private keystore. **Never generate a replacement key for an existing installation line, change the alias, or change the expected certificate fingerprint.** Android will reject an update signed with a different certificate.
+Every public Postilla APK update must be signed with the same private keystore. **Never generate a replacement key for an existing installation line, change the alias, or change the expected certificate fingerprint.** Android will reject an update signed with a different certificate.
 
 - Keystore file: `dark-wisp-enhanced-release.jks` (kept outside the repository)
 - Keystore type: JKS
@@ -32,7 +29,7 @@ Keep at least two secure backups of the keystore and store both passwords in a p
 
 ## GitHub Actions secrets
 
-Configure these as repository Actions secrets under **Settings → Secrets and variables → Actions**:
+Configure these as repository Actions secrets under **Settings → Secrets and variables → Actions**. Their `DARK_WISP_ENHANCED_` names are intentionally retained during the rebrand so existing CI signing configuration is not broken; do not rename or recreate them as part of this source-only transition:
 
 1. `DARK_WISP_ENHANCED_KEYSTORE_BASE64` — base64-encoded contents of the JKS file.
 2. `DARK_WISP_ENHANCED_STORE_PASSWORD` — keystore password.
@@ -54,7 +51,7 @@ On the Mac used to publish with `zsp`, keep the temporary `SIGN_WITH=bunker://�
 
 ## Build and release workflow
 
-The dedicated workflow is `.github/workflows/dark-wisp-enhanced-release.yml` on the `release/dark-wisp-enhanced` branch. It is **manual-only**: a push does not publish a release.
+The dedicated workflow is still stored at `.github/workflows/dark-wisp-enhanced-release.yml` on the existing `release/dark-wisp-enhanced` branch. Its visible Actions name is Postilla; the historical file path and branch name are retained for continuity during this preparation phase. It is **manual-only**: a push does not publish a release.
 
 The workflow performs the following checks and actions:
 
@@ -63,7 +60,7 @@ The workflow performs the following checks and actions:
 3. Builds the minified release APK with `assembleRelease`.
 4. Verifies the package ID, version name, version code, APK signature, and permanent certificate fingerprint.
 5. Uploads the signed APK as a GitHub Actions artifact.
-6. Creates a GitHub Release and attaches the signed APK. The default is a stable release; the `prerelease` input can explicitly request a pre-release.
+6. Creates a GitHub Release and attaches the signed APK. Creates stable releases only. Publishing a stable GitHub Release triggers the Zapstore publishing workflow; pre-release testing remains in the separate staging workflow.
 
 The staging workflow is separate. It runs unit tests, builds the signed staging APK, checks its staging package ID and certificate, and uploads it as a workflow artifact. Install and test a staging build on a real device before publishing a new stable version.
 
@@ -72,8 +69,7 @@ To dispatch the release workflow with GitHub CLI, from a checkout authenticated 
 ```bash
 gh workflow run dark-wisp-enhanced-release.yml \
   --ref release/dark-wisp-enhanced \
-  -f release_tag=v1.0.10 \
-  -f prerelease=false
+  -f release_tag=v1.0.11
 ```
 
 Replace the example tag with the exact new version being released. The workflow file must be present on the selected ref. A tag must not already exist.
@@ -83,16 +79,16 @@ Replace the example tag with the exact new version being released. The workflow 
 For every new release:
 
 1. Increase `versionCode` by at least one and update `versionName` in `app/build.gradle.kts`.
-2. Update the expected package/version checks and version-specific artifact names in both Enhanced staging and release workflows.
+2. Update the version-specific artifact and release notes as appropriate. The Postilla release workflow reads the expected version name and code directly from Gradle.
 3. Update the English and Italian release-note text embedded in the release workflow so it describes the actual version and features.
 4. Commit the changes to `release/dark-wisp-enhanced`.
 5. Run staging validation, install the APK on a device, and verify the features being released.
-6. Dispatch the release workflow with a new tag. Confirm the resulting GitHub Release is stable (not marked as a pre-release) unless a pre-release was intentional.
+6. Dispatch the release workflow with a new tag. The workflow always creates a stable GitHub Release, which then triggers the automatic Zapstore publication.
 
-Do not reuse a published version code or tag. Keep the application ID, keystore, alias, and certificate fingerprint unchanged across all updates in this release line.
+Do not reuse a published version code or tag. Keep the Postilla application ID, keystore, alias, and certificate fingerprint unchanged across all updates in this release line.
 
 ## Wallet and user-data safety
 
-Dark Wisp Enhanced is a separate application from upstream Dark Wisp. Installing it does not migrate or overwrite the original application's local data. Users must import or restore accounts and wallet access through the app's normal secure recovery flow.
+Postilla is a separate application from upstream Dark Wisp. Installing it does not migrate or overwrite the original application's local data. Users must import or restore accounts and wallet access through the app's normal secure recovery flow.
 
 Never ask users to share a wallet recovery phrase or private key. Keep recovery material offline and never include it in release assets, logs, or support messages.
