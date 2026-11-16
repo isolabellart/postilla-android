@@ -90,6 +90,7 @@ class Nip99Test {
         )
         assertEquals("withdrawn", Nip99.status(withdrawn))
         assertFalse(Nip99.isSold(withdrawn))
+        assertEquals(Nip99.AvailabilityState.UNKNOWN, Nip99.availability(withdrawn).state)
     }
 
     @Test
