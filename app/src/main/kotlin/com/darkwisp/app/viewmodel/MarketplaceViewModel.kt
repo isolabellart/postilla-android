@@ -17,6 +17,9 @@ import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.PeerRelayListLookup
 import com.darkwisp.app.repo.RelayListRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineStart
@@ -27,8 +30,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 enum class MarketplaceScope { ALL, FOLLOWING, MINE }
@@ -97,10 +102,13 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private var currentEventRepository: EventRepository? = null
 
     companion object {
-        private const val LOAD_TIMEOUT_MS = 15_000L
-        private const val EOSE_DRAIN_GRACE_MS = 6_000L
+        private const val LOAD_TIMEOUT_MS = 12_000L
+        private const val EOSE_DRAIN_GRACE_MS = 3_000L
         private const val MINIMUM_EOSE_COUNT = 6
         private const val MAX_CACHED_LISTINGS = 5000
+        private const val SELLER_PAGE_SIZE = 500
+        private const val SELLER_HISTORY_MAX_EXTRA_PAGES = 8
+        private const val SELLER_PAGE_EOSE_TIMEOUT_MS = 5_000L
         private const val NADDR_LOOKUP_DEBOUNCE_MS = 350L
         // MetadataFetcher performs an exact coordinate lookup and, when necessary,
         // a bounded paginated seller-history fallback (up to 25 seconds).
@@ -409,7 +417,9 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 val filter = Filter(
                     kinds = Nip99.MARKETPLACE_KINDS,
                     authors = authors.takeIf { it.isNotEmpty() }?.toList(),
-                    limit = 5000
+                    // Seller catalogues use bounded first pages and then paginate each
+                    // saturated relay independently. Global discovery keeps its larger cap.
+                    limit = if (sellerPubkey != null) SELLER_PAGE_SIZE else 5000
                 )
                 val request = ClientMessage.req(subId, filter)
 
@@ -419,6 +429,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 // Subscribe to the result stream before sending REQ. Some relays reply
                 // immediately; collecting afterwards loses their EVENT/EOSE frames.
                 val remoteListingCount = AtomicLong(0L)
+                val sellerInitialEventsByRelay = ConcurrentHashMap<String, ConcurrentHashMap<String, NostrEvent>>()
                 val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
                     relayPool.relayEvents
                         .filter { it.subscriptionId == subId }
@@ -437,6 +448,10 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
                             eventRepository.addEvent(event)
                             eventRepository.requestProfileIfMissing(event.pubkey)
+                            if (sellerPubkey != null) {
+                                sellerInitialEventsByRelay
+                                    .computeIfAbsent(relayEvent.relayUrl) { ConcurrentHashMap() }[event.id] = event
+                            }
 
                             val address = Nip99.addressTag(event)
                             val updated = synchronized(cacheLock) {
@@ -505,7 +520,24 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     true
                 } == true
 
-                val sellerInventoryComplete = completedWithinWindow && eoseTracker.completedCount() > 0
+                var sellerHistoryComplete = true
+                if (sellerPubkey != null) {
+                    val saturatedRelayPages = sellerInitialEventsByRelay.entries
+                        .filter { (relayUrl, events) ->
+                            eoseTracker.hasCompleted(relayUrl) && events.size >= SELLER_PAGE_SIZE
+                        }
+                        .associate { it.key to it.value.values.toList() }
+                    if (saturatedRelayPages.isNotEmpty()) {
+                        sellerHistoryComplete = fetchSellerHistoryPages(
+                            sellerPubkey,
+                            saturatedRelayPages,
+                            relayPool,
+                            eventRepository
+                        )
+                    }
+                }
+                val sellerInventoryComplete =
+                    completedWithinWindow && eoseTracker.completedCount() > 0 && sellerHistoryComplete
                 if (sellerPubkey != null && sellerInventoryComplete) {
                     publishCompleteSellerInventory(sellerPubkey, eventRepository)
                     _sellerInventoryLoaded.value = true
@@ -537,6 +569,133 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     _loading.value = false
                 }
             }
+        }
+    }
+
+    private data class SellerHistoryPage(
+        val events: List<NostrEvent>,
+        val completed: Boolean
+    )
+
+    /**
+     * Continue only relays whose first seller page was saturated. Each relay gets
+     * its own timestamp cursor so one busy relay cannot skip another relay's history.
+     * A repeated full page or an EOSE timeout is reported as incomplete, never as success.
+     */
+    private suspend fun fetchSellerHistoryPages(
+        sellerPubkey: String,
+        saturatedPages: Map<String, List<NostrEvent>>,
+        relayPool: RelayPool,
+        eventRepository: EventRepository
+    ): Boolean = coroutineScope {
+        saturatedPages.entries.map { (relayUrl, firstPage) ->
+            async {
+                var until = firstPage.minOfOrNull { it.created_at } ?: return@async true
+                val seenIds = firstPage.mapTo(mutableSetOf()) { it.id }
+                repeat(SELLER_HISTORY_MAX_EXTRA_PAGES) {
+                    val page = fetchSellerHistoryPage(
+                        relayUrl, sellerPubkey, until, relayPool, eventRepository
+                    )
+                    if (!page.completed) return@async false
+
+                    var added = 0
+                    page.events.forEach { event ->
+                        if (seenIds.add(event.id)) added++
+                        eventRepository.addEvent(event)
+                        val address = Nip99.addressTag(event)
+                        synchronized(cacheLock) {
+                            val previous = cachedByAddress[address]
+                            if (previous == null || Nip01EventOrder.isNewer(event, previous)) {
+                                cachedByAddress[address] = event
+                            }
+                        }
+                    }
+                    if (page.events.size < SELLER_PAGE_SIZE) {
+                        publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, sellerPubkey)
+                        return@async true
+                    }
+                    if (added == 0) return@async false
+
+                    val nextUntil = page.events.minOfOrNull { it.created_at } ?: return@async true
+                    if (nextUntil >= until) return@async false
+                    until = nextUntil
+                    publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, sellerPubkey)
+                }
+                // Reaching the safety page cap is not proof of a complete inventory.
+                false
+            }
+        }.awaitAll().all { it }
+    }
+
+    private suspend fun fetchSellerHistoryPage(
+        relayUrl: String,
+        sellerPubkey: String,
+        until: Long,
+        relayPool: RelayPool,
+        eventRepository: EventRepository
+    ): SellerHistoryPage = coroutineScope {
+        val subId = "marketplace-history-${subscriptionSequence.incrementAndGet()}"
+        val request = ClientMessage.req(
+            subId,
+            Filter(
+                kinds = Nip99.MARKETPLACE_KINDS,
+                authors = listOf(sellerPubkey),
+                until = until,
+                limit = SELLER_PAGE_SIZE
+            )
+        )
+        val pageEvents = ConcurrentHashMap<String, NostrEvent>()
+        val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents
+                .filter { it.subscriptionId == subId && it.relayUrl == relayUrl }
+                .collect { frame ->
+                    val event = frame.event
+                    if (
+                        event.pubkey == sellerPubkey &&
+                        Nip99.isMarketplaceKind(event.kind) &&
+                        Nip99.dTag(event).isNotBlank() &&
+                        Nip99.status(event) != "hidden" &&
+                        eventRepository.isEventVisibleToUser(event)
+                    ) {
+                        pageEvents.putIfAbsent(event.id, event)
+                    }
+                }
+        }
+        val eoseWaiter = async(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEoseSignals.first {
+                it.subscriptionId == subId && it.relayUrl == relayUrl
+            }
+        }
+        try {
+            val sent = relayPool.sendToRelayOrEphemeral(
+                relayUrl, request, skipBadCheck = true, autoReconnect = true
+            )
+            if (!sent) return@coroutineScope SellerHistoryPage(emptyList(), false)
+            val completed = withTimeoutOrNull(SELLER_PAGE_EOSE_TIMEOUT_MS) {
+                eoseWaiter.await()
+                true
+            } == true
+            val events = pageEvents.values.sortedByDescending { it.created_at }
+            if (completed) {
+                events.forEach { event ->
+                    eventRepository.addEvent(event)
+                    val address = Nip99.addressTag(event)
+                    synchronized(cacheLock) {
+                        val previous = cachedByAddress[address]
+                        if (previous == null || Nip01EventOrder.isNewer(event, previous)) {
+                            cachedByAddress[address] = event
+                        }
+                    }
+                }
+                publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, sellerPubkey)
+            }
+            SellerHistoryPage(events, completed)
+        } finally {
+            eoseWaiter.cancelAndJoin()
+            eventCollector.cancelAndJoin()
+            relayPool.sendToRelayOrEphemeral(
+                relayUrl, ClientMessage.close(subId), skipBadCheck = true, autoReconnect = true
+            )
         }
     }
 
