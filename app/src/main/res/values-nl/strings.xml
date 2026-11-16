@@ -786,4 +786,45 @@
     <string name="marketplace_storefront_sold">Verkocht</string>
     <string name="marketplace_storefront_rating">Beoordeling</string>
     <string name="marketplace_storefront_since">Sinds</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">Instellingen</string>
+    <string name="wallet_lightning_address_title">Lightning-adres</string>
+    <string name="wallet_copy_address">Adres kopiëren</string>
+    <string name="wallet_qr_code">QR-code</string>
+    <string name="wallet_change">Wijzigen</string>
+    <string name="wallet_remove_lightning_address">Lightning-adres verwijderen</string>
+    <string name="wallet_setup_lightning_address">Lightning-adres instellen</string>
+    <string name="wallet_connection">Walletverbinding</string>
+    <string name="wallet_info">Walletinformatie</string>
+    <string name="wallet_display">Weergave</string>
+    <string name="wallet_balance_unit">Saldo-eenheid</string>
+    <string name="wallet_security">Beveiliging</string>
+    <string name="wallet_backup_recovery_phrase">Herstelzin back-uppen</string>
+    <string name="wallet_backup_to_nostr_relays">Back-up naar Nostr-relays</string>
+    <string name="wallet_delete_wallet_backup_relays">Walletback-up van relays verwijderen</string>
+    <string name="wallet_custody_disclaimer">BELANGRIJK: Postilla bewaart nooit tegoeden van gebruikers. Je beheert je eigen wallet en bent verantwoordelijk voor de beveiliging ervan.</string>
+    <string name="wallet_withdraw_onchain">On-chain opnemen</string>
+    <string name="wallet_withdraw_onchain_description">Alles naar een Bitcoin-adres sturen</string>
+    <string name="wallet_delete_connection_backup_relays">Verbindingsback-up van relays verwijderen</string>
+    <string name="wallet_delete_wallet">Wallet verwijderen</string>
+    <string name="wallet_built_on_spark">Gebouwd op Spark</string>
+    <string name="wallet_wallet_id">Wallet-ID</string>
+    <string name="wallet_network">Netwerk</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">SDK-versie</string>
+    <string name="wallet_service_pubkey">Service-pubkey</string>
+    <string name="wallet_client_pubkey">Client-pubkey</string>
+    <string name="wallet_relay">Relay</string>
+    <string name="wallet_encryption">Versleuteling</string>
+    <string name="wallet_supported_methods">Ondersteunde methoden</string>
+    <string name="wallet_collapse">Inklappen</string>
+    <string name="wallet_expand">Uitklappen</string>
+    <string name="wallet_copy">Kopiëren</string>
+    <string name="wallet_backup_deleted_toast">Back-up verwijderd van relays</string>
+    <string name="wallet_delete_backup_title">Back-up van relays verwijderen</string>
+    <string name="wallet_delete_backup_body">De opgeslagen walletback-up van je relays verwijderen? Je kunt altijd opnieuw verbinden of herstellen met je herstelzin, maar de back-up is dan niet meer via relays beschikbaar op een ander apparaat.</string>
+    <string name="wallet_delete">Verwijderen</string>
+    <string name="wallet_cancel">Annuleren</string>
+    <string name="wallet_deleting">Verwijderen…</string>
 </resources>
