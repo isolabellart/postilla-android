@@ -880,4 +880,23 @@
     <string name="wallet_switch_wallet">Zu einem anderen Wallet wechseln</string>
     <string name="wallet_disconnect_section">Wallet trennen</string>
     <string name="wallet_switch_wallet_caption">Dein Standard-Wallet ist mit deinem Schlüssel verknüpft und kann jederzeit wiederhergestellt werden. Beim Wechsel wird stattdessen ein anderes Wallet verbunden.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">Verbinde ein Lightning-Wallet, um Sats zu senden und zu empfangen. Füge eine NWC-Verbindungszeichenfolge deines Wallet-Anbieters ein.</string>
+    <string name="wallet_recommended">Empfohlene Wallets</string>
+    <string name="wallet_lightning_address_setup">Lightning-Adresse einrichten</string>
+    <string name="wallet_get_username">Eine username@breez.tips-Adresse erhalten</string>
+    <string name="wallet_spark_subtitle">Integrierte Selbstverwahrung. Verwende dein Standard-Wallet oder stelle es über Seed-Phrase bzw. Relays wieder her.</string>
+    <string name="wallet_nwc_restore_subtitle">Verschlüsseltes NWC-Backup von einem anderen Gerät</string>
+    <string name="wallet_receive_invoice_tab">Rechnung</string>
+    <string name="wallet_share_address">Adresse teilen</string>
+    <string name="wallet_share">Teilen</string>
+    <string name="wallet_powered_by">Bereitgestellt von</string>
+    <string name="wallet_welcome_title">Durch deinen Nostr-Schlüssel geschützt</string>
+    <string name="wallet_welcome_body">Wird nach der Anmeldung auf jedem Gerät wiederhergestellt. Tippe, um zusätzlich deine Seed-Phrase als Backup zu speichern.</string>
+    <string name="wallet_generate_invoice">Rechnung generieren</string>
+    <string name="wallet_use_default">Mein Standard-Wallet verwenden</string>
+    <string name="wallet_default_subtitle">Von deinem Nostr-Schlüssel abgeleitet – kein zusätzliches Backup erforderlich.</string>
+    <string name="wallet_switch_wallet_body">Trenne dieses Wallet, um dein Standard-Wallet zu verwenden oder ein anderes wiederherzustellen. Deine Guthaben bleiben sicher: Du kannst dieses Wallet jederzeit mit deiner Wiederherstellungsphrase erneut verbinden.</string>
+    <string name="wallet_default_seed_info">Dieses Wallet wird aus deinem Nostr-Schlüssel abgeleitet. Die Phrase unten dient daher nur zum Export in andere Wallet-Apps. Du musst sie nicht sichern – dein nsec ist das Backup.</string>
 </resources>
