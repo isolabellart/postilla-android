@@ -879,4 +879,23 @@
     <string name="wallet_switch_wallet">Mudar para outra carteira</string>
     <string name="wallet_disconnect_section">Desligar carteira</string>
     <string name="wallet_switch_wallet_caption">A sua carteira predefinida está ligada à sua chave e pode sempre ser restaurada. Ao mudar, irá ligar uma carteira diferente.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">Ligue uma carteira Lightning para enviar e receber sats. Cole uma cadeia de ligação NWC fornecida pelo seu serviço de carteira.</string>
+    <string name="wallet_recommended">Carteiras recomendadas</string>
+    <string name="wallet_lightning_address_setup">Configurar o seu endereço Lightning</string>
+    <string name="wallet_get_username">Obter um endereço username@breez.tips</string>
+    <string name="wallet_spark_subtitle">Autocustódia integrada. Use a carteira predefinida ou restaure-a a partir da frase-semente ou dos relays.</string>
+    <string name="wallet_nwc_restore_subtitle">Cópia cifrada de NWC de outro dispositivo</string>
+    <string name="wallet_receive_invoice_tab">Fatura</string>
+    <string name="wallet_share_address">Partilhar endereço</string>
+    <string name="wallet_share">Partilhar</string>
+    <string name="wallet_powered_by">Disponibilizado por</string>
+    <string name="wallet_welcome_title">Protegido pela sua chave Nostr</string>
+    <string name="wallet_welcome_body">É restaurada em qualquer dispositivo quando inicia sessão. Toque para guardar também a frase-semente como cópia de segurança.</string>
+    <string name="wallet_generate_invoice">Gerar fatura</string>
+    <string name="wallet_use_default">Usar a minha carteira predefinida</string>
+    <string name="wallet_default_subtitle">Derivada da sua chave Nostr — não é necessária outra cópia de segurança.</string>
+    <string name="wallet_switch_wallet_body">Desligue esta carteira para usar a predefinida ou restaurar outra. Os seus fundos permanecem seguros: pode voltar a ligar esta carteira a qualquer momento introduzindo a frase de recuperação.</string>
+    <string name="wallet_default_seed_info">Esta carteira deriva da sua chave Nostr, por isso a frase abaixo serve apenas para exportação para outras aplicações. Não precisa de a guardar em backup: o seu nsec é a cópia de segurança.</string>
 </resources>
