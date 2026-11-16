@@ -146,7 +146,7 @@ object Routes {
     const val MARKETPLACE = "marketplace"
     const val MARKETPLACE_SELLER = "marketplace/seller/{pubkey}"
     const val MARKETPLACE_DETAIL = "marketplace/detail/{eventId}"
-    const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}?relays={relays}&eventId={eventId}"
+    const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}?relays={relays}&eventId={eventId}&kind={kind}"
     const val MARKETPLACE_EDITOR = "marketplace/edit?eventId={eventId}"
     const val COMPOSE = "compose"
     const val RELAYS = "relays"
@@ -190,6 +190,15 @@ object Routes {
     const val LIVE_STREAM = "live_stream/{hostPubkey}/{dTag}?relayHint={relayHint}"
 }
 
+private fun marketplaceAddressRoute(event: NostrEvent): String {
+    val base = "marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}"
+    val params = buildList {
+        add("eventId=${android.net.Uri.encode(event.id)}")
+        if (event.kind != Nip99.KIND_LISTING) add("kind=${event.kind}")
+    }
+    return "$base?${params.joinToString("&")}"
+}
+
 /** Unknown profile counts as zappable — the zap send path surfaces the error. */
 private fun zapRecipientHasLud16(
     feedViewModel: com.darkwisp.app.viewmodel.FeedViewModel,
@@ -207,11 +216,11 @@ fun NostrUriData.toRoute(): String? = when (this) {
     is NostrUriData.AddressRef ->
         when {
             kind == Nip99.KIND_LISTING && author != null -> {
-                val relayQuery = relays.takeIf { it.isNotEmpty() }
-                    ?.joinToString(",")
-                    ?.let { "?relays=${android.net.Uri.encode(it)}" }
-                    .orEmpty()
-                "marketplace/address/$author/${android.net.Uri.encode(dTag)}$relayQuery"
+                val query = buildList {
+                    if (relays.isNotEmpty()) add("relays=${android.net.Uri.encode(relays.joinToString(","))}")
+                    if (kind != Nip99.KIND_LISTING) add("kind=$kind")
+                }.joinToString("&")
+                "marketplace/address/$author/${android.net.Uri.encode(dTag)}${if (query.isNotEmpty()) "?$query" else ""}"
             }
             (kind == 30023 || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null ->
                 "article/$kind/$author/$dTag"
@@ -921,7 +930,7 @@ fun WispNavHost(
                     }
                 },
                 marketplaceWatchlistPriceTracker = marketplaceWatchlistPriceTracker,
-                onListingClick = { event -> navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}") },
+                onListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onDms = {
                     navController.navigate(Routes.DM_LIST)
                 },
@@ -1081,7 +1090,7 @@ fun WispNavHost(
                     // Preview events may live only in MarketplaceViewModel's cache.
                     // Hydrate the shared repository before entering detail/editor routes.
                     feedViewModel.eventRepo.cacheEvent(event)
-                    navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}")
+                    navController.navigate(marketplaceAddressRoute(event))
                 },
                 onCreateListing = { navController.navigate("marketplace/edit") }
             )
@@ -1150,7 +1159,7 @@ fun WispNavHost(
                         val listingAddress = Nip19.naddrEncode(
                             dTag = Nip99.dTag(listing),
                             authorHex = listing.pubkey,
-                            kind = Nip99.KIND_LISTING
+                            kind = event!!.kind
                         )
                         val messageWithReference = message.trim() + "\n\nnostr:" + listingAddress
                         val encodedMessage = android.net.Uri.encode(messageWithReference)
@@ -1189,6 +1198,8 @@ fun WispNavHost(
             val author = backStackEntry.arguments?.getString("author") ?: return@composable
             val dTag = backStackEntry.arguments?.getString("dTag") ?: return@composable
             val fallbackEventId = backStackEntry.arguments?.getString("eventId")
+            val listingKind = backStackEntry.arguments?.getString("kind")?.toIntOrNull()
+                ?.takeIf(Nip99::isMarketplaceKind) ?: Nip99.KIND_LISTING
             val relayHints = backStackEntry.arguments?.getString("relays")
                 ?.split(",")
                 ?.map { it.trim() }
@@ -1197,28 +1208,28 @@ fun WispNavHost(
             val cachedFallbackEvent = Nip01EventOrder.newest(
                 listOfNotNull(
                     fallbackEventId?.let { feedViewModel.eventRepo.getEvent(it) },
-                    feedViewModel.eventRepo.findAddressableEvent(Nip99.KIND_LISTING, author, dTag)
+                    feedViewModel.eventRepo.findAddressableEvent(listingKind, author, dTag)
                 ).filter { candidate ->
-                    candidate.kind == Nip99.KIND_LISTING &&
+                    candidate.kind == listingKind &&
                         candidate.pubkey == author &&
                         Nip99.dTag(candidate) == dTag
                 }
             )
             val addressableEvent by feedViewModel.eventRepo
-                .observeAddressableEvent(Nip99.KIND_LISTING, author, dTag)
+                .observeAddressableEvent(listingKind, author, dTag)
                 .collectAsState(initial = cachedFallbackEvent)
             // Keep the exact cached revision for withdrawn listings, but never let an
             // older address-index snapshot replace a newer event selected by its ID.
             val event = Nip01EventOrder.newest(
                 listOfNotNull(cachedFallbackEvent, addressableEvent).filter { candidate ->
-                    candidate.kind == Nip99.KIND_LISTING &&
+                    candidate.kind == listingKind &&
                         candidate.pubkey == author &&
                         Nip99.dTag(candidate) == dTag
                 }
             )
             LaunchedEffect(author, dTag, relayHints) {
                 feedViewModel.eventRepo.requestAddressableEvent(
-                    Nip99.KIND_LISTING,
+                    listingKind,
                     author,
                     dTag,
                     relayHints
@@ -1312,7 +1323,7 @@ fun WispNavHost(
                     }
 
                     navController.navigate(
-                        "marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}"
+                        marketplaceAddressRoute(event)
                     ) {
                         launchSingleTop = true
                     }
@@ -1365,9 +1376,7 @@ fun WispNavHost(
                 onMarketplaceListingClick = { event ->
                     val dTag = Nip99.dTag(event)
                     if (dTag.isNotBlank()) {
-                        navController.navigate(
-                            "marketplace/address/${event.pubkey}/${android.net.Uri.encode(dTag)}?eventId=${event.id}"
-                        )
+                        navController.navigate(marketplaceAddressRoute(event))
                     }
                 }
             )
@@ -1864,7 +1873,7 @@ fun WispNavHost(
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
                         onMarketplaceListingClick = { event ->
-                            navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}")
+                            navController.navigate(marketplaceAddressRoute(event))
                         },
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
