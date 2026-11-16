@@ -126,8 +126,16 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private fun publishVisibleCache(selectedScope: MarketplaceScope, authors: Set<String>, userPubkey: String?, sellerPubkey: String? = currentSellerPubkey) {
         val snapshot = synchronized(cacheLock) { cachedByAddress.values.toList() }
         val scoped = snapshot.filter { matchesScope(it, selectedScope, authors, userPubkey, sellerPubkey) }
-        // Keep the last complete inventory snapshot stable while filters and partial
-        // relay responses update the visible listing cache.
+        // Publish seller inventory progressively from local persistence and every relay
+        // batch. The storefront header and review lookup must not wait for a global EOSE quorum.
+        if (sellerPubkey != null) {
+            _sellerInventory.value = scoped.asSequence()
+                .filter { it.pubkey == sellerPubkey && Nip99.dTag(it).isNotBlank() }
+                .filter { Nip99.status(it) != "hidden" && currentEventRepository?.isEventVisibleToUser(it) != false }
+                .sortedByDescending { it.created_at }
+                .take(MAX_CACHED_LISTINGS)
+                .toList()
+        }
         _availableCategories.value = scoped.flatMap { Nip99.categories(it) }.map { it.trim().lowercase() }
             .filter { it.isNotBlank() }.distinct().sorted()
         val query = _searchQuery.value.trim().lowercase()
