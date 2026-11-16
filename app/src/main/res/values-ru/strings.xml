@@ -744,4 +744,7 @@
     <string name="marketplace_dm_relay_required">Продавец не опубликовал список DM-ретрансляторов NIP-17 (kind 10050). Для защиты конфиденциальности Postilla не будет использовать запасные relay.</string>
     <string name="marketplace_seller_label">Продавец</string>
     <string name="drawer_set_up_wallet">Настроить кошелёк</string>
+    <string name="marketplace_storefront_sold">Продано</string>
+    <string name="marketplace_storefront_rating">Рейтинг</string>
+    <string name="marketplace_storefront_since">С</string>
 </resources>
