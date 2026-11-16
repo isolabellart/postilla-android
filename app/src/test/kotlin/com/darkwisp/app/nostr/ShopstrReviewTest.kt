@@ -27,12 +27,18 @@ class ShopstrReviewTest {
         assertEquals(3.75, summary.averageStars!!, 0.0001)
     }
 
+    @Test fun `thumb-only review contributes its Shopstr half weight`() {
+        val event = review(createdAt = 1, ratingTags = listOf(listOf("rating", "1.0", "thumb")))
+        val summary = ShopstrReview.summarize(listOf(event), seller)
+        assertEquals(2.5, summary.averageStars!!, 0.0001)
+    }
+
     @Test fun `without thumb the available criteria are averaged`() {
         val event = review(createdAt = 1, ratingTags = listOf(
             listOf("rating", "0.25", "quality"), listOf("rating", "0.75", "communication")
         ))
         val summary = ShopstrReview.summarize(listOf(event), seller)
-        assertEquals(2.5, summary.averageStars!!, 0.0001)
+        assertEquals(1.25, summary.averageStars!!, 0.0001)
     }
 
     @Test fun `values are clamped and malformed values ignored`() {
