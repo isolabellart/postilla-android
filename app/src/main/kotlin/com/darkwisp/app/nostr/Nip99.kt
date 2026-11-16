@@ -10,7 +10,8 @@ import kotlinx.serialization.json.contentOrNull
 /**
  * Marketplace listing readers.
  *
- * NIP-99 listings (30402) are the canonical publish format. Read-only
+ * Listings (30402) follow the OpenMarkets/Gamma marketplace spec, which
+ * extends NIP-99 (`type`, `visibility`, stock-based sold-out, ...). Read-only
  * compatibility is also provided for legacy NIP-15 products (30018), whose
  * structured fields live in JSON content rather than NIP-99 tags.
  */
@@ -87,11 +88,26 @@ object Nip99 {
         tag(event, "location")?.getOrNull(1)?.takeIf(String::isNotBlank)
             ?: jsonField(event, "location").orEmpty()
 
+    /**
+     * Visibility of a listing. The OpenMarkets spec uses `visibility`
+     * (hidden | on-sale | pre-order); plain NIP-99 `status` (active | sold) is
+     * still read so listings published by older clients keep working.
+     */
     fun status(event: NostrEvent): String =
-        (tag(event, "status")?.getOrNull(1) ?: tag(event, "visibility")?.getOrNull(1))
-            ?.lowercase() ?: "active"
+        (tag(event, "visibility")?.getOrNull(1) ?: tag(event, "status")?.getOrNull(1))
+            ?.lowercase() ?: "on-sale"
 
-    fun isSold(event: NostrEvent): Boolean = status(event) == "sold"
+    fun isSold(event: NostrEvent): Boolean =
+        availability(event).state == AvailabilityState.SOLD_OUT
+
+    /** OpenMarkets/Gamma `type` tag: `["type", "simple|variable|variation", "digital|physical"]`. */
+    fun productType(event: NostrEvent): String =
+        tag(event, "type")?.getOrNull(1)?.lowercase()?.takeIf(String::isNotBlank) ?: "simple"
+
+    /** Defaults to "digital" when the tag or its format element is absent, per the spec. */
+    fun productFormat(event: NostrEvent): String =
+        tag(event, "type")?.getOrNull(2)?.lowercase()?.takeIf { it == "physical" || it == "digital" }
+            ?: "digital"
 
     fun stock(event: NostrEvent): Int? {
         val stockTags = event.tags.filter { it.firstOrNull() == "stock" }
@@ -172,17 +188,22 @@ object Nip99 {
         category: String,
         images: List<String>,
         status: String,
-        stock: Int? = null
+        stock: Int? = null,
+        format: String = "digital"
     ): List<List<String>> {
         require(stock == null || stock >= 0) { "Stock cannot be negative" }
+        val sold = status.equals("sold", true)
+        // The spec has no "sold" visibility: a sold listing is on-sale with zero stock.
+        val publishedStock = if (sold) 0 else stock
         val result = mutableListOf(
             listOf("d", dTag.trim()),
             listOf("title", title.trim()),
             listOf("summary", summary.trim()),
             listOf("published_at", publishedAt),
-            listOf("status", if (status.equals("sold", true)) "sold" else "active")
+            listOf("type", "simple", if (format.equals("physical", true)) "physical" else "digital"),
+            listOf("visibility", "on-sale")
         )
-        if (stock != null) result.add(listOf("stock", stock.toString()))
+        if (publishedStock != null) result.add(listOf("stock", publishedStock.toString()))
         if (location.isNotBlank()) result.add(listOf("location", location.trim()))
         if (amount.isNotBlank() && currency.isNotBlank()) {
             result.add(listOf("price", amount.trim(), currency.trim().uppercase()))

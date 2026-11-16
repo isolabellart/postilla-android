@@ -105,7 +105,8 @@ fun MarketplaceEditorScreen(
     var location by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.location(it) } ?: "") }
     var category by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.categories(it).joinToString(", ") } ?: "") }
     var images by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.images(it) } ?: emptyList()) }
-    var status by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.status(it) } ?: "active") }
+    var status by remember(existingEvent?.id) { mutableStateOf(if (existingEvent != null && Nip99.isSold(existingEvent)) "sold" else "active") }
+    var format by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.productFormat(it) } ?: "physical") }
     var stock by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.stock(it)?.toString() }.orEmpty()) }
     val dTag = remember(existingEvent?.id) {
         existingEvent?.let { Nip99.dTag(it) }?.takeIf { it.isNotBlank() }
@@ -302,6 +303,21 @@ fun MarketplaceEditorScreen(
                             )
                         }
                     }
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.marketplace_format_label), style = MaterialTheme.typography.titleSmall)
+                            FilterChip(
+                                selected = format == "digital",
+                                onClick = { format = "digital" },
+                                label = { Text(stringResource(R.string.marketplace_digital)) }
+                            )
+                            FilterChip(
+                                selected = format == "physical",
+                                onClick = { format = "physical" },
+                                label = { Text(stringResource(R.string.marketplace_physical)) }
+                            )
+                        }
+                    }
                     if (existingEvent != null && existingEvent.pubkey == userPubkey) {
                         item {
                             TextButton(
@@ -414,7 +430,8 @@ fun MarketplaceEditorScreen(
                                     category = category,
                                     images = images,
                                     status = status,
-                                    stock = declaredStock
+                                    stock = declaredStock,
+                                    format = format
                                 )
                                 val latestKnownCreatedAt = eventRepository.findAddressableEvent(
                                     kind = Nip99.KIND_LISTING,

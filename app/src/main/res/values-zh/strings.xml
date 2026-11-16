@@ -761,6 +761,11 @@
     <string name="marketplace_status_label">商品状态</string>
     <string name="marketplace_active">在售</string>
     <string name="marketplace_sold">已售出</string>
+    <string name="marketplace_format_label">商品类型</string>
+    <string name="marketplace_digital">数字</string>
+    <string name="marketplace_physical">实体</string>
+    <string name="marketplace_hide_sold">隐藏已售出</string>
+    <string name="marketplace_locations">地点</string>
     <string name="marketplace_photos">照片</string>
     <string name="marketplace_add_photos">添加照片</string>
     <string name="marketplace_uploading">正在上传照片…</string>

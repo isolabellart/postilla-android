@@ -721,6 +721,11 @@
     <string name="marketplace_status_label">Статус объявления</string>
     <string name="marketplace_active">В продаже</string>
     <string name="marketplace_sold">Продано</string>
+    <string name="marketplace_format_label">Тип товара</string>
+    <string name="marketplace_digital">Цифровой</string>
+    <string name="marketplace_physical">Физический</string>
+    <string name="marketplace_hide_sold">Скрыть проданное</string>
+    <string name="marketplace_locations">Места</string>
     <string name="marketplace_photos">Фотографии</string>
     <string name="marketplace_add_photos">Добавить фотографии</string>
     <string name="marketplace_uploading">Загрузка фотографий…</string>

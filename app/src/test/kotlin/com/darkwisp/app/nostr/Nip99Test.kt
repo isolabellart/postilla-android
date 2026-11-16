@@ -101,7 +101,10 @@ class Nip99Test {
         assertTrue(tags.contains(listOf("d", "painting-01")))
         assertTrue(tags.contains(listOf("title", "Original oil painting")))
         assertTrue(tags.contains(listOf("price", "450", "EUR")))
-        assertTrue(tags.contains(listOf("status", "sold")))
+        assertTrue(tags.contains(listOf("visibility", "on-sale")))
+        assertTrue(tags.contains(listOf("stock", "0")))
+        assertFalse(tags.any { it.firstOrNull() == "status" })
+        assertTrue(tags.contains(listOf("type", "simple", "digital")))
         assertTrue(tags.contains(listOf("t", "art")))
         assertTrue(tags.contains(listOf("t", "handmade")))
         assertTrue(tags.contains(listOf("t", "painting")))
@@ -232,5 +235,35 @@ class Nip99Test {
         assertEquals(author, decoded.author)
         assertEquals(Nip99.KIND_LISTING, decoded.kind)
         assertEquals(listOf("wss://relay.example"), decoded.relays)
+    }
+
+    @Test
+    fun `buildTags publishes physical format and spec visibility`() {
+        val tags = Nip99.buildTags(
+            dTag = "mug", title = "Mug", summary = "", publishedAt = "1800000000",
+            amount = "10", currency = "EUR", location = "", category = "", images = emptyList(),
+            status = "active", stock = 4, format = "physical"
+        )
+        assertTrue(tags.contains(listOf("type", "simple", "physical")))
+        assertTrue(tags.contains(listOf("visibility", "on-sale")))
+        assertTrue(tags.contains(listOf("stock", "4")))
+    }
+
+    @Test
+    fun `type tag defaults to simple digital and reads physical`() {
+        val plain = event(listOf(listOf("d", "a")))
+        val physical = event(listOf(listOf("d", "b"), listOf("type", "simple", "physical")))
+        assertEquals("simple", Nip99.productType(plain))
+        assertEquals("digital", Nip99.productFormat(plain))
+        assertEquals("physical", Nip99.productFormat(physical))
+    }
+
+    @Test
+    fun `visibility is read and legacy NIP99 status still works`() {
+        assertEquals("hidden", Nip99.status(event(listOf(listOf("d", "a"), listOf("visibility", "hidden")))))
+        assertEquals("on-sale", Nip99.status(event(listOf(listOf("d", "a")))))
+        assertTrue(Nip99.isSold(event(listOf(listOf("d", "a"), listOf("status", "sold")))))
+        assertTrue(Nip99.isSold(event(listOf(listOf("d", "a"), listOf("stock", "0")))))
+        assertFalse(Nip99.isSold(event(listOf(listOf("d", "a"), listOf("visibility", "pre-order")))))
     }
 }

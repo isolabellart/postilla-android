@@ -760,6 +760,11 @@
     <string name="marketplace_status_label">Estado do anúncio</string>
     <string name="marketplace_active">Disponível</string>
     <string name="marketplace_sold">Vendido</string>
+    <string name="marketplace_format_label">Tipo de item</string>
+    <string name="marketplace_digital">Digital</string>
+    <string name="marketplace_physical">Físico</string>
+    <string name="marketplace_hide_sold">Ocultar vendidos</string>
+    <string name="marketplace_locations">Locais</string>
     <string name="marketplace_photos">Fotos</string>
     <string name="marketplace_add_photos">Adicionar fotos</string>
     <string name="marketplace_uploading">Enviando fotos…</string>

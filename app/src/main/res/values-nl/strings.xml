@@ -760,6 +760,11 @@
     <string name="marketplace_status_label">Advertentiestatus</string>
     <string name="marketplace_active">Beschikbaar</string>
     <string name="marketplace_sold">Verkocht</string>
+    <string name="marketplace_format_label">Artikeltype</string>
+    <string name="marketplace_digital">Digitaal</string>
+    <string name="marketplace_physical">Fysiek</string>
+    <string name="marketplace_hide_sold">Verkocht verbergen</string>
+    <string name="marketplace_locations">Locaties</string>
     <string name="marketplace_photos">Foto’s</string>
     <string name="marketplace_add_photos">Foto’s toevoegen</string>
     <string name="marketplace_uploading">Foto’s uploaden…</string>

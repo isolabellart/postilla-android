@@ -45,6 +45,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
+    private val _selectedLocation = MutableStateFlow<String?>(null)
+    val selectedLocation: StateFlow<String?> = _selectedLocation
+    private val _availableLocations = MutableStateFlow<List<String>>(emptyList())
+    val availableLocations: StateFlow<List<String>> = _availableLocations
+    private val _hideSold = MutableStateFlow(true)
+    val hideSold: StateFlow<Boolean> = _hideSold
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory: StateFlow<String?> = _selectedCategory
     private val _availableCategories = MutableStateFlow<List<String>>(emptyList())
@@ -87,9 +93,16 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         val scoped = snapshot.filter { matchesScope(it, selectedScope, authors, userPubkey, sellerPubkey) }
         _availableCategories.value = scoped.flatMap { Nip99.categories(it) }.map { it.trim().lowercase() }
             .filter { it.isNotBlank() }.distinct().sorted()
+        _availableLocations.value = scoped.map { Nip99.location(it).trim() }
+            .filter { it.isNotBlank() }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
+        val location = _selectedLocation.value?.trim()?.lowercase()
         val query = _searchQuery.value.trim().lowercase()
         val category = _selectedCategory.value?.lowercase()
+        val hideSold = _hideSold.value
         _listings.value = scoped.asSequence()
+            .filter { event -> location == null || Nip99.location(event).trim().lowercase() == location }
+            // Sold-out listings are hidden for buyers, but sellers keep seeing their own.
+            .filter { event -> !hideSold || event.pubkey == userPubkey || !Nip99.isSold(event) }
             .filter { event -> category == null || Nip99.categories(event).any { it.trim().equals(category, ignoreCase = true) } }
             .filter { event ->
                 if (query.isBlank()) true else {
@@ -104,6 +117,16 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+        publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
+    }
+
+    fun setSelectedLocation(location: String?) {
+        _selectedLocation.value = location
+        publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
+    }
+
+    fun setHideSold(hide: Boolean) {
+        _hideSold.value = hide
         publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
     }
 
