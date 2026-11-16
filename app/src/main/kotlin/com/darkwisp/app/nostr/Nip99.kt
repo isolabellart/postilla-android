@@ -87,9 +87,23 @@ object Nip99 {
         tag(event, "location")?.getOrNull(1)?.takeIf(String::isNotBlank)
             ?: jsonField(event, "location").orEmpty()
 
-    fun status(event: NostrEvent): String =
-        (tag(event, "status")?.getOrNull(1) ?: tag(event, "visibility")?.getOrNull(1))
-            ?.lowercase() ?: "active"
+    /**
+     * Read status from canonical NIP-99 tags and legacy NIP-15 JSON payloads.
+     * Unknown values are preserved; a withdrawn/deleted address is not inferred as sold.
+     */
+    fun status(event: NostrEvent): String {
+        val raw = tag(event, "status")?.getOrNull(1)
+            ?: tag(event, "visibility")?.getOrNull(1)
+            ?: jsonField(event, "status")
+            ?: jsonField(event, "visibility")
+            ?: return "active"
+        val normalized = raw.trim().lowercase().replace('-', '_').replace(' ', '_')
+        return when (normalized) {
+            "sold", "sold_out", "out_of_stock" -> "sold"
+            "hidden" -> "hidden"
+            else -> normalized.ifBlank { "active" }
+        }
+    }
 
     fun isSold(event: NostrEvent): Boolean = status(event) == "sold"
 
