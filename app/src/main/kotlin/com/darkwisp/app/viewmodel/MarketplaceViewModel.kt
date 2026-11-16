@@ -57,6 +57,11 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private val _listings = MutableStateFlow<List<NostrEvent>>(emptyList())
     val listings: StateFlow<List<NostrEvent>> = _listings
 
+    private val _sellerInventory = MutableStateFlow<List<NostrEvent>>(emptyList())
+    val sellerInventory: StateFlow<List<NostrEvent>> = _sellerInventory
+    private val _sellerInventoryLoaded = MutableStateFlow(false)
+    val sellerInventoryLoaded: StateFlow<Boolean> = _sellerInventoryLoaded
+
     private val _scope = MutableStateFlow(MarketplaceScope.ALL)
     val scope: StateFlow<MarketplaceScope> = _scope
 
@@ -95,7 +100,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         private const val LOAD_TIMEOUT_MS = 15_000L
         private const val EOSE_DRAIN_GRACE_MS = 6_000L
         private const val MINIMUM_EOSE_COUNT = 6
-        private const val MAX_CACHED_LISTINGS = 1000
+        private const val MAX_CACHED_LISTINGS = 5000
         private const val NADDR_LOOKUP_DEBOUNCE_MS = 350L
         // MetadataFetcher performs an exact coordinate lookup and, when necessary,
         // a bounded paginated seller-history fallback (up to 25 seconds).
@@ -121,6 +126,20 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private fun publishVisibleCache(selectedScope: MarketplaceScope, authors: Set<String>, userPubkey: String?, sellerPubkey: String? = currentSellerPubkey) {
         val snapshot = synchronized(cacheLock) { cachedByAddress.values.toList() }
         val scoped = snapshot.filter { matchesScope(it, selectedScope, authors, userPubkey, sellerPubkey) }
+        _sellerInventory.value = if (sellerPubkey == null) {
+            emptyList()
+        } else {
+            snapshot.asSequence()
+                .filter { event ->
+                    event.pubkey == sellerPubkey &&
+                        Nip99.dTag(event).isNotBlank() &&
+                        Nip99.status(event) != "hidden" &&
+                        (currentEventRepository?.isEventVisibleToUser(event) != false)
+                }
+                .sortedByDescending { it.created_at }
+                .take(MAX_CACHED_LISTINGS)
+                .toList()
+        }
         _availableCategories.value = scoped.flatMap { Nip99.categories(it) }.map { it.trim().lowercase() }
             .filter { it.isNotBlank() }.distinct().sorted()
         val query = _searchQuery.value.trim().lowercase()
@@ -307,6 +326,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         currentUserPubkey = userPubkey
         currentSellerPubkey = sellerPubkey
         currentEventRepository = eventRepository
+        if (sellerPubkey == null) {
+            _sellerInventory.value = emptyList()
+            _sellerInventoryLoaded.value = true
+        } else {
+            _sellerInventoryLoaded.value = false
+        }
         val authors = when {
             sellerPubkey != null -> setOf(sellerPubkey)
             selectedScope == MarketplaceScope.ALL -> emptySet()
@@ -326,6 +351,8 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
         if (selectedScope != MarketplaceScope.ALL && authors.isEmpty()) {
             _listings.value = emptyList()
+            _sellerInventory.value = emptyList()
+            _sellerInventoryLoaded.value = true
             _loading.value = false
             _error.value = null
             return
@@ -348,7 +375,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     val storedListings = eventRepository.getCachedEventsByAuthorAndKinds(
                         sellerPubkey,
                         Nip99.MARKETPLACE_KINDS.toSet(),
-                        limit = 2_000
+                        limit = 5_000
                     ).filter {
                         Nip99.dTag(it).isNotBlank() &&
                             Nip99.status(it) != "hidden" &&
@@ -367,26 +394,24 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                         publishVisibleCache(selectedScope, authors, userPubkey, sellerPubkey)
                     }
 
-                    // Product listings are published to the seller's NIP-65 write/outbox relays.
-                    // Use cached relays first; discover kind 10002 if no usable outbox is known.
-                    var knownSellerRelays = relayListRepository.getWriteRelays(sellerPubkey).orEmpty()
-                    if (knownSellerRelays.isEmpty()) {
-                        PeerRelayListLookup.fetch(
-                            sellerPubkey,
-                            relayPool,
-                            relayListRepository,
-                            requireMarketplaceRelayEose = true
-                        )
-                        knownSellerRelays = relayListRepository.getWriteRelays(sellerPubkey).orEmpty()
-                    }
-                    sellerRelayTargets = knownSellerRelays.distinct()
+                    // Refresh seller NIP-65 on every catalogue load. A stale non-empty
+                    // outbox cache must not prevent discovery of newly added write relays.
+                    val cachedSellerRelays = relayListRepository.getWriteRelays(sellerPubkey).orEmpty()
+                    PeerRelayListLookup.fetch(
+                        sellerPubkey,
+                        relayPool,
+                        relayListRepository,
+                        extraRelayUrls = cachedSellerRelays,
+                        requireMarketplaceRelayEose = true
+                    )
+                    sellerRelayTargets = relayListRepository.getWriteRelays(sellerPubkey).orEmpty().distinct()
                     if (activeSubscriptionId == subId) activeSellerRelayUrls = sellerRelayTargets
                 }
 
                 val filter = Filter(
                     kinds = Nip99.MARKETPLACE_KINDS,
                     authors = authors.takeIf { it.isNotEmpty() }?.toList(),
-                    limit = 1000
+                    limit = 5000
                 )
                 val request = ClientMessage.req(subId, filter)
 
@@ -452,19 +477,23 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                         sellerRelayTargets
                     ).toSet()
                 targets.forEach { relay ->
-                    relayPool.sendToRelayOrEphemeral(
+                    eoseTracker.markSent(relay)
+                    val sent = relayPool.sendToRelayOrEphemeral(
                         relay,
                         request,
                         skipBadCheck = true,
                         autoReconnect = relay in reconnectableTargets
                     )
+                    if (!sent) eoseTracker.markNotSent(relay)
                 }
 
                 var drainStartedAt = 0L
                 val completedWithinWindow = withTimeoutOrNull(LOAD_TIMEOUT_MS) {
                     while (true) {
                         val completedCount = eoseTracker.completedCount()
-                        val sellerRelaysCompleted = sellerRelayTargets.all(eoseTracker::hasCompleted)
+                        val sentSellerRelayTargets = sellerRelayTargets.filter(eoseTracker::wasSent)
+                        val sellerRelaysCompleted = sentSellerRelayTargets.all(eoseTracker::hasCompleted)
+                        if (eoseTracker.targetCount() == 0) break
                         if (completedCount >= eoseTracker.minimumResponseCount() && sellerRelaysCompleted) {
                             if (drainStartedAt == 0L) {
                                 drainStartedAt = System.currentTimeMillis()
@@ -482,7 +511,8 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     "MarketplaceVM",
                     "Listing fetch finished sub=$subId seller=${sellerPubkey?.take(12) ?: "all"} " +
                         "relays=${eoseTracker.completedCount()}/${eoseTracker.targetCount()} " +
-                        "sellerRelays=${sellerRelayTargets.size} remoteUpdates=${remoteListingCount.get()} timeout=${!completedWithinWindow}"
+                        "sellerRelays=${sellerRelayTargets.size} sentRelays=${eoseTracker.targetCount()} " +
+                        "remoteUpdates=${remoteListingCount.get()} timeout=${!completedWithinWindow}"
                 )
                 eoseCollector.cancel()
                 eventCollector.cancel()
@@ -498,6 +528,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 if (activeSubscriptionId == subId) {
                     activeSubscriptionId = null
                     activeSellerRelayUrls = emptyList()
+                    _sellerInventoryLoaded.value = currentSellerPubkey != null
                     _loading.value = false
                 }
             }
