@@ -107,6 +107,12 @@ object Nip99 {
         }
     }
 
+    /** True only when the active public key owns a supported Marketplace event. */
+    fun isOwnedListing(event: NostrEvent, pubkey: String?): Boolean =
+        !pubkey.isNullOrBlank() &&
+            isMarketplaceKind(event.kind) &&
+            event.pubkey.equals(pubkey, ignoreCase = true)
+
     fun isSold(event: NostrEvent): Boolean = status(event) == "sold"
 
     fun stock(event: NostrEvent): Int? {

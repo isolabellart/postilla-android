@@ -1458,6 +1458,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     fun getProfileData(pubkey: String): ProfileData? = profileRepo?.get(pubkey)
 
+    /** Search locally cached kind-0 profiles before relying on relay NIP-50 availability. */
+    fun searchProfiles(query: String, limit: Int = 40): List<ProfileData> =
+        profileRepo?.search(query, limit).orEmpty()
+
     /**
      * Keep the drawer's account switcher in sync with the newest kind 0 for
      * every signed-in account, not just the active one. Previously only a

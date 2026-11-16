@@ -833,7 +833,7 @@ fun MarketplaceDetailScreen(
     val zapVersion by eventRepository.zapVersion.collectAsState(initial = 0)
     val zapSats = remember(event.id, zapVersion) { eventRepository.getZapSats(event.id) }
     val userHasReacted = userPubkey?.let { eventRepository.hasUserReacted(listingAddress, it) } ?: false
-    val isOwnListing = event.pubkey == userPubkey
+    val isOwnListing = Nip99.isOwnedListing(event, userPubkey)
     var watchlistEvent by remember(userPubkey) { mutableStateOf<NostrEvent?>(null) }
     var bookmarkReady by remember(userPubkey, event.id) { mutableStateOf(userPubkey == null || isOwnListing) }
     var isBookmarked by remember(userPubkey, event.id) { mutableStateOf(false) }
@@ -1201,7 +1201,7 @@ fun MarketplaceDetailScreen(
                     }
                 },
                 actions = {
-                    if (event.kind == Nip99.KIND_LISTING && event.pubkey == userPubkey) {
+                    if (isOwnListing) {
                         Text(
                             text = stringResource(R.string.marketplace_edit),
                             modifier = Modifier.clickable(onClick = onEdit).padding(horizontal = 16.dp),
@@ -1296,7 +1296,7 @@ fun MarketplaceDetailScreen(
                     Text(stringResource(R.string.marketplace_location_value, location), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(Nip99.description(event), style = MaterialTheme.typography.bodyLarge)
-                if (event.kind == Nip99.KIND_LISTING && event.pubkey == userPubkey) {
+                if (isOwnListing) {
                     Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.marketplace_edit)) }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {

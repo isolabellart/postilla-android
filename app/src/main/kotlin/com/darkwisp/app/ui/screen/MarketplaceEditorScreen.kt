@@ -302,7 +302,7 @@ fun MarketplaceEditorScreen(
                             )
                         }
                     }
-                    if (existingEvent != null && existingEvent.pubkey == userPubkey) {
+                    if (existingEvent != null && Nip99.isOwnedListing(existingEvent, userPubkey)) {
                         item {
                             TextButton(
                                 onClick = { showWithdrawConfirmation = true },
@@ -394,6 +394,12 @@ fun MarketplaceEditorScreen(
                             error = context.getString(R.string.marketplace_login_required)
                             return@Button
                         }
+                        if (existingEvent != null &&
+                            !Nip99.isOwnedListing(existingEvent, signer.pubkeyHex)
+                        ) {
+                            error = context.getString(R.string.marketplace_withdraw_wrong_account)
+                            return@Button
+                        }
                         val declaredStock = stock.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
                         if (stock.isNotBlank() && (declaredStock == null || declaredStock < 0)) {
                             error = context.getString(R.string.marketplace_stock_invalid)
@@ -451,7 +457,7 @@ fun MarketplaceEditorScreen(
                                     dTag = dTag
                                 )?.created_at
                                 val previousCreatedAt = listOfNotNull(
-                                    existingEvent?.takeIf { it.pubkey == signer.pubkeyHex }?.created_at,
+                                    existingEvent?.takeIf { Nip99.isOwnedListing(it, signer.pubkeyHex) }?.created_at,
                                     latestKnownCreatedAt
                                 ).maxOrNull()
                                 val createdAt = Nip01EventOrder.nextCreatedAt(
@@ -513,7 +519,7 @@ fun MarketplaceEditorScreen(
                             try {
                                 val currentSigner = signer
                                     ?: throw IllegalStateException(context.getString(R.string.marketplace_login_required))
-                                if (currentSigner.pubkeyHex != existingEvent.pubkey) {
+                                if (!Nip99.isOwnedListing(existingEvent, currentSigner.pubkeyHex)) {
                                     throw IllegalStateException(context.getString(R.string.marketplace_withdraw_wrong_account))
                                 }
                                 val listingDTag = Nip99.dTag(existingEvent)

@@ -318,4 +318,18 @@ class Nip99Test {
         assertEquals(Nip99.KIND_LISTING, decoded.kind)
         assertEquals(listOf("wss://relay.example"), decoded.relays)
     }
+
+    @Test
+    fun `identifies owned NIP99 and legacy Marketplace listings case insensitively`() {
+        val modern = event(listOf(listOf("d", "owned")))
+        val legacy = modern.copy(kind = Nip99.KIND_LEGACY_PRODUCT)
+
+        assertTrue(Nip99.isOwnedListing(modern, modern.pubkey))
+        assertTrue(Nip99.isOwnedListing(modern, modern.pubkey.uppercase()))
+        assertTrue(Nip99.isOwnedListing(legacy, modern.pubkey))
+        assertFalse(Nip99.isOwnedListing(modern, "22".repeat(32)))
+        assertFalse(Nip99.isOwnedListing(modern, null))
+        assertFalse(Nip99.isOwnedListing(modern, ""))
+    }
+
 }
