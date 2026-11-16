@@ -656,8 +656,6 @@ private fun StorefrontStatsStrip(
 }
 
 @Composable
-internal fun MarketplaceListingCard
-@Composable
 internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRepository, bookmarkCount: Int? = null, onClick: () -> Unit) {
     val image = Nip99.images(event).firstOrNull()
     val availability = Nip99.availability(event)
