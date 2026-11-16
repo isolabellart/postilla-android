@@ -22,7 +22,7 @@ jobs:
       - name: Validate the published GitHub release
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ -z "${GH_TOKEN:-}" ]]; then
@@ -40,7 +40,7 @@ jobs:
       - name: Dispatch Zapstore workflow for v1.0.18
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           PREVIOUS_RUN_ID="43695790266"
