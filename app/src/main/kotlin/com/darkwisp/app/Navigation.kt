@@ -1228,7 +1228,7 @@ fun WispNavHost(
                         Nip99.dTag(candidate) == dTag
                 }
             )
-            LaunchedEffect(author, dTag, relayHints) {
+            LaunchedEffect(listingKind, author, dTag, relayHints) {
                 feedViewModel.eventRepo.requestAddressableEvent(
                     listingKind,
                     author,
@@ -1256,7 +1256,7 @@ fun WispNavHost(
                         val listingAddress = Nip19.naddrEncode(
                             dTag = Nip99.dTag(event!!),
                             authorHex = event!!.pubkey,
-                            kind = Nip99.KIND_LISTING
+                            kind = event!!.kind
                         )
                         val messageWithReference = message.trim() + "\n\nnostr:" + listingAddress
                         val encodedMessage = android.net.Uri.encode(messageWithReference)
