@@ -35,6 +35,14 @@ class MarketplaceRelayEoseTrackerTest {
         assertEquals(1, tracker.minimumResponseCount())
     }
 
+    @Test fun `large relay sets use a four-relay response quorum`() {
+        val tracker = MarketplaceRelayEoseTracker((1..8).map { "wss://relay$it.example" })
+        (1..8).forEach { tracker.markSent("wss://relay$it.example") }
+        assertEquals(4, tracker.minimumResponseCount())
+        (1..4).forEach { tracker.markCompleted("wss://relay$it.example") }
+        assertEquals(4, tracker.completedCount())
+    }
+
     @Test fun `seller relay completion can be checked independently`() {
         val tracker = MarketplaceRelayEoseTracker(listOf("wss://indexer.example", "wss://seller.example"))
         tracker.markSent("wss://indexer.example")
