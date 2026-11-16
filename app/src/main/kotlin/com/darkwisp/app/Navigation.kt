@@ -1278,7 +1278,20 @@ fun WispNavHost(
             )
         ) { backStackEntry ->
             val eventId = backStackEntry.arguments?.getString("eventId")
-            val existingEvent = eventId?.let { feedViewModel.eventRepo.peekEvent(it) }
+            val existingEventFlow = remember(eventId) {
+                eventId?.let { feedViewModel.eventRepo.observeEvent(it) }
+                    ?: kotlinx.coroutines.flow.flowOf(null)
+            }
+            val existingEvent by existingEventFlow.collectAsState(
+                initial = eventId?.let { feedViewModel.eventRepo.peekEvent(it) }
+            )
+            LaunchedEffect(eventId) {
+                if (eventId != null && feedViewModel.eventRepo.peekEvent(eventId) == null) {
+                    // requestQuotedEvent first hydrates a persisted copy when available,
+                    // then performs the bounded relay lookup if the event is still absent.
+                    feedViewModel.eventRepo.requestQuotedEvent(eventId)
+                }
+            }
             MarketplaceEditorScreen(
                 existingEvent = existingEvent,
                 userPubkey = feedViewModel.getUserPubkey(),
