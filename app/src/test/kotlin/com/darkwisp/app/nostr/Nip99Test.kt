@@ -60,6 +60,38 @@ class Nip99Test {
     }
 
     @Test
+    fun `legacy editor serializer round trips all supported product fields`() {
+        val content = Nip99.buildLegacyProductContent(
+            title = "Vintage camera",
+            summary = "35mm camera",
+            description = "Fully working",
+            amount = "120",
+            currency = "EUR",
+            location = "Italy",
+            categories = listOf("photography", "vintage"),
+            images = listOf("https://example.com/camera.jpg"),
+            status = "active",
+            stock = 0,
+            publishedAt = "2017-04-03T10:15:00Z"
+        )
+        val legacy = event(listOf(listOf("d", "legacy-editor"))).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            content = content
+        )
+
+        assertEquals("Vintage camera", Nip99.title(legacy))
+        assertEquals("35mm camera", Nip99.summary(legacy))
+        assertEquals("Fully working", Nip99.description(legacy))
+        assertEquals("120 EUR", Nip99.priceLabel(legacy))
+        assertEquals("Italy", Nip99.location(legacy))
+        assertEquals(listOf("photography", "vintage"), Nip99.categories(legacy))
+        assertEquals(listOf("https://example.com/camera.jpg"), Nip99.images(legacy))
+        assertEquals(0, Nip99.stock(legacy))
+        assertEquals("2017-04-03T10:15:00Z", Nip99.publishedAt(legacy))
+        assertEquals(Nip99.AvailabilityState.SOLD_OUT, Nip99.availability(legacy).state)
+    }
+
+    @Test
     fun `reads JSON product payloads carried by external NIP99 events`() {
         val external = event(listOf(listOf("d", "external-json"))).copy(
             content = """{"name":"External product","description":"External description","images":["https://example.com/one.jpg"],"price":"45","currency":"USD"}"""
