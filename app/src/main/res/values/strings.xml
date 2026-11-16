@@ -1094,4 +1094,7 @@
     <string name="dm_signer_unavailable">No active Nostr signer is available. Reconnect your account and try again.</string>
     <string name="postilla_appearance_title">Postilla appearance</string>
     <string name="postilla_appearance_body">One visual identity. Choose light or dark mode here.</string>
+    <string name="marketplace_storefront_sold">Sold</string>
+    <string name="marketplace_storefront_rating">Rating</string>
+    <string name="marketplace_storefront_since">Since</string>
 </resources>
