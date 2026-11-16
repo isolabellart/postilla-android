@@ -134,7 +134,9 @@ object Nip99 {
     }
 
     fun publishedAt(event: NostrEvent): String =
-        tag(event, "published_at")?.getOrNull(1) ?: event.created_at.toString()
+        tag(event, "published_at")?.getOrNull(1)
+            ?: jsonField(event, "published_at")
+            ?: event.created_at.toString()
 
     fun images(event: NostrEvent): List<String> {
         val tagged = tags(event, "image")
