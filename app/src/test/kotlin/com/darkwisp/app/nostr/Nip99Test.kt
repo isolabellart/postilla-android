@@ -93,6 +93,22 @@ class Nip99Test {
     }
 
     @Test
+    fun `reads legacy published at timestamp from JSON`() {
+        val legacy = event(listOf(listOf("d", "legacy-dated"))).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            created_at = 1_800_000_000L,
+            content = """{"name":"Old listing","published_at":"2017-04-03T10:15:00Z"}"""
+        )
+        assertEquals("2017-04-03T10:15:00Z", Nip99.publishedAt(legacy))
+
+        val tagged = legacy.copy(tags = listOf(
+            listOf("d", "legacy-dated"),
+            listOf("published_at", "2018-01-01")
+        ))
+        assertEquals("2018-01-01", Nip99.publishedAt(tagged))
+    }
+
+    @Test
     fun `malformed legacy product JSON falls back safely`() {
         val legacy = event(listOf(listOf("d", "broken-legacy"))).copy(
             kind = Nip99.KIND_LEGACY_PRODUCT,
