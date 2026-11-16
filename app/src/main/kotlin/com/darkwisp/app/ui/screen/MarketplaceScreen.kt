@@ -171,11 +171,13 @@ fun MarketplaceScreen(
     val storefrontDisplayName = sellerProfile?.displayString?.takeIf { it.isNotBlank() } ?: sellerName
     var storefrontRating by remember(sellerPubkey) { mutableStateOf<SellerReviewSummary?>(null) }
 
-    LaunchedEffect(sellerPubkey, sellerInventory, sellerInventoryLoaded, relayPool, eventRepository) {
-        if (sellerPubkey == null || !sellerInventoryLoaded) {
+    LaunchedEffect(sellerPubkey, sellerInventory, relayPool, eventRepository) {
+        if (sellerPubkey == null) {
             storefrontRating = null
             return@LaunchedEffect
         }
+        // Seller-level reviews are discoverable through their #p tag even when the
+        // storefront inventory is partial or empty. Do not gate this lookup on EOSE quorum.
         storefrontRating = try {
             withContext(Dispatchers.IO) {
                 MarketplaceReviewRepository(relayPool, eventRepository)
