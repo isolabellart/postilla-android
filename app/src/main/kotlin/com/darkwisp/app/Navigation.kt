@@ -1116,7 +1116,7 @@ fun WispNavHost(
                     // Preview events may live only in MarketplaceViewModel's cache.
                     // Hydrate the shared repository before entering detail/editor routes.
                     feedViewModel.eventRepo.cacheEvent(event)
-                    navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}")
+                    navController.navigate(marketplaceAddressRoute(event))
                 },
                 onCreateListing = { navController.navigate("marketplace/edit") },
                 sellerPubkey = sellerPubkey,
@@ -1188,6 +1188,7 @@ fun WispNavHost(
                 navArgument("author") { type = NavType.StringType },
                 navArgument("dTag") { type = NavType.StringType },
                 navArgument("eventId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("kind") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("relays") {
                     type = NavType.StringType
                     nullable = true
@@ -1967,7 +1968,7 @@ fun WispNavHost(
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
                         onMarketplaceListingClick = { event ->
-                            navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}")
+                            navController.navigate(marketplaceAddressRoute(event))
                         },
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
@@ -3511,7 +3512,7 @@ fun WispNavHost(
                 onToggleFollow = { pubkey -> feedViewModel.toggleFollow(pubkey) },
                 onBlockUser = { pubkey -> feedViewModel.blockUser(pubkey) },
                 translationRepo = feedViewModel.translationRepo,
-                 onMarketplaceListingClick = { event -> navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}") },
+                 onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 priceTracker = marketplaceWatchlistPriceTracker
             )
         }
