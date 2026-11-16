@@ -9,6 +9,7 @@
 
     <!-- Drawer Menu -->
     <string name="drawer_my_profile">我的资料</string>
+    <string name="drawer_my_storefront">我的店铺</string>
     <string name="drawer_feeds">动态</string>
     <string name="drawer_lists">列表</string>
     <string name="drawer_drafts">草稿 &amp; 定时</string>
@@ -786,6 +787,8 @@
     <string name="drawer_set_up_wallet">设置钱包</string>
     <string name="marketplace_storefront_sold">已售</string>
     <string name="marketplace_storefront_rating">评分</string>
+    <string name="marketplace_storefront_reviews">%1$d 条评价</string>
+    <string name="marketplace_storefront_no_reviews">暂无评价</string>
     <string name="marketplace_storefront_since">始于</string>
 
     <!-- Wallet settings and presentation localization -->
