@@ -11,6 +11,7 @@ on:
       - "feature/postilla-visual-identity"
       - "rebrand/postilla-public-identity"
       - "feature/postilla-commerce-on-rebrand"
+      - "fix/postilla-repost-indicator-storefront-header"
     paths:
       - "app/**"
       - "gradle/**"

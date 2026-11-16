@@ -149,6 +149,16 @@ fun MarketplaceScreen(
     val categories by viewModel.availableCategories.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val sellerProfileVersion by remember(eventRepository, sellerPubkey) {
+        eventRepository.profileVersionFor(sellerPubkey.orEmpty())
+    }.collectAsState(initial = 0)
+    val sellerProfile = remember(eventRepository, sellerPubkey, sellerProfileVersion) {
+        sellerPubkey?.let { eventRepository.getProfileData(it) }
+    }
+    LaunchedEffect(sellerPubkey) {
+        sellerPubkey?.let { eventRepository.requestProfileIfMissing(it) }
+    }
+    val storefrontDisplayName = sellerProfile?.displayString?.takeIf { it.isNotBlank() } ?: sellerName
 
     LaunchedEffect(selectedScope, followedPubkeys, userPubkey, sellerPubkey, relayListRepository) {
         viewModel.load(selectedScope, relayPool, eventRepository, followedPubkeys, userPubkey, relayListRepository, sellerPubkey)
@@ -252,7 +262,7 @@ fun MarketplaceScreen(
                         Icon(Icons.Outlined.Storefront, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            if (sellerPubkey != null) sellerName?.takeIf { it.isNotBlank() }?.let {
+                            if (sellerPubkey != null) storefrontDisplayName?.takeIf { it.isNotBlank() }?.let {
                                 stringResource(R.string.marketplace_storefront_title, it)
                             } ?: stringResource(R.string.marketplace_storefront)
                             else stringResource(R.string.marketplace_title)
@@ -292,6 +302,53 @@ fun MarketplaceScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
+            if (sellerPubkey != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(164.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(126.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        val bannerUrl = sellerProfile?.banner
+                        if (!bannerUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = bannerUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                Icons.Outlined.Storefront,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                                modifier = Modifier.align(Alignment.Center).size(38.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 4.dp
+                    ) {
+                        ProfilePicture(
+                            url = sellerProfile?.picture,
+                            modifier = Modifier.padding(4.dp),
+                            size = 68
+                        )
+                    }
+                }
+            }
             if (loading && listings.isNotEmpty()) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
