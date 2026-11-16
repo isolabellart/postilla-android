@@ -60,7 +60,7 @@ The workflow performs the following checks and actions:
 3. Builds the minified release APK with `assembleRelease`.
 4. Verifies the package ID, version name, version code, APK signature, and permanent certificate fingerprint.
 5. Uploads the signed APK as a GitHub Actions artifact.
-6. Creates a GitHub Release and attaches the signed APK. The default is a stable release; the `prerelease` input can explicitly request a pre-release.
+6. Creates a GitHub Release and attaches the signed APK. Creates stable releases only. Publishing a stable GitHub Release triggers the Zapstore publishing workflow; pre-release testing remains in the separate staging workflow.
 
 The staging workflow is separate. It runs unit tests, builds the signed staging APK, checks its staging package ID and certificate, and uploads it as a workflow artifact. Install and test a staging build on a real device before publishing a new stable version.
 
@@ -69,8 +69,7 @@ To dispatch the release workflow with GitHub CLI, from a checkout authenticated 
 ```bash
 gh workflow run dark-wisp-enhanced-release.yml \
   --ref release/dark-wisp-enhanced \
-  -f release_tag=v1.0.11 \
-  -f prerelease=false
+  -f release_tag=v1.0.11
 ```
 
 Replace the example tag with the exact new version being released. The workflow file must be present on the selected ref. A tag must not already exist.
@@ -84,7 +83,7 @@ For every new release:
 3. Update the English and Italian release-note text embedded in the release workflow so it describes the actual version and features.
 4. Commit the changes to `release/dark-wisp-enhanced`.
 5. Run staging validation, install the APK on a device, and verify the features being released.
-6. Dispatch the release workflow with a new tag. Confirm the resulting GitHub Release is stable (not marked as a pre-release) unless a pre-release was intentional.
+6. Dispatch the release workflow with a new tag. The workflow always creates a stable GitHub Release, which then triggers the automatic Zapstore publication.
 
 Do not reuse a published version code or tag. Keep the Postilla application ID, keystore, alias, and certificate fingerprint unchanged across all updates in this release line.
 

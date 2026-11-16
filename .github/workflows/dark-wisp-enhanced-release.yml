@@ -8,11 +8,6 @@ on:
         description: Optional release tag (defaults to the Gradle versionName)
         required: false
         type: string
-      prerelease:
-        description: Publish as a GitHub pre-release
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -178,7 +173,6 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
-          PRERELEASE_INPUT: ${{ inputs.prerelease }}
         run: |
           VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$VERSION_NAME"
@@ -189,15 +183,7 @@ jobs:
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # Manual dispatch creates a normal GitHub Release by default.
-          # A pre-release is created only when the input explicitly requests it.
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          elif [[ "$PRERELEASE_INPUT" == "true" ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+          # This release path creates stable releases only; stable publication is mirrored to Zapstore.
 
       - name: Prepare Zapstore-compatible APK filename
         if: steps.signing.outputs.ready == 'true'
@@ -224,7 +210,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
         shell: bash
         run: |
           APK="app/build/outputs/apk/release/Postilla-${RELEASE_TAG}.apk"
@@ -288,9 +273,7 @@ jobs:
           test -n "$VERSION_NAME"
           test -n "$VERSION_CODE"
           sed -i "s|@@VERSION_NAME@@|$VERSION_NAME|g; s|@@VERSION_CODE@@|$VERSION_CODE|g; s|@@RELEASE_TAG@@|$RELEASE_TAG|g; s|@@APK_SHA256@@|$APK_SHA256|g" "$NOTES"
-          args=()
-          [[ "$IS_PRERELEASE" == "true" ]] && args+=(--prerelease)
           gh release create "$RELEASE_TAG" "$APK#Postilla-${RELEASE_TAG}.apk" \
             --title "Postilla ${RELEASE_TAG}" \
             --target "$GITHUB_SHA" \
-            --notes-file "$NOTES" "${args[@]}"
+            --notes-file "$NOTES"
