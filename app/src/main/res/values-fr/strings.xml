@@ -787,4 +787,45 @@
     <string name="marketplace_storefront_sold">Vendus</string>
     <string name="marketplace_storefront_rating">Note</string>
     <string name="marketplace_storefront_since">Depuis</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">Paramètres</string>
+    <string name="wallet_lightning_address_title">Adresse Lightning</string>
+    <string name="wallet_copy_address">Copier l’adresse</string>
+    <string name="wallet_qr_code">Code QR</string>
+    <string name="wallet_change">Modifier</string>
+    <string name="wallet_remove_lightning_address">Supprimer l’adresse Lightning</string>
+    <string name="wallet_setup_lightning_address">Configurer l’adresse Lightning</string>
+    <string name="wallet_connection">Connexion du portefeuille</string>
+    <string name="wallet_info">Informations du portefeuille</string>
+    <string name="wallet_display">Affichage</string>
+    <string name="wallet_balance_unit">Unité du solde</string>
+    <string name="wallet_security">Sécurité</string>
+    <string name="wallet_backup_recovery_phrase">Sauvegarder la phrase de récupération</string>
+    <string name="wallet_backup_to_nostr_relays">Sauvegarder sur les relais Nostr</string>
+    <string name="wallet_delete_wallet_backup_relays">Supprimer la sauvegarde du portefeuille des relais</string>
+    <string name="wallet_custody_disclaimer">IMPORTANT : Postilla ne détient jamais les fonds des utilisateurs. Vous gérez votre propre portefeuille et êtes responsable de sa bonne sécurisation.</string>
+    <string name="wallet_withdraw_onchain">Retrait on-chain</string>
+    <string name="wallet_withdraw_onchain_description">Tout envoyer vers une adresse Bitcoin</string>
+    <string name="wallet_delete_connection_backup_relays">Supprimer la sauvegarde de connexion des relais</string>
+    <string name="wallet_delete_wallet">Supprimer le portefeuille</string>
+    <string name="wallet_built_on_spark">Construit sur Spark</string>
+    <string name="wallet_wallet_id">ID du portefeuille</string>
+    <string name="wallet_network">Réseau</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">Version du SDK</string>
+    <string name="wallet_service_pubkey">Clé publique du service</string>
+    <string name="wallet_client_pubkey">Clé publique du client</string>
+    <string name="wallet_relay">Relais</string>
+    <string name="wallet_encryption">Chiffrement</string>
+    <string name="wallet_supported_methods">Méthodes prises en charge</string>
+    <string name="wallet_collapse">Réduire</string>
+    <string name="wallet_expand">Développer</string>
+    <string name="wallet_copy">Copier</string>
+    <string name="wallet_backup_deleted_toast">Sauvegarde supprimée des relais</string>
+    <string name="wallet_delete_backup_title">Supprimer la sauvegarde des relais</string>
+    <string name="wallet_delete_backup_body">Supprimer de vos relais la sauvegarde du portefeuille ? Vous pourrez vous reconnecter ou restaurer le portefeuille à tout moment avec votre phrase de récupération, mais elle ne sera plus disponible depuis les relais sur un autre appareil.</string>
+    <string name="wallet_delete">Supprimer</string>
+    <string name="wallet_cancel">Annuler</string>
+    <string name="wallet_deleting">Suppression…</string>
 </resources>
