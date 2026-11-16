@@ -144,6 +144,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
@@ -1291,6 +1292,9 @@ private fun WalletHomeContent(
     val fiatCurrency by fiatPrefs.currency.collectAsState()
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
     val accent = WispThemeColors.zapColor
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val balanceTextColor = if (isDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface
+    val balanceMutedColor = if (isDarkTheme) Color(0xFFBDBDBD) else MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(
         modifier = modifier
@@ -1474,7 +1478,7 @@ private fun WalletHomeContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 112.dp)
-                .background(Color(0xFF242424), RoundedCornerShape(24.dp))
+                .background(if (isDarkTheme) Color(0xFF242424) else Color.Transparent, RoundedCornerShape(24.dp))
                 .clickable {
                     balanceDisplay = balanceDisplay.next()
                     WalletBalanceDisplayMode.write(prefs, pubkey, balanceDisplay)
@@ -1486,13 +1490,13 @@ private fun WalletHomeContent(
                     Text(
                         "* * * * *",
                         style = MaterialTheme.typography.displayLarge,
-                        color = Color(0xFFBDBDBD)
+                        color = balanceMutedColor
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         stringResource(R.string.wallet_tap_to_reveal),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFBDBDBD)
+                        color = balanceMutedColor
                     )
                 }
                 WalletBalanceDisplayMode.FIAT -> {
@@ -1502,7 +1506,7 @@ private fun WalletHomeContent(
                             fiat,
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = balanceTextColor
                         )
                     } else {
                         // Exchange-rate cache hasn't loaded yet — fall
@@ -1512,13 +1516,13 @@ private fun WalletHomeContent(
                             "%,d".format(balanceSats),
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = balanceTextColor
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
                             stringResource(R.string.wallet_sats),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFBDBDBD)
+                            color = balanceMutedColor
                         )
                     }
                 }
@@ -1532,7 +1536,7 @@ private fun WalletHomeContent(
                             AmountFormatter.formatShort(balanceSats, context),
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = balanceTextColor
                         )
                     } else {
                         // BalanceUnit selects between three sat denominations
@@ -1545,13 +1549,13 @@ private fun WalletHomeContent(
                                     "%,d".format(balanceSats),
                                     style = MaterialTheme.typography.displayLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = balanceTextColor
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     stringResource(R.string.wallet_sats),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFFBDBDBD)
+                                    color = balanceMutedColor
                                 )
                             }
                             BalanceUnit.BITCOIN -> {
@@ -1563,14 +1567,14 @@ private fun WalletHomeContent(
                                         "₿",
                                         style = MaterialTheme.typography.displayLarge,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFBDBDBD)
+                                        color = balanceMutedColor
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         "%,d".format(balanceSats),
                                         style = MaterialTheme.typography.displayLarge,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = balanceTextColor
                                     )
                                 }
                             }
@@ -1587,7 +1591,7 @@ private fun WalletHomeContent(
                                         "%,d".format(balanceSats),
                                         style = MaterialTheme.typography.displayLarge,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = balanceTextColor
                                     )
                                 }
                             }
@@ -1610,9 +1614,9 @@ private fun WalletHomeContent(
                 modifier = Modifier.clickable {
                     clipboard.setPrimaryClip(ClipData.newPlainText("address", lightningAddress))
                 },
-                color = Color(0xFF3A2A18),
+                color = if (isDarkTheme) Color(0xFF3A2A18) else Color.Transparent,
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, accent.copy(alpha = 0.7f))
+                border = BorderStroke(1.dp, if (isDarkTheme) accent.copy(alpha = 0.7f) else Color.Transparent)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1628,7 +1632,7 @@ private fun WalletHomeContent(
                     Text(
                         lightningAddress,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White,
+                        color = if (isDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1668,18 +1672,22 @@ private fun WalletHomeContent(
         Spacer(Modifier.height(20.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             WalletActionButton(
                 icon = Icons.Default.ArrowUpward,
                 label = stringResource(R.string.wallet_send),
                 tint = accent,
+                highlighted = true,
+                modifier = Modifier.weight(1f),
                 onClick = onSend
             )
             WalletActionButton(
                 icon = Icons.Default.ArrowDownward,
                 label = stringResource(R.string.wallet_receive),
                 tint = accent,
+                highlighted = false,
+                modifier = Modifier.weight(1f),
                 onClick = onReceive
             )
         }
@@ -1765,29 +1773,39 @@ private fun WalletActionButton(
     icon: ImageVector,
     label: String,
     tint: Color,
+    highlighted: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .background(tint, CircleShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+    Surface(
+        modifier = modifier
+            .height(56.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = if (highlighted) tint else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (highlighted) Color.White else MaterialTheme.colorScheme.onSurface,
+        border = if (highlighted) null else BorderStroke(1.dp, tint.copy(alpha = 0.8f)),
+        shadowElevation = if (highlighted) 3.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 icon,
-                contentDescription = label,
-                modifier = Modifier.size(28.dp),
-                tint = Color.White
+                contentDescription = null,
+                modifier = Modifier.size(21.dp),
+                tint = if (highlighted) Color.White else tint
+            )
+            Spacer(Modifier.width(9.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (highlighted) Color.White else MaterialTheme.colorScheme.onSurface
             )
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
