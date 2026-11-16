@@ -506,7 +506,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     while (true) {
                         val completedCount = eoseTracker.completedCount()
                         val sentSellerRelayTargets = sellerRelayTargets.filter(eoseTracker::wasSent)
-                        val sellerRelaysCompleted = sentSellerRelayTargets.all(eoseTracker::hasCompleted)
+                        // One or two seller outbox relays are enough to establish a useful
+                        // response quorum; requiring every advertised relay made one dead
+                        // endpoint hold the entire storefront open until timeout.
+                        val requiredSellerResponses = minOf(2, sentSellerRelayTargets.size)
+                        val sellerRelaysCompleted =
+                            sentSellerRelayTargets.count(eoseTracker::hasCompleted) >= requiredSellerResponses
                         if (eoseTracker.targetCount() == 0) break
                         if (completedCount >= eoseTracker.minimumResponseCount() && sellerRelaysCompleted) {
                             if (drainStartedAt == 0L) {
