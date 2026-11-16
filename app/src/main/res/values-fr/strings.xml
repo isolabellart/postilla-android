@@ -902,4 +902,5 @@
     <string name="wallet_default_subtitle">Dérivé de votre clé Nostr : aucune sauvegarde supplémentaire n’est nécessaire.</string>
     <string name="wallet_switch_wallet_body">Déconnectez ce portefeuille pour utiliser votre portefeuille par défaut ou en restaurer un autre. Vos fonds restent en sécurité : vous pouvez reconnecter ce portefeuille à tout moment avec sa phrase de récupération.</string>
     <string name="wallet_default_seed_info">Ce portefeuille est dérivé de votre clé Nostr ; la phrase ci-dessous sert uniquement à l’exporter vers d’autres applications. Vous n’avez pas besoin de la sauvegarder : votre nsec constitue la sauvegarde.</string>
+    <string name="marketplace_search_hint">Rechercher</string>
 </resources>

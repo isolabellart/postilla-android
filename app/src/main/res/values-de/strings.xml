@@ -902,4 +902,5 @@
     <string name="wallet_default_subtitle">Von deinem Nostr-Schlüssel abgeleitet – kein zusätzliches Backup erforderlich.</string>
     <string name="wallet_switch_wallet_body">Trenne dieses Wallet, um dein Standard-Wallet zu verwenden oder ein anderes wiederherzustellen. Deine Guthaben bleiben sicher: Du kannst dieses Wallet jederzeit mit deiner Wiederherstellungsphrase erneut verbinden.</string>
     <string name="wallet_default_seed_info">Dieses Wallet wird aus deinem Nostr-Schlüssel abgeleitet. Die Phrase unten dient daher nur zum Export in andere Wallet-Apps. Du musst sie nicht sichern – dein nsec ist das Backup.</string>
+    <string name="marketplace_search_hint">Suchen</string>
 </resources>

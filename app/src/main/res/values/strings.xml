@@ -1061,7 +1061,7 @@
     <string name="marketplace_sats_estimate">≈ %1$s sats via Lightning at the current reference rate; seller confirms final amount</string>
     <string name="marketplace_sats_unavailable">Lightning estimate unavailable. The final amount depends on the seller\'s invoice.</string>
 
-    <string name="marketplace_search_hint">Search products, makers, or paste an naddr</string>
+        <string name="marketplace_search_hint">Search</string>
     <string name="marketplace_naddr_loading">Looking up this listing across Nostr relays…</string>
     <string name="marketplace_naddr_invalid">This naddr is invalid or incomplete.</string>
     <string name="marketplace_naddr_unsupported">This naddr does not identify a supported Marketplace listing.</string>
