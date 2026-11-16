@@ -6,10 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Exact published GitHub release tag to publish (for example v1.0.17)"
+        description: "Exact published stable GitHub release tag to publish (for example v1.0.11)"
         required: true
         type: string
-        default: "v1.0.17"
 
 permissions:
   contents: read
@@ -76,6 +75,13 @@ jobs:
           echo "Zapstore source release: $RELEASE_URL"
           echo "Release tag: $RELEASE_TAG"
           echo "Published at: $PUBLISHED_AT"
+
+          EXPECTED_APK_NAME="Postilla-${RELEASE_TAG}.apk"
+          if ! jq -e --arg expected "$EXPECTED_APK_NAME" '.assets[]? | select(.name == $expected)' <<< "$RELEASE_DATA" >/dev/null; then
+            echo "::error::The GitHub release is missing the exact Zapstore asset: $EXPECTED_APK_NAME"
+            exit 1
+          fi
+          echo "Verified Postilla release asset: $EXPECTED_APK_NAME"
 
           # zsp normally selects the latest matching release. Narrow the
           # temporary config to this exact tag so a manual run cannot publish
