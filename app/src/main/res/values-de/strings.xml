@@ -787,4 +787,45 @@
     <string name="marketplace_storefront_sold">Verkauft</string>
     <string name="marketplace_storefront_rating">Bewertung</string>
     <string name="marketplace_storefront_since">Seit</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">Einstellungen</string>
+    <string name="wallet_lightning_address_title">Lightning-Adresse</string>
+    <string name="wallet_copy_address">Adresse kopieren</string>
+    <string name="wallet_qr_code">QR-Code</string>
+    <string name="wallet_change">Ändern</string>
+    <string name="wallet_remove_lightning_address">Lightning-Adresse entfernen</string>
+    <string name="wallet_setup_lightning_address">Lightning-Adresse einrichten</string>
+    <string name="wallet_connection">Wallet-Verbindung</string>
+    <string name="wallet_info">Wallet-Informationen</string>
+    <string name="wallet_display">Anzeige</string>
+    <string name="wallet_balance_unit">Guthabeneinheit</string>
+    <string name="wallet_security">Sicherheit</string>
+    <string name="wallet_backup_recovery_phrase">Wiederherstellungsphrase sichern</string>
+    <string name="wallet_backup_to_nostr_relays">Auf Nostr-Relays sichern</string>
+    <string name="wallet_delete_wallet_backup_relays">Wallet-Backup von Relays löschen</string>
+    <string name="wallet_custody_disclaimer">WICHTIG: Postilla verwahrt niemals Guthaben von Nutzern. Du verwaltest deine eigene Wallet und bist für deren sichere Aufbewahrung verantwortlich.</string>
+    <string name="wallet_withdraw_onchain">On-Chain-Auszahlung</string>
+    <string name="wallet_withdraw_onchain_description">Alles an eine Bitcoin-Adresse senden</string>
+    <string name="wallet_delete_connection_backup_relays">Verbindungs-Backup von Relays löschen</string>
+    <string name="wallet_delete_wallet">Wallet löschen</string>
+    <string name="wallet_built_on_spark">Mit Spark entwickelt</string>
+    <string name="wallet_wallet_id">Wallet-ID</string>
+    <string name="wallet_network">Netzwerk</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">SDK-Version</string>
+    <string name="wallet_service_pubkey">Öffentlicher Serviceschlüssel</string>
+    <string name="wallet_client_pubkey">Öffentlicher Clientschlüssel</string>
+    <string name="wallet_relay">Relay</string>
+    <string name="wallet_encryption">Verschlüsselung</string>
+    <string name="wallet_supported_methods">Unterstützte Methoden</string>
+    <string name="wallet_collapse">Einklappen</string>
+    <string name="wallet_expand">Ausklappen</string>
+    <string name="wallet_copy">Kopieren</string>
+    <string name="wallet_backup_deleted_toast">Backup von Relays gelöscht</string>
+    <string name="wallet_delete_backup_title">Backup von Relays löschen</string>
+    <string name="wallet_delete_backup_body">Das gespeicherte Wallet-Backup von deinen Relays entfernen? Du kannst die Wallet jederzeit erneut verbinden oder mit deiner Wiederherstellungsphrase wiederherstellen. Auf einem anderen Gerät ist es dann jedoch nicht mehr über Relays verfügbar.</string>
+    <string name="wallet_delete">Löschen</string>
+    <string name="wallet_cancel">Abbrechen</string>
+    <string name="wallet_deleting">Wird gelöscht…</string>
 </resources>
