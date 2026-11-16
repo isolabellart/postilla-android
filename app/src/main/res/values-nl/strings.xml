@@ -879,4 +879,23 @@
     <string name="wallet_switch_wallet">Overschakelen naar een andere wallet</string>
     <string name="wallet_disconnect_section">Wallet ontkoppelen</string>
     <string name="wallet_switch_wallet_caption">Je standaardwallet is gekoppeld aan je sleutel en kan altijd worden hersteld. Overschakelen verbindt een andere wallet.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">Verbind een Lightning-wallet om sats te versturen en te ontvangen. Plak een NWC-verbindingsreeks van je walletprovider.</string>
+    <string name="wallet_recommended">Aanbevolen wallets</string>
+    <string name="wallet_lightning_address_setup">Je Lightning-adres instellen</string>
+    <string name="wallet_get_username">Een username@breez.tips-adres krijgen</string>
+    <string name="wallet_spark_subtitle">Zelfbeheer, ingebouwd. Gebruik je standaardwallet of herstel deze met de seedzin of via relays.</string>
+    <string name="wallet_nwc_restore_subtitle">Versleutelde NWC-back-up vanaf een ander apparaat</string>
+    <string name="wallet_receive_invoice_tab">Factuur</string>
+    <string name="wallet_share_address">Adres delen</string>
+    <string name="wallet_share">Delen</string>
+    <string name="wallet_powered_by">Mogelijk gemaakt door</string>
+    <string name="wallet_welcome_title">Beveiligd met je Nostr-sleutel</string>
+    <string name="wallet_welcome_body">Wordt hersteld op elk apparaat zodra je inlogt. Tik om ook je seedzin als back-up op te slaan.</string>
+    <string name="wallet_generate_invoice">Factuur genereren</string>
+    <string name="wallet_use_default">Mijn standaardwallet gebruiken</string>
+    <string name="wallet_default_subtitle">Afgeleid van je Nostr-sleutel — een extra back-up is niet nodig.</string>
+    <string name="wallet_switch_wallet_body">Ontkoppel deze wallet om je standaardwallet te gebruiken of een andere te herstellen. Je tegoed blijft veilig: je kunt deze wallet altijd opnieuw verbinden met de herstelzin.</string>
+    <string name="wallet_default_seed_info">Deze wallet is afgeleid van je Nostr-sleutel. De zin hieronder is daarom alleen bedoeld om naar andere wallet-apps te exporteren. Je hoeft deze niet te back-uppen: je nsec is de back-up.</string>
 </resources>
