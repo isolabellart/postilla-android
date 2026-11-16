@@ -439,19 +439,20 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                             if (sellerPubkey != null && event.pubkey != sellerPubkey) return@collect
                             if (sellerPubkey == null && selectedScope == MarketplaceScope.FOLLOWING && event.pubkey !in authors) return@collect
                             if (sellerPubkey == null && selectedScope == MarketplaceScope.MINE && event.pubkey != userPubkey) return@collect
-                            if (!eventRepository.isEventVisibleToUser(event)) return@collect
-
                             val dTag = Nip99.dTag(event)
-                            // NIP-99 recommends a title tag, but it is not a hard
-                            // validity requirement. Do not hide otherwise valid listings.
-                            if (dTag.isBlank() || Nip99.status(event) == "hidden") return@collect
-
-                            eventRepository.addEvent(event)
-                            eventRepository.requestProfileIfMissing(event.pubkey)
+                            if (dTag.isBlank()) return@collect
+                            // Track every matching relay result for pagination cursors, even
+                            // when hidden/muted. Only visible listings enter the user cache.
                             if (sellerPubkey != null) {
                                 sellerInitialEventsByRelay
                                     .computeIfAbsent(relayEvent.relayUrl) { ConcurrentHashMap() }[event.id] = event
                             }
+                            if (!eventRepository.isEventVisibleToUser(event) || Nip99.status(event) == "hidden") return@collect
+
+                            // NIP-99 recommends a title tag, but it is not a hard
+                            // validity requirement. Do not hide otherwise valid listings.
+                            eventRepository.addEvent(event)
+                            eventRepository.requestProfileIfMissing(event.pubkey)
 
                             val address = Nip99.addressTag(event)
                             val updated = synchronized(cacheLock) {
@@ -574,6 +575,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
     private data class SellerHistoryPage(
         val events: List<NostrEvent>,
+        val rawEvents: List<NostrEvent>,
         val completed: Boolean
     )
 
@@ -598,9 +600,8 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     if (!page.completed) return@async false
 
-                    var added = 0
+                    val added = page.rawEvents.count { seenIds.add(it.id) }
                     page.events.forEach { event ->
-                        if (seenIds.add(event.id)) added++
                         eventRepository.addEvent(event)
                         val address = Nip99.addressTag(event)
                         synchronized(cacheLock) {
@@ -610,13 +611,13 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                     }
-                    if (page.events.size < SELLER_PAGE_SIZE) {
+                    if (page.rawEvents.size < SELLER_PAGE_SIZE) {
                         publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, sellerPubkey)
                         return@async true
                     }
                     if (added == 0) return@async false
 
-                    val nextUntil = page.events.minOfOrNull { it.created_at } ?: return@async true
+                    val nextUntil = page.rawEvents.minOfOrNull { it.created_at } ?: return@async true
                     if (nextUntil >= until) return@async false
                     until = nextUntil
                     publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, sellerPubkey)
@@ -645,6 +646,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
             )
         )
         val pageEvents = ConcurrentHashMap<String, NostrEvent>()
+        val rawPageEvents = ConcurrentHashMap<String, NostrEvent>()
         val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
             relayPool.relayEvents
                 .filter { it.subscriptionId == subId && it.relayUrl == relayUrl }
@@ -653,11 +655,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     if (
                         event.pubkey == sellerPubkey &&
                         Nip99.isMarketplaceKind(event.kind) &&
-                        Nip99.dTag(event).isNotBlank() &&
-                        Nip99.status(event) != "hidden" &&
-                        eventRepository.isEventVisibleToUser(event)
+                        Nip99.dTag(event).isNotBlank()
                     ) {
-                        pageEvents.putIfAbsent(event.id, event)
+                        rawPageEvents.putIfAbsent(event.id, event)
+                        if (Nip99.status(event) != "hidden" && eventRepository.isEventVisibleToUser(event)) {
+                            pageEvents.putIfAbsent(event.id, event)
+                        }
                     }
                 }
         }
@@ -670,12 +673,13 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
             val sent = relayPool.sendToRelayOrEphemeral(
                 relayUrl, request, skipBadCheck = true, autoReconnect = true
             )
-            if (!sent) return@coroutineScope SellerHistoryPage(emptyList(), false)
+            if (!sent) return@coroutineScope SellerHistoryPage(emptyList(), emptyList(), false)
             val completed = withTimeoutOrNull(SELLER_PAGE_EOSE_TIMEOUT_MS) {
                 eoseWaiter.await()
                 true
             } == true
             val events = pageEvents.values.sortedByDescending { it.created_at }
+            val rawEvents = rawPageEvents.values.sortedByDescending { it.created_at }
             if (completed) {
                 events.forEach { event ->
                     eventRepository.addEvent(event)
@@ -689,7 +693,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, sellerPubkey)
             }
-            SellerHistoryPage(events, completed)
+            SellerHistoryPage(events, rawEvents, completed)
         } finally {
             eoseWaiter.cancelAndJoin()
             eventCollector.cancelAndJoin()
