@@ -951,4 +951,23 @@
     <string name="wallet_switch_wallet">Passa a un altro portafoglio</string>
     <string name="wallet_disconnect_section">Disconnetti portafoglio</string>
     <string name="wallet_switch_wallet_caption">Il tuo portafoglio predefinito è collegato alla tua chiave e può sempre essere ripristinato. Passando a un altro, collegherai un portafoglio diverso.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">Collega un portafoglio Lightning per inviare e ricevere sats. Incolla una stringa di connessione NWC fornita dal tuo wallet.</string>
+    <string name="wallet_recommended">Portafogli consigliati</string>
+    <string name="wallet_lightning_address_setup">Configura il tuo indirizzo Lightning</string>
+    <string name="wallet_get_username">Ottieni un indirizzo username@breez.tips</string>
+    <string name="wallet_spark_subtitle">Custodia autonoma integrata. Usa il portafoglio predefinito o ripristinalo da seed o relay.</string>
+    <string name="wallet_nwc_restore_subtitle">Backup NWC cifrato da un altro dispositivo</string>
+    <string name="wallet_receive_invoice_tab">Fattura</string>
+    <string name="wallet_share_address">Condividi indirizzo</string>
+    <string name="wallet_share">Condividi</string>
+    <string name="wallet_powered_by">Offerto da</string>
+    <string name="wallet_welcome_title">Protetto dalla tua chiave Nostr</string>
+    <string name="wallet_welcome_body">Si ripristina su qualsiasi dispositivo quando accedi. Tocca per salvare anche la frase seed come backup.</string>
+    <string name="wallet_generate_invoice">Genera fattura</string>
+    <string name="wallet_use_default">Usa il mio portafoglio predefinito</string>
+    <string name="wallet_default_subtitle">Derivato dalla tua chiave Nostr: non serve un backup aggiuntivo.</string>
+    <string name="wallet_switch_wallet_body">Disconnetti questo portafoglio per usare quello predefinito o ripristinarne un altro. I fondi restano al sicuro: puoi riconnettere questo portafoglio in qualsiasi momento inserendo la frase di recupero.</string>
+    <string name="wallet_default_seed_info">Questo portafoglio deriva dalla tua chiave Nostr, quindi la frase qui sotto serve solo per esportarlo in altre app. Non devi farne il backup: il tuo nsec è già il backup.</string>
 </resources>
