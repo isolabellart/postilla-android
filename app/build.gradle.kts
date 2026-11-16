@@ -26,7 +26,7 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
+        versionCode = 18
         versionName = "1.0.18"
         resValue("string", "app_name", "Postilla")
 
