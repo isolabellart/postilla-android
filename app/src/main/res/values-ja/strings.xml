@@ -783,4 +783,7 @@
     <string name="marketplace_dm_relay_required">この出品者はNIP-17 DMリレー一覧（kind 10050）を公開していません。プライバシー保護のため、Postillaは代替リレーへ送信しません。</string>
     <string name="marketplace_seller_label">出品者</string>
     <string name="drawer_set_up_wallet">ウォレットを設定</string>
+    <string name="marketplace_storefront_sold">販売済み</string>
+    <string name="marketplace_storefront_rating">評価</string>
+    <string name="marketplace_storefront_since">初出品</string>
 </resources>
