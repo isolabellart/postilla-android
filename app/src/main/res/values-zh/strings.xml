@@ -784,4 +784,7 @@
     <string name="marketplace_dm_relay_required">卖家尚未发布 NIP-17 DM relay 列表（kind 10050）。为保护隐私，Postilla 不会使用备用 relay。</string>
     <string name="marketplace_seller_label">卖家</string>
     <string name="drawer_set_up_wallet">设置钱包</string>
+    <string name="marketplace_storefront_sold">已售</string>
+    <string name="marketplace_storefront_rating">评分</string>
+    <string name="marketplace_storefront_since">始于</string>
 </resources>
