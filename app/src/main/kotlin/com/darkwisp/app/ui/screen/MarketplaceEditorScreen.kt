@@ -76,46 +76,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
 
 private val MARKETPLACE_CURRENCY_CODES = MarketplaceCurrencies.ALL
-
-private fun buildLegacyMarketplaceContent(
-    title: String,
-    summary: String,
-    description: String,
-    amount: String,
-    currency: String,
-    location: String,
-    categories: List<String>,
-    images: List<String>,
-    status: String,
-    stock: Int?,
-    publishedAt: String
-): String = buildJsonObject {
-    put("name", JsonPrimitive(title))
-    put("summary", JsonPrimitive(summary))
-    put("description", JsonPrimitive(description))
-    if (amount.isNotBlank()) {
-        put("price", buildJsonObject {
-            put("amount", JsonPrimitive(amount))
-            if (currency.isNotBlank()) put("currency", JsonPrimitive(currency))
-        })
-        if (currency.isNotBlank()) put("currency", JsonPrimitive(currency))
-    }
-    if (location.isNotBlank()) put("location", JsonPrimitive(location))
-    put("categories", buildJsonArray {
-        categories.forEach { add(JsonPrimitive(it)) }
-    })
-    put("images", buildJsonArray {
-        images.forEach { add(JsonPrimitive(it)) }
-    })
-    put("status", JsonPrimitive(status))
-    stock?.let { put("quantity", JsonPrimitive(it)) }
-    put("published_at", JsonPrimitive(publishedAt))
-}.toString()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -467,7 +429,7 @@ fun MarketplaceEditorScreen(
                                     tags
                                 }
                                 val eventContent = if (eventKind == Nip99.KIND_LEGACY_PRODUCT) {
-                                    buildLegacyMarketplaceContent(
+                                    Nip99.buildLegacyProductContent(
                                         title = title.trim(),
                                         summary = summary.trim(),
                                         description = description.trim(),
