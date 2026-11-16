@@ -76,8 +76,46 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 
 private val MARKETPLACE_CURRENCY_CODES = MarketplaceCurrencies.ALL
+
+private fun buildLegacyMarketplaceContent(
+    title: String,
+    summary: String,
+    description: String,
+    amount: String,
+    currency: String,
+    location: String,
+    categories: List<String>,
+    images: List<String>,
+    status: String,
+    stock: Int?,
+    publishedAt: String
+): String = buildJsonObject {
+    put("name", JsonPrimitive(title))
+    put("summary", JsonPrimitive(summary))
+    put("description", JsonPrimitive(description))
+    if (amount.isNotBlank()) {
+        put("price", buildJsonObject {
+            put("amount", JsonPrimitive(amount))
+            if (currency.isNotBlank()) put("currency", JsonPrimitive(currency))
+        })
+        if (currency.isNotBlank()) put("currency", JsonPrimitive(currency))
+    }
+    if (location.isNotBlank()) put("location", JsonPrimitive(location))
+    put("categories", buildJsonArray {
+        categories.forEach { add(JsonPrimitive(it)) }
+    })
+    put("images", buildJsonArray {
+        images.forEach { add(JsonPrimitive(it)) }
+    })
+    put("status", JsonPrimitive(status))
+    stock?.let { put("quantity", JsonPrimitive(it)) }
+    put("published_at", JsonPrimitive(publishedAt))
+}.toString()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -416,8 +454,37 @@ fun MarketplaceEditorScreen(
                                     status = status,
                                     stock = declaredStock
                                 )
+                                // Keep legacy kind-30018 products addressable under their
+                                // original coordinate when edited; modern listings use NIP-99.
+                                val eventKind = if (existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT) {
+                                    Nip99.KIND_LEGACY_PRODUCT
+                                } else {
+                                    Nip99.KIND_LISTING
+                                }
+                                val eventTags = if (eventKind == Nip99.KIND_LEGACY_PRODUCT) {
+                                    listOf(listOf("d", dTag))
+                                } else {
+                                    tags
+                                }
+                                val eventContent = if (eventKind == Nip99.KIND_LEGACY_PRODUCT) {
+                                    buildLegacyMarketplaceContent(
+                                        title = title.trim(),
+                                        summary = summary.trim(),
+                                        description = description.trim(),
+                                        amount = amount.trim(),
+                                        currency = currency.trim(),
+                                        location = location.trim(),
+                                        categories = category.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                        images = images,
+                                        status = status,
+                                        stock = declaredStock,
+                                        publishedAt = publishedAt
+                                    )
+                                } else {
+                                    description.trim()
+                                }
                                 val latestKnownCreatedAt = eventRepository.findAddressableEvent(
-                                    kind = Nip99.KIND_LISTING,
+                                    kind = eventKind,
                                     author = signer.pubkeyHex,
                                     dTag = dTag
                                 )?.created_at
@@ -430,9 +497,9 @@ fun MarketplaceEditorScreen(
                                     previousCreatedAt = previousCreatedAt
                                 )
                                 val event = signer.signEvent(
-                                    kind = Nip99.KIND_LISTING,
-                                    content = description.trim(),
-                                    tags = tags,
+                                    kind = eventKind,
+                                    content = eventContent,
+                                    tags = eventTags,
                                     createdAt = createdAt
                                 )
                                 publishMarketplaceEvent(relayPool, event, context)
@@ -495,7 +562,7 @@ fun MarketplaceEditorScreen(
                                     kind = Nip09.KIND_DELETION,
                                     content = context.getString(R.string.marketplace_withdrawal_reason),
                                     tags = Nip09.buildAddressableDeletionTags(
-                                        kind = Nip99.KIND_LISTING,
+                                        kind = existingEvent.kind,
                                         pubkey = existingEvent.pubkey,
                                         dTag = listingDTag
                                     )
