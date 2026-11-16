@@ -1,3 +1,4 @@
+// Permanent Android update identity: keep this unchanged so existing installations receive Postilla updates.
 extra["baseApplicationId"] = "com.isolabellart.darkwispenhanced"
 extra["debugApplicationIdSuffix"] = ".debug"
 
