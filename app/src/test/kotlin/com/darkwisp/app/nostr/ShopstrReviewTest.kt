@@ -84,7 +84,7 @@ class ShopstrReviewTest {
         assertEquals(false, ShopstrReview.referencesSeller(event, seller, listOf("30402:$seller:item-one")))
     }
 
-    @Test fun `product coordinate mismatch is not rescued by seller p tag`() {
+    @Test fun `seller p tag remains a valid fallback without a matching product coordinate`() {
         val event = NostrEvent.createUnsigned(
             reviewer, ShopstrReview.KIND, "review",
             listOf(
@@ -94,7 +94,7 @@ class ShopstrReviewTest {
             ),
             10
         )
-        assertEquals(false, ShopstrReview.referencesSeller(event, seller))
+        assertEquals(true, ShopstrReview.referencesSeller(event, seller))
     }
 
     @Test fun `events for other sellers are excluded`() {
