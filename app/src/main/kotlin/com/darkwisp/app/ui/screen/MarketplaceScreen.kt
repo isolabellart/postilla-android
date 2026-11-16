@@ -251,9 +251,13 @@ fun MarketplaceScreen(
         }
     }
 
-    val storefrontSoldCount = remember(listings, sellerPubkey) {
-        listings.count { event ->
-            sellerPubkey != null && event.pubkey == sellerPubkey && Nip99.isSold(event)
+    val storefrontSoldCount = remember(listings, sellerPubkey, loading) {
+        if (loading && listings.isEmpty()) {
+            null
+        } else {
+            listings.count { event ->
+                sellerPubkey != null && event.pubkey == sellerPubkey && Nip99.isSold(event)
+            }
         }
     }
     val storefrontFirstListingYear = remember(listings, sellerPubkey) {
@@ -589,7 +593,7 @@ private fun StorefrontHeader(
 
 @Composable
 private fun StorefrontStatsStrip(
-    soldCount: Int,
+    soldCount: Int?,
     firstListingYear: String?,
     modifier: Modifier = Modifier
 ) {
@@ -608,7 +612,7 @@ private fun StorefrontStatsStrip(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(soldCount.toString(), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(soldCount?.toString() ?: "—", style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 Text(
                     stringResource(R.string.marketplace_storefront_sold),
                     style = MaterialTheme.typography.labelSmall,
