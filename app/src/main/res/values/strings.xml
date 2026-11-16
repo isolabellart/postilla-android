@@ -1133,7 +1133,7 @@
     <string name="wallet_copy">Copy</string>
     <string name="wallet_backup_deleted_toast">Backup deleted from relays</string>
     <string name="wallet_delete_backup_title">Delete backup from relays</string>
-    <string name="wallet_delete_backup_body">Remove the saved wallet backup from your relays? You can reconnect or restore from your recovery phrase anytime, but it won't be available from relays on another device.</string>
+    <string name="wallet_delete_backup_body">Remove the saved wallet backup from your relays? You can reconnect or restore from your recovery phrase anytime, but another device will no longer be able to access this backup through relays.</string>
     <string name="wallet_delete">Delete</string>
     <string name="wallet_cancel">Cancel</string>
     <string name="wallet_deleting">Deleting…</string>
