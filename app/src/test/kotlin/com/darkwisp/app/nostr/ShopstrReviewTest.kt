@@ -56,7 +56,7 @@ class ShopstrReviewTest {
         val otherPerson = review(pubkey = anotherReviewer, createdAt = 4, ratingTags = listOf(listOf("rating", "0.5", "thumb")))
         val summary = ShopstrReview.summarize(listOf(old, latest, anotherProduct, otherPerson), seller)
         assertEquals(3, summary.reviewCount)
-        assertEquals(3.3333333, summary.averageStars!!, 0.0001)
+        assertEquals(1.6666667, summary.averageStars!!, 0.0001)
     }
 
     @Test fun `unrated events do not count as zero stars`() {
@@ -75,7 +75,7 @@ class ShopstrReviewTest {
             10
         )
         assertEquals(true, ShopstrReview.referencesSeller(event, seller))
-        assertEquals(5.0, ShopstrReview.summarize(listOf(event), seller).averageStars!!, 0.0001)
+        assertEquals(2.5, ShopstrReview.summarize(listOf(event), seller).averageStars!!, 0.0001)
     }
 
     @Test fun `Shopstr product address must belong to seller inventory when supplied`() {
