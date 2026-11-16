@@ -1457,7 +1457,7 @@ fun FeedScreen(
                             items(items = feed, key = { it.id }, contentType = {
                                 when (it.kind) {
                                     30023 -> "article"
-                                    Nip99.KIND_LISTING -> "marketplace-listing"
+                                    Nip99.isMarketplaceKind(it.kind) -> "marketplace-listing"
                                     else -> "post"
                                 }
                             }) { event ->
@@ -1470,7 +1470,7 @@ fun FeedScreen(
                                 val itemOnZap = { zapTargetEvent = event }
                                 val itemOnAddToList = { onAddToList(event.id) }
                                 val itemOnOpenEmojiLibrary = { showEmojiLibrary = true }
-                                if (event.kind == Nip99.KIND_LISTING) {
+                                if (Nip99.isMarketplaceKind(event.kind)) {
                                     MarketplaceFeedItem(
                                         event = event,
                                         eventRepository = viewModel.eventRepo,
