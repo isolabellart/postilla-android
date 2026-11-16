@@ -142,6 +142,23 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Remove stale draft from previous failed validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing DARK_WISP_ENHANCED_RELEASE_TOKEN."
+            exit 1
+          fi
+          RELEASE_IDS="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == "v1.0.18" and .draft == true) | .id')"
+          while IFS= read -r RELEASE_ID; do
+            [[ -n "$RELEASE_ID" ]] || continue
+            echo "Removing stale draft release $RELEASE_ID before a fresh verified upload."
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          done <<< "$RELEASE_IDS"
+
       # Publish as a draft first. The Zapstore workflow listens for the
       # published event, so the asset must already be attached before
       # the release is made public.
@@ -186,14 +203,19 @@ jobs:
           files: Postilla-v1.0.18.apk
           fail_on_unmatched_files: true
           overwrite_files: false
+          token: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
 
       - name: Verify uploaded asset and publish the release
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.18" --jq '.id')"
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing DARK_WISP_ENHANCED_RELEASE_TOKEN."
+            exit 1
+          fi
+          RELEASE_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == "v1.0.18" and .draft == true) | .id' | tail -n 1)"
           test -n "$RELEASE_ID"
           EXPECTED_SHA256="$(sha256sum Postilla-v1.0.18.apk | awk '{print $1}')"
           RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
@@ -210,5 +232,5 @@ jobs:
             exit 1
           fi
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
-            -F draft=false -F prerelease=false -F make_latest=true >/dev/null
+            -F draft=false -F prerelease=false -f make_latest=true >/dev/null
           echo "Postilla v1.0.18 is published with its verified APK asset."
