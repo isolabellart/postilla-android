@@ -747,4 +747,45 @@
     <string name="marketplace_storefront_sold">Продано</string>
     <string name="marketplace_storefront_rating">Рейтинг</string>
     <string name="marketplace_storefront_since">С</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">Настройки</string>
+    <string name="wallet_lightning_address_title">Адрес Lightning</string>
+    <string name="wallet_copy_address">Копировать адрес</string>
+    <string name="wallet_qr_code">QR-код</string>
+    <string name="wallet_change">Изменить</string>
+    <string name="wallet_remove_lightning_address">Удалить адрес Lightning</string>
+    <string name="wallet_setup_lightning_address">Настроить адрес Lightning</string>
+    <string name="wallet_connection">Подключение кошелька</string>
+    <string name="wallet_info">Информация о кошельке</string>
+    <string name="wallet_display">Отображение</string>
+    <string name="wallet_balance_unit">Единица баланса</string>
+    <string name="wallet_security">Безопасность</string>
+    <string name="wallet_backup_recovery_phrase">Сохранить фразу восстановления</string>
+    <string name="wallet_backup_to_nostr_relays">Резервная копия в релеях Nostr</string>
+    <string name="wallet_delete_wallet_backup_relays">Удалить резервную копию кошелька из релеев</string>
+    <string name="wallet_custody_disclaimer">ВАЖНО: Postilla никогда не хранит средства пользователей. Вы самостоятельно управляете своим кошельком и отвечаете за его надёжную защиту.</string>
+    <string name="wallet_withdraw_onchain">Вывод в блокчейн</string>
+    <string name="wallet_withdraw_onchain_description">Отправить всё на Bitcoin-адрес</string>
+    <string name="wallet_delete_connection_backup_relays">Удалить резервную копию подключения из релеев</string>
+    <string name="wallet_delete_wallet">Удалить кошелёк</string>
+    <string name="wallet_built_on_spark">Работает на Spark</string>
+    <string name="wallet_wallet_id">ID кошелька</string>
+    <string name="wallet_network">Сеть</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">Версия SDK</string>
+    <string name="wallet_service_pubkey">Публичный ключ сервиса</string>
+    <string name="wallet_client_pubkey">Публичный ключ клиента</string>
+    <string name="wallet_relay">Релей</string>
+    <string name="wallet_encryption">Шифрование</string>
+    <string name="wallet_supported_methods">Поддерживаемые методы</string>
+    <string name="wallet_collapse">Свернуть</string>
+    <string name="wallet_expand">Развернуть</string>
+    <string name="wallet_copy">Копировать</string>
+    <string name="wallet_backup_deleted_toast">Резервная копия удалена из релеев</string>
+    <string name="wallet_delete_backup_title">Удалить резервную копию из релеев</string>
+    <string name="wallet_delete_backup_body">Удалить сохранённую резервную копию кошелька из ваших релеев? Вы сможете снова подключиться или восстановить кошелёк с помощью фразы восстановления, но на другом устройстве копия больше не будет доступна через релей.</string>
+    <string name="wallet_delete">Удалить</string>
+    <string name="wallet_cancel">Отмена</string>
+    <string name="wallet_deleting">Удаление…</string>
 </resources>
