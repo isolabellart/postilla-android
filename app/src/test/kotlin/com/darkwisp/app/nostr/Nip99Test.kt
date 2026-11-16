@@ -71,6 +71,28 @@ class Nip99Test {
     }
 
     @Test
+    fun `reads sold status from legacy JSON while preserving explicit tag precedence`() {
+        val legacySold = event(listOf(listOf("d", "legacy-sold"))).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            content = """{"name":"Vintage camera","status":"sold","quantity":0}"""
+        )
+        assertEquals("sold", Nip99.status(legacySold))
+        assertTrue(Nip99.isSold(legacySold))
+
+        val explicitlyActive = legacySold.copy(
+            tags = listOf(listOf("d", "legacy-sold"), listOf("status", "active"))
+        )
+        assertEquals("active", Nip99.status(explicitlyActive))
+        assertFalse(Nip99.isSold(explicitlyActive))
+
+        val withdrawn = legacySold.copy(
+            content = """{"name":"Vintage camera","status":"withdrawn"}"""
+        )
+        assertEquals("withdrawn", Nip99.status(withdrawn))
+        assertFalse(Nip99.isSold(withdrawn))
+    }
+
+    @Test
     fun `malformed legacy product JSON falls back safely`() {
         val legacy = event(listOf(listOf("d", "broken-legacy"))).copy(
             kind = Nip99.KIND_LEGACY_PRODUCT,
