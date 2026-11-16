@@ -126,11 +126,17 @@ object Nip99 {
     fun availability(event: NostrEvent): Availability =
         availability(status = status(event), stock = stock(event))
 
-    fun availability(status: String, stock: Int?): Availability = when {
-        status.equals("sold", ignoreCase = true) -> Availability(AvailabilityState.SOLD_OUT, stock)
-        stock == null || stock < 0 -> Availability(AvailabilityState.UNKNOWN)
-        stock == 0 -> Availability(AvailabilityState.SOLD_OUT, 0)
-        else -> Availability(AvailabilityState.AVAILABLE, stock)
+    fun availability(status: String, stock: Int?): Availability {
+        val normalizedStatus = status.trim().lowercase().replace('-', '_').replace(' ', '_')
+        return when {
+            normalizedStatus in setOf("hidden", "withdrawn", "deleted", "cancelled", "canceled") ->
+                Availability(AvailabilityState.UNKNOWN, stock)
+            normalizedStatus in setOf("sold", "sold_out", "out_of_stock") ->
+                Availability(AvailabilityState.SOLD_OUT, stock)
+            stock == null || stock < 0 -> Availability(AvailabilityState.UNKNOWN)
+            stock == 0 -> Availability(AvailabilityState.SOLD_OUT, 0)
+            else -> Availability(AvailabilityState.AVAILABLE, stock)
+        }
     }
 
     fun publishedAt(event: NostrEvent): String =
