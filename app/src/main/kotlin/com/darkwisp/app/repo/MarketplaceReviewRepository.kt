@@ -88,14 +88,17 @@ class MarketplaceReviewRepository(
             }
             if (sentTargets.isEmpty()) return@coroutineScope null
 
-            withTimeoutOrNull(LOOKUP_TIMEOUT_MS) {
+            val responseThresholdReached = withTimeoutOrNull(LOOKUP_TIMEOUT_MS) {
                 val required = minOf(3, sentTargets.size)
                 while (completedTargets.count { it in sentTargets } < required) delay(100L)
                 delay(EOSE_GRACE_MS)
-            }
+                true
+            } == true
             eventCollector.cancelAndJoin()
             eoseCollector.cancelAndJoin()
-            if (completedTargets.none { it in sentTargets }) null
+            // A confirmed empty result requires a relay quorum. Real review events may still
+            // be displayed when a slow relay times out, but no-response is never "no reviews".
+            if (!responseThresholdReached && found.isEmpty()) null
             else ShopstrReview.summarize(found.values, sellerPubkey, addresses)
         } finally {
             sentTargets.forEach { url ->
