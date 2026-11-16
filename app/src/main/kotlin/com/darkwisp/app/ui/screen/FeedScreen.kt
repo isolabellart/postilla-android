@@ -1457,7 +1457,7 @@ fun FeedScreen(
                             items(items = feed, key = { it.id }, contentType = {
                                 when (it.kind) {
                                     30023 -> "article"
-                                    Nip99.isMarketplaceKind(it.kind) -> "marketplace-listing"
+                                    Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> "marketplace-listing"
                                     else -> "post"
                                 }
                             }) { event ->
