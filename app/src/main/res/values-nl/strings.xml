@@ -783,4 +783,7 @@
     <string name="marketplace_dm_relay_required">Deze verkoper heeft geen NIP-17 DM-relaylijst (kind 10050) gepubliceerd. Om je privacy te beschermen gebruikt Postilla geen terugvalrelays.</string>
     <string name="marketplace_seller_label">Verkoper</string>
     <string name="drawer_set_up_wallet">Wallet instellen</string>
+    <string name="marketplace_storefront_sold">Verkocht</string>
+    <string name="marketplace_storefront_rating">Beoordeling</string>
+    <string name="marketplace_storefront_since">Sinds</string>
 </resources>
