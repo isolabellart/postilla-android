@@ -178,6 +178,10 @@ fun MarketplaceScreen(
         }
         // Seller-level reviews are discoverable through their #p tag even when the
         // storefront inventory is partial or empty. Do not gate this lookup on EOSE quorum.
+        // Inventory arrives in batches from local persistence and relays. Debounce
+        // changes so a stable address set is queried once, while #p reviews are still
+        // discoverable when the inventory is empty or incomplete.
+        delay(700)
         storefrontRating = try {
             withContext(Dispatchers.IO) {
                 MarketplaceReviewRepository(relayPool, eventRepository)
@@ -276,8 +280,13 @@ fun MarketplaceScreen(
     }
 
     val storefrontSoldCount = remember(sellerInventory, sellerPubkey, sellerInventoryLoaded) {
-        if (!sellerInventoryLoaded) null else
-            sellerInventory.count { event -> sellerPubkey != null && event.pubkey == sellerPubkey && Nip99.isSold(event) }
+        if (!sellerInventoryLoaded && sellerInventory.isEmpty()) null else
+            sellerInventory.count { event ->
+                sellerPubkey != null &&
+                    event.pubkey == sellerPubkey &&
+                    Nip99.status(event) != "hidden" &&
+                    Nip99.availability(event).state == Nip99.AvailabilityState.SOLD_OUT
+            }
     }
     val storefrontFirstListingYear = remember(sellerInventory, sellerPubkey) {
         firstMarketplaceListingYear(sellerInventory, sellerPubkey)
