@@ -131,7 +131,7 @@ private data class MarketplaceWatchlistSnapshot(
     val coordinates: Set<String>
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MarketplaceScreen(
     viewModel: MarketplaceViewModel,
