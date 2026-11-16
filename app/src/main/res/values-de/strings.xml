@@ -784,4 +784,7 @@
     <string name="marketplace_dm_relay_required">Dieser Verkäufer hat keine NIP-17-DM-Relayliste (Kind 10050) veröffentlicht. Zum Schutz deiner Privatsphäre verwendet Postilla keine Ausweich-Relays.</string>
     <string name="marketplace_seller_label">Verkäufer</string>
     <string name="drawer_set_up_wallet">Wallet einrichten</string>
+    <string name="marketplace_storefront_sold">Verkauft</string>
+    <string name="marketplace_storefront_rating">Bewertung</string>
+    <string name="marketplace_storefront_since">Seit</string>
 </resources>
