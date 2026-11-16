@@ -1097,4 +1097,44 @@
     <string name="marketplace_storefront_sold">Sold</string>
     <string name="marketplace_storefront_rating">Rating</string>
     <string name="marketplace_storefront_since">Since</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">Settings</string>
+    <string name="wallet_lightning_address_title">Lightning Address</string>
+    <string name="wallet_qr_code">QR Code</string>
+    <string name="wallet_change">Change</string>
+    <string name="wallet_remove_lightning_address">Remove Lightning Address</string>
+    <string name="wallet_setup_lightning_address">Set Up Lightning Address</string>
+    <string name="wallet_connection">Wallet Connection</string>
+    <string name="wallet_info">Wallet Info</string>
+    <string name="wallet_display">Display</string>
+    <string name="wallet_balance_unit">Balance Unit</string>
+    <string name="wallet_security">Security</string>
+    <string name="wallet_backup_recovery_phrase">Backup Recovery Phrase</string>
+    <string name="wallet_backup_to_nostr_relays">Backup to Nostr Relays</string>
+    <string name="wallet_delete_wallet_backup_relays">Delete Wallet Backup from Relays</string>
+    <string name="wallet_custody_disclaimer">IMPORTANT: Postilla never holds user funds. You manage your own wallet and are responsible for securing it properly.</string>
+    <string name="wallet_withdraw_onchain">Withdraw on-chain</string>
+    <string name="wallet_withdraw_onchain_description">Send everything to a Bitcoin address</string>
+    <string name="wallet_delete_connection_backup_relays">Delete Connection Backup from Relays</string>
+    <string name="wallet_delete_wallet">Delete Wallet</string>
+    <string name="wallet_built_on_spark">Built on Spark</string>
+    <string name="wallet_wallet_id">Wallet ID</string>
+    <string name="wallet_network">Network</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">SDK version</string>
+    <string name="wallet_service_pubkey">Service pubkey</string>
+    <string name="wallet_client_pubkey">Client pubkey</string>
+    <string name="wallet_relay">Relay</string>
+    <string name="wallet_encryption">Encryption</string>
+    <string name="wallet_supported_methods">Supported methods</string>
+    <string name="wallet_collapse">Collapse</string>
+    <string name="wallet_expand">Expand</string>
+    <string name="wallet_copy">Copy</string>
+    <string name="wallet_backup_deleted_toast">Backup deleted from relays</string>
+    <string name="wallet_delete_backup_title">Delete backup from relays</string>
+    <string name="wallet_delete_backup_body">Remove the saved wallet backup from your relays? You can reconnect or restore from your recovery phrase anytime, but it won't be available from relays on another device.</string>
+    <string name="wallet_delete">Delete</string>
+    <string name="wallet_cancel">Cancel</string>
+    <string name="wallet_deleting">Deleting…</string>
 </resources>
