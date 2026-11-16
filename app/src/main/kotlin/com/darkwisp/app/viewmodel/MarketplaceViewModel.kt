@@ -126,20 +126,8 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     private fun publishVisibleCache(selectedScope: MarketplaceScope, authors: Set<String>, userPubkey: String?, sellerPubkey: String? = currentSellerPubkey) {
         val snapshot = synchronized(cacheLock) { cachedByAddress.values.toList() }
         val scoped = snapshot.filter { matchesScope(it, selectedScope, authors, userPubkey, sellerPubkey) }
-        _sellerInventory.value = if (sellerPubkey == null) {
-            emptyList()
-        } else {
-            snapshot.asSequence()
-                .filter { event ->
-                    event.pubkey == sellerPubkey &&
-                        Nip99.dTag(event).isNotBlank() &&
-                        Nip99.status(event) != "hidden" &&
-                        (currentEventRepository?.isEventVisibleToUser(event) != false)
-                }
-                .sortedByDescending { it.created_at }
-                .take(MAX_CACHED_LISTINGS)
-                .toList()
-        }
+        // Keep the last complete inventory snapshot stable while filters and partial
+        // relay responses update the visible listing cache.
         _availableCategories.value = scoped.flatMap { Nip99.categories(it) }.map { it.trim().lowercase() }
             .filter { it.isNotBlank() }.distinct().sorted()
         val query = _searchQuery.value.trim().lowercase()
@@ -324,12 +312,14 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         _scope.value = selectedScope
         currentUserPubkey = userPubkey
+        val previousSellerPubkey = currentSellerPubkey
         currentSellerPubkey = sellerPubkey
         currentEventRepository = eventRepository
         if (sellerPubkey == null) {
             _sellerInventory.value = emptyList()
             _sellerInventoryLoaded.value = true
-        } else {
+        } else if (sellerPubkey != previousSellerPubkey) {
+            _sellerInventory.value = emptyList()
             _sellerInventoryLoaded.value = false
         }
         val authors = when {
@@ -507,6 +497,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                     true
                 } == true
 
+                val sellerInventoryComplete = completedWithinWindow && eoseTracker.completedCount() > 0
+                if (sellerPubkey != null && sellerInventoryComplete) {
+                    publishCompleteSellerInventory(sellerPubkey, eventRepository)
+                    _sellerInventoryLoaded.value = true
+                }
+
                 Log.i(
                     "MarketplaceVM",
                     "Listing fetch finished sub=$subId seller=${sellerPubkey?.take(12) ?: "all"} " +
@@ -528,11 +524,31 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 if (activeSubscriptionId == subId) {
                     activeSubscriptionId = null
                     activeSellerRelayUrls = emptyList()
-                    _sellerInventoryLoaded.value = currentSellerPubkey != null
+                    // A timeout must not turn a partial relay response into a complete
+                    // seller inventory. Keep the last complete snapshot, if any.
                     _loading.value = false
                 }
             }
         }
+    }
+
+    private fun publishCompleteSellerInventory(
+        sellerPubkey: String,
+        eventRepository: EventRepository
+    ) {
+        val snapshot = synchronized(cacheLock) {
+            cachedByAddress.values.asSequence()
+                .filter { event ->
+                    event.pubkey == sellerPubkey &&
+                        Nip99.dTag(event).isNotBlank() &&
+                        Nip99.status(event) != "hidden" &&
+                        eventRepository.isEventVisibleToUser(event)
+                }
+                .sortedByDescending { it.created_at }
+                .take(MAX_CACHED_LISTINGS)
+                .toList()
+        }
+        _sellerInventory.value = snapshot
     }
 
     private fun closeSubscription(
