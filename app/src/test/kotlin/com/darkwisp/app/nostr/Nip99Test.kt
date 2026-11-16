@@ -173,6 +173,20 @@ class Nip99Test {
     }
 
     @Test
+    fun `sold out availability includes zero stock for modern and legacy listings`() {
+        val modern = event(listOf(listOf("d", "zero-stock"), listOf("stock", "0")))
+        val legacy = event(listOf(listOf("d", "legacy-zero"))).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            content = """{"name":"Legacy product","quantity":0}"""
+        )
+        val explicitSoldOut = event(listOf(listOf("d", "sold-out"), listOf("status", "sold_out")))
+
+        assertEquals(Nip99.AvailabilityState.SOLD_OUT, Nip99.availability(modern).state)
+        assertEquals(Nip99.AvailabilityState.SOLD_OUT, Nip99.availability(legacy).state)
+        assertEquals(Nip99.AvailabilityState.SOLD_OUT, Nip99.availability(explicitSoldOut).state)
+    }
+
+    @Test
     fun `explicit sold status takes precedence over positive stock`() {
         val listing = event(listOf(listOf("d", "sold"), listOf("status", "sold"), listOf("stock", "5")))
         assertEquals(Nip99.AvailabilityState.SOLD_OUT, Nip99.availability(listing).state)
