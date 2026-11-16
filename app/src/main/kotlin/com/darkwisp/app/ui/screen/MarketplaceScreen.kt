@@ -648,11 +648,17 @@ private fun StorefrontStatsStrip(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    rating?.averageStars?.let { String.format(java.util.Locale.getDefault(), "%.1f ★", it) } ?: "—",
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text("★", color = Color(0xFFFF9800), style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        rating?.averageStars?.let { String.format(java.util.Locale.getDefault(), "%.1f", it) } ?: "—",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1
+                    )
+                }
                 Text(
                     when {
                         rating == null -> stringResource(R.string.marketplace_storefront_rating)
