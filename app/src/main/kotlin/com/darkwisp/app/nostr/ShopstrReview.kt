@@ -13,16 +13,18 @@ object ShopstrReview {
         productAddresses: Collection<String> = emptyList()
     ): Boolean {
         if (event.kind != KIND || sellerPubkey.isBlank()) return false
-        if (event.tags.any { it.size >= 2 && it[0] == "p" && it[1] == sellerPubkey }) return true
         val prefix = "$PRODUCT_KIND:$sellerPubkey:"
         val expected = productAddresses.toSet()
-        return event.tags.any { tag ->
-            if (tag.size < 2 || (tag[0] != "d" && tag[0] != "a")) false
-            else {
-                val coordinate = tag[1].removePrefix("a:")
-                coordinate.startsWith(prefix) && (expected.isEmpty() || coordinate in expected)
-            }
+        val productReferences = event.tags.mapNotNull { tag ->
+            if (tag.size < 2 || (tag[0] != "d" && tag[0] != "a")) null
+            else tag[1].removePrefix("a:").takeIf { it.startsWith(prefix) }
         }
+        // A product coordinate is more specific than a seller p-tag. If present,
+        // it must match this seller's known inventory (when available).
+        if (productReferences.isNotEmpty()) {
+            return expected.isEmpty() || productReferences.any { it in expected }
+        }
+        return event.tags.any { it.size >= 2 && it[0] == "p" && it[1] == sellerPubkey }
     }
 
     fun summarize(
