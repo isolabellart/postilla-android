@@ -5506,7 +5506,7 @@ private fun WalletInfoCard(
                         }
                         WalletInfoRow(stringResource(R.string.wallet_network), stringResource(R.string.wallet_mainnet))
                         WalletInfoRow(
-                            "SDK version",
+                            stringResource(R.string.wallet_sdk_version),
                             BuildConfig.BREEZ_SDK_VERSION
                         )
                     } else {
