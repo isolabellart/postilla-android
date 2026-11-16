@@ -84,6 +84,19 @@ class ShopstrReviewTest {
         assertEquals(false, ShopstrReview.referencesSeller(event, seller, listOf("30402:$seller:item-one")))
     }
 
+    @Test fun `product coordinate mismatch is not rescued by seller p tag`() {
+        val event = NostrEvent.createUnsigned(
+            reviewer, ShopstrReview.KIND, "review",
+            listOf(
+                listOf("d", "a:30402:${"d".repeat(64)}:other-item"),
+                listOf("p", seller),
+                listOf("rating", "1.0", "thumb")
+            ),
+            10
+        )
+        assertEquals(false, ShopstrReview.referencesSeller(event, seller))
+    }
+
     @Test fun `events for other sellers are excluded`() {
         val event = NostrEvent.createUnsigned(reviewer, ShopstrReview.KIND, "review", listOf(
             listOf("d", "a:30402:${"d".repeat(64)}:item"),
