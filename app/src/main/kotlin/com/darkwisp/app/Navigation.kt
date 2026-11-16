@@ -215,7 +215,7 @@ fun NostrUriData.toRoute(): String? = when (this) {
     is NostrUriData.NoteRef -> "thread/$eventId"
     is NostrUriData.AddressRef ->
         when {
-            kind == Nip99.KIND_LISTING && author != null -> {
+            Nip99.isMarketplaceKind(kind ?: -1) && author != null -> {
                 val query = buildList {
                     if (relays.isNotEmpty()) add("relays=${android.net.Uri.encode(relays.joinToString(","))}")
                     if (kind != Nip99.KIND_LISTING) add("kind=$kind")
