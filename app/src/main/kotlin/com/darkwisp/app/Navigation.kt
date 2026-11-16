@@ -910,6 +910,11 @@ fun WispNavHost(
                     navController.navigate("profile/$pubkey")
                 },
                 onMarketplace = { navController.navigate(Routes.MARKETPLACE) },
+                onMyStorefront = {
+                    feedViewModel.getUserPubkey()?.let { pubkey ->
+                        navController.navigate("marketplace/seller/$pubkey")
+                    }
+                },
                 onMarketplaceWatchlist = {
                     feedViewModel.getUserPubkey()?.let { pubkey ->
                         navController.navigate("bookmark_set/$pubkey/dark-wisp-marketplace-watchlist")

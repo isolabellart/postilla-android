@@ -118,7 +118,9 @@ import com.darkwisp.app.ui.component.ZapDialog
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.MarketplaceReviewRepository
 import com.darkwisp.app.repo.RelayListRepository
+import com.darkwisp.app.nostr.SellerReviewSummary
 import com.darkwisp.app.repo.BookmarkSetRepository
 import com.darkwisp.app.viewmodel.MarketplaceNaddrLookupState
 import com.darkwisp.app.viewmodel.MarketplaceScope
@@ -148,6 +150,8 @@ fun MarketplaceScreen(
     canCreateListing: Boolean = true
 ) {
     val listings by viewModel.listings.collectAsState()
+    val sellerInventory by viewModel.sellerInventory.collectAsState()
+    val sellerInventoryLoaded by viewModel.sellerInventoryLoaded.collectAsState()
     val selectedScope by viewModel.scope.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
@@ -165,6 +169,24 @@ fun MarketplaceScreen(
         sellerPubkey?.let { eventRepository.requestProfileIfMissing(it) }
     }
     val storefrontDisplayName = sellerProfile?.displayString?.takeIf { it.isNotBlank() } ?: sellerName
+    var storefrontRating by remember(sellerPubkey) { mutableStateOf<SellerReviewSummary?>(null) }
+
+    LaunchedEffect(sellerPubkey, sellerInventory, sellerInventoryLoaded, relayPool, eventRepository) {
+        if (sellerPubkey == null || !sellerInventoryLoaded) {
+            storefrontRating = null
+            return@LaunchedEffect
+        }
+        storefrontRating = try {
+            withContext(Dispatchers.IO) {
+                MarketplaceReviewRepository(relayPool, eventRepository)
+                    .fetchSellerReviews(sellerPubkey, sellerInventory)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     LaunchedEffect(searchQuery, eventRepository) {
         viewModel.resolveMarketplaceNaddrQuery(searchQuery, eventRepository)
@@ -251,17 +273,12 @@ fun MarketplaceScreen(
         }
     }
 
-    val storefrontSoldCount = remember(listings, sellerPubkey, loading) {
-        if (loading && listings.isEmpty()) {
-            null
-        } else {
-            listings.count { event ->
-                sellerPubkey != null && event.pubkey == sellerPubkey && Nip99.isSold(event)
-            }
-        }
+    val storefrontSoldCount = remember(sellerInventory, sellerPubkey, sellerInventoryLoaded) {
+        if (!sellerInventoryLoaded) null else
+            sellerInventory.count { event -> sellerPubkey != null && event.pubkey == sellerPubkey && Nip99.isSold(event) }
     }
-    val storefrontFirstListingYear = remember(listings, sellerPubkey) {
-        firstMarketplaceListingYear(listings, sellerPubkey)
+    val storefrontFirstListingYear = remember(sellerInventory, sellerPubkey) {
+        firstMarketplaceListingYear(sellerInventory, sellerPubkey)
     }
 
     val storefrontBookmarkCounts = remember(listings, storefrontWatchlists, sellerPubkey, userPubkey) {
@@ -332,7 +349,8 @@ fun MarketplaceScreen(
                         bannerUrl = sellerProfile?.banner,
                         pictureUrl = sellerProfile?.picture,
                         soldCount = storefrontSoldCount,
-                        firstListingYear = storefrontFirstListingYear
+                        firstListingYear = storefrontFirstListingYear,
+                        rating = storefrontRating
                     )
                 }
             }
@@ -537,7 +555,8 @@ private fun StorefrontHeader(
     bannerUrl: String?,
     pictureUrl: String?,
     soldCount: Int?,
-    firstListingYear: String?
+    firstListingYear: String?,
+    rating: SellerReviewSummary?
 ) {
     Box(
         modifier = Modifier
@@ -583,6 +602,7 @@ private fun StorefrontHeader(
         StorefrontStatsStrip(
             soldCount = soldCount,
             firstListingYear = firstListingYear,
+            rating = rating,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .fillMaxWidth()
@@ -595,11 +615,9 @@ private fun StorefrontHeader(
 private fun StorefrontStatsStrip(
     soldCount: Int?,
     firstListingYear: String?,
+    rating: SellerReviewSummary?,
     modifier: Modifier = Modifier
 ) {
-    // NIP-99 does not define seller ratings or a structured review score.
-    // Do not turn comments, likes, or bookmarks into a misleading star rating.
-    // Until a verifiable review source exists, show only grounded storefront data.
     Surface(
         modifier = modifier.height(42.dp),
         shape = RoundedCornerShape(12.dp),
@@ -618,6 +636,29 @@ private fun StorefrontStatsStrip(
                 Text(soldCount?.toString() ?: "—", style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 Text(
                     stringResource(R.string.marketplace_storefront_sold),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    rating?.averageStars?.let { String.format(java.util.Locale.getDefault(), "%.1f ★", it) } ?: "—",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1
+                )
+                Text(
+                    when {
+                        rating == null -> stringResource(R.string.marketplace_storefront_rating)
+                        rating.reviewCount > 0 -> stringResource(R.string.marketplace_storefront_reviews, rating.reviewCount)
+                        else -> stringResource(R.string.marketplace_storefront_no_reviews)
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

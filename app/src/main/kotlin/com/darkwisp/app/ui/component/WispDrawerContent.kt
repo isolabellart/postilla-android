@@ -132,6 +132,7 @@ fun WispDrawerContent(
     onEnterAnonMode: () -> Unit = {},
     onExitAnonMode: () -> Unit = {},
     onProfile: () -> Unit,
+    onMyStorefront: () -> Unit = {},
     onFeed: () -> Unit,
     onSearch: () -> Unit,
     onMessages: () -> Unit,
@@ -576,6 +577,15 @@ fun WispDrawerContent(
             onClick = onProfile,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
+        if (pubkey != null && !anonModeActive) {
+            NavigationDrawerItem(
+                icon = { PostillaDrawerIcon(Icons.Outlined.Storefront) },
+                label = { Text(stringResource(R.string.drawer_my_storefront)) },
+                selected = false,
+                onClick = onMyStorefront,
+                modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
+            )
+        }
         NavigationDrawerItem(
             icon = { PostillaDrawerIcon(Icons.Outlined.Storefront) },
             label = { Text(stringResource(R.string.marketplace_title)) },

@@ -188,6 +188,7 @@ fun FeedScreen(
     onProfileEdit: () -> Unit = {},
     onProfileClick: (String) -> Unit = {},
     onMarketplace: () -> Unit = {},
+    onMyStorefront: () -> Unit = {},
     onMarketplaceWatchlist: () -> Unit = {},
     marketplaceWatchlistPriceTracker: com.darkwisp.app.repo.MarketplaceWatchlistPriceTracker? = null,
     onListingClick: (NostrEvent) -> Unit = {},
@@ -872,6 +873,10 @@ fun FeedScreen(
                 onMarketplace = {
                     scope.launch { drawerState.close() }
                     onMarketplace()
+                },
+                onMyStorefront = {
+                    scope.launch { drawerState.close() }
+                    onMyStorefront()
                 },
                 onMarketplaceWatchlist = {
                     scope.launch { drawerState.close() }

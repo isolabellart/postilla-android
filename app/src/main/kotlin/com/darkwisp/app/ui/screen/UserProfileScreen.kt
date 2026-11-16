@@ -1266,41 +1266,57 @@ private fun ProfileHeader(
         )
     }
 
-    // Banner
+    // Rounded, inset banner and framed avatar mirror the seller storefront header.
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(150.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .height(184.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        profile?.banner?.let { bannerUrl ->
-            AsyncImage(
-                model = bannerUrl,
-                contentDescription = "Banner",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { fullScreenImageUrl = bannerUrl }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(126.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            profile?.banner?.let { bannerUrl ->
+                AsyncImage(
+                    model = bannerUrl,
+                    contentDescription = "Banner",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { fullScreenImageUrl = bannerUrl }
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 4.dp
+        ) {
+            ProfilePicture(
+                url = profile?.picture,
+                modifier = Modifier.padding(4.dp),
+                size = 68,
+                showBlockedBadge = isBlocked,
+                onClick = profile?.picture?.let { url -> { fullScreenImageUrl = url } }
             )
         }
     }
 
-    // Profile info overlapping banner
+    // Profile information and existing profile actions.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
         Row(
-            verticalAlignment = Alignment.Bottom,
-            modifier = Modifier.offset(y = (-16).dp)
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            ProfilePicture(
-                url = profile?.picture,
-                size = 72,
-                showBlockedBadge = isBlocked,
-                onClick = profile?.picture?.let { url -> { fullScreenImageUrl = url } }
-            )
             Spacer(Modifier.weight(1f))
             if (isOwnProfile) {
                 OutlinedButton(onClick = onEditProfile) {
