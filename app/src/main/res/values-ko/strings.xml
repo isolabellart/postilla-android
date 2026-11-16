@@ -784,4 +784,7 @@
     <string name="marketplace_dm_relay_required">판매자가 NIP-17 DM 릴레이 목록(kind 10050)을 게시하지 않았습니다. 개인정보 보호를 위해 Postilla는 대체 릴레이를 사용하지 않습니다.</string>
     <string name="marketplace_seller_label">판매자</string>
     <string name="drawer_set_up_wallet">지갑 설정</string>
+    <string name="marketplace_storefront_sold">판매 완료</string>
+    <string name="marketplace_storefront_rating">평점</string>
+    <string name="marketplace_storefront_since">시작</string>
 </resources>
