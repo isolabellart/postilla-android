@@ -597,6 +597,9 @@ private fun StorefrontStatsStrip(
     firstListingYear: String?,
     modifier: Modifier = Modifier
 ) {
+    // NIP-99 does not define seller ratings or a structured review score.
+    // Do not turn comments, likes, or bookmarks into a misleading star rating.
+    // Until a verifiable review source exists, show only grounded storefront data.
     Surface(
         modifier = modifier.height(42.dp),
         shape = RoundedCornerShape(12.dp),
@@ -604,7 +607,7 @@ private fun StorefrontStatsStrip(
         tonalElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
@@ -615,24 +618,6 @@ private fun StorefrontStatsStrip(
                 Text(soldCount?.toString() ?: "—", style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 Text(
                     stringResource(R.string.marketplace_storefront_sold),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("★", color = Color(0xFFFF9800), style = MaterialTheme.typography.titleSmall)
-                    Text("—", style = MaterialTheme.typography.titleSmall)
-                }
-                Text(
-                    stringResource(R.string.marketplace_storefront_rating),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
