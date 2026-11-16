@@ -1542,15 +1542,18 @@ fun WispNavHost(
                 onNoteClick = { event ->
                     val rootAddress = if (event.kind == com.darkwisp.app.nostr.Nip22.KIND_COMMENT) {
                         com.darkwisp.app.nostr.Nip22.getAddressableRootTag(event)
-                    } else if (event.kind == Nip99.KIND_LISTING) {
+                    } else if (Nip99.isMarketplaceKind(event.kind)) {
                         Nip99.addressTag(event)
                     } else null
                     val parts = rootAddress?.split(":", limit = 3)
-                    if (parts?.size == 3 && parts[0] == Nip99.KIND_LISTING.toString()) {
-                        val cachedListing = event.takeIf { it.kind == Nip99.KIND_LISTING }
-                            ?: feedViewModel.eventRepo.findAddressableEvent(Nip99.KIND_LISTING, parts[1], parts[2])
-                        val fallback = cachedListing?.id?.let { "?eventId=$it" }.orEmpty()
-                        navController.navigate("marketplace/address/${parts[1]}/${android.net.Uri.encode(parts[2])}$fallback")
+                    val rootKind = parts?.getOrNull(0)?.toIntOrNull()
+                    if (parts?.size == 3 && rootKind != null && Nip99.isMarketplaceKind(rootKind)) {
+                        val cachedListing = event.takeIf {
+                            Nip99.isMarketplaceKind(it.kind) && it.pubkey == parts[1] && Nip99.dTag(it) == parts[2]
+                        } ?: feedViewModel.eventRepo.findAddressableEvent(rootKind, parts[1], parts[2])
+                        val route = cachedListing?.let(::marketplaceAddressRoute)
+                            ?: "marketplace/address/${parts[1]}/${android.net.Uri.encode(parts[2])}?kind=$rootKind"
+                        navController.navigate(route)
                     } else {
                         navController.navigate("thread/${event.id}")
                     }
@@ -3767,18 +3770,21 @@ fun WispNavHost(
                 onNoteClick = { eventId ->
                     val referenced = feedViewModel.eventRepo.getEvent(eventId)
                     val address = when {
-                        eventId.startsWith("${Nip99.KIND_LISTING}:") -> eventId
-                        referenced?.kind == Nip99.KIND_LISTING -> Nip99.addressTag(referenced)
+                        Nip99.MARKETPLACE_KINDS.any { eventId.startsWith("$it:") } -> eventId
+                        referenced != null && Nip99.isMarketplaceKind(referenced.kind) -> Nip99.addressTag(referenced)
                         referenced?.kind == com.darkwisp.app.nostr.Nip22.KIND_COMMENT ->
                             com.darkwisp.app.nostr.Nip22.getAddressableRootTag(referenced)
                         else -> null
                     }
                     val parts = address?.split(":", limit = 3)
-                    if (parts?.size == 3 && parts[0] == Nip99.KIND_LISTING.toString()) {
-                        val cachedListing = referenced?.takeIf { it.kind == Nip99.KIND_LISTING }
-                            ?: feedViewModel.eventRepo.findAddressableEvent(Nip99.KIND_LISTING, parts[1], parts[2])
-                        val fallback = cachedListing?.id?.let { "?eventId=$it" }.orEmpty()
-                        navController.navigate("marketplace/address/${parts[1]}/${android.net.Uri.encode(parts[2])}$fallback")
+                    val rootKind = parts?.getOrNull(0)?.toIntOrNull()
+                    if (parts?.size == 3 && rootKind != null && Nip99.isMarketplaceKind(rootKind)) {
+                        val cachedListing = referenced?.takeIf {
+                            Nip99.isMarketplaceKind(it.kind) && it.pubkey == parts[1] && Nip99.dTag(it) == parts[2]
+                        } ?: feedViewModel.eventRepo.findAddressableEvent(rootKind, parts[1], parts[2])
+                        val route = cachedListing?.let(::marketplaceAddressRoute)
+                            ?: "marketplace/address/${parts[1]}/${android.net.Uri.encode(parts[2])}?kind=$rootKind"
+                        navController.navigate(route)
                     } else {
                         navController.navigate("thread/$eventId")
                     }
