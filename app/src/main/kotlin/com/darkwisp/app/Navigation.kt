@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -137,6 +138,8 @@ import com.darkwisp.app.viewmodel.SplashViewModel
 import com.darkwisp.app.viewmodel.LiveStreamViewModel
 import com.darkwisp.app.viewmodel.WalletViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -1228,15 +1231,48 @@ fun WispNavHost(
                         Nip99.dTag(candidate) == dTag
                 }
             )
-            LaunchedEffect(listingKind, author, dTag, relayHints) {
-                feedViewModel.eventRepo.requestAddressableEvent(
-                    listingKind,
-                    author,
-                    dTag,
-                    relayHints
-                )
+            var detailLookupTimedOut by remember(listingKind, author, dTag) { mutableStateOf(false) }
+            var detailRetryNonce by remember(listingKind, author, dTag) { mutableLongStateOf(0L) }
+            LaunchedEffect(listingKind, author, dTag, relayHints, fallbackEventId, detailRetryNonce) {
+                detailLookupTimedOut = false
+                if (event != null) return@LaunchedEffect
+                val resolved = withTimeoutOrNull(15_000L) {
+                    val addressRequest = launch {
+                        feedViewModel.eventRepo.requestAddressableEvent(
+                            listingKind, author, dTag, relayHints
+                        )
+                    }
+                    val idRequest = fallbackEventId?.let { eventId ->
+                        launch { feedViewModel.eventRepo.requestQuotedEvent(eventId) }
+                    }
+                    try {
+                        snapshotFlow { addressableEvent }.first { candidate ->
+                            candidate != null &&
+                                candidate.kind == listingKind &&
+                                candidate.pubkey == author &&
+                                Nip99.dTag(candidate) == dTag
+                        }
+                    } finally {
+                        addressRequest.cancel()
+                        idRequest?.cancel()
+                    }
+                }
+                detailLookupTimedOut = resolved == null
             }
-            if (event == null) {
+            if (event == null && detailLookupTimedOut) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        androidx.compose.ui.res.stringResource(R.string.marketplace_naddr_not_found)
+                    )
+                    androidx.compose.material3.Button(onClick = { detailRetryNonce++ }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.retry))
+                    }
+                }
+            } else if (event == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.CircularProgressIndicator()
                 }
