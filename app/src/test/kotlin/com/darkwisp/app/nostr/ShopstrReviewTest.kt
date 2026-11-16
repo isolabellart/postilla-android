@@ -59,6 +59,31 @@ class ShopstrReviewTest {
         assertNull(summary.averageStars)
     }
 
+    @Test fun `Shopstr product address in d tag is enough without p tag`() {
+        val event = NostrEvent.createUnsigned(
+            reviewer, ShopstrReview.KIND, "review",
+            listOf(
+                listOf("d", "a:30402:$seller:item-one"),
+                listOf("rating", "1.0", "thumb")
+            ),
+            10
+        )
+        assertEquals(true, ShopstrReview.referencesSeller(event, seller))
+        assertEquals(5.0, ShopstrReview.summarize(listOf(event), seller).averageStars!!, 0.0001)
+    }
+
+    @Test fun `Shopstr product address must belong to seller inventory when supplied`() {
+        val event = NostrEvent.createUnsigned(
+            reviewer, ShopstrReview.KIND, "review",
+            listOf(
+                listOf("d", "a:30402:$seller:other-item"),
+                listOf("rating", "1.0", "thumb")
+            ),
+            10
+        )
+        assertEquals(false, ShopstrReview.referencesSeller(event, seller, listOf("30402:$seller:item-one")))
+    }
+
     @Test fun `events for other sellers are excluded`() {
         val event = NostrEvent.createUnsigned(reviewer, ShopstrReview.KIND, "review", listOf(
             listOf("d", "a:30402:${"d".repeat(64)}:item"),
