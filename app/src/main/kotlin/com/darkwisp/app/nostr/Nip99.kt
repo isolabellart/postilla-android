@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 
 /**
@@ -125,6 +127,38 @@ object Nip99 {
 
     fun availability(event: NostrEvent): Availability =
         availability(status = status(event), stock = stock(event))
+
+    /** Serialize an edited legacy kind-30018 product using the JSON shape this reader accepts. */
+    fun buildLegacyProductContent(
+        title: String,
+        summary: String,
+        description: String,
+        amount: String,
+        currency: String,
+        location: String,
+        categories: List<String>,
+        images: List<String>,
+        status: String,
+        stock: Int?,
+        publishedAt: String
+    ): String = buildJsonObject {
+        put("name", JsonPrimitive(title))
+        put("summary", JsonPrimitive(summary))
+        put("description", JsonPrimitive(description))
+        if (amount.isNotBlank()) {
+            put("price", buildJsonObject {
+                put("amount", JsonPrimitive(amount))
+                if (currency.isNotBlank()) put("currency", JsonPrimitive(currency))
+            })
+            if (currency.isNotBlank()) put("currency", JsonPrimitive(currency))
+        }
+        if (location.isNotBlank()) put("location", JsonPrimitive(location))
+        put("categories", buildJsonArray { categories.forEach { add(JsonPrimitive(it)) } })
+        put("images", buildJsonArray { images.forEach { add(JsonPrimitive(it)) } })
+        put("status", JsonPrimitive(status))
+        stock?.let { put("quantity", JsonPrimitive(it)) }
+        put("published_at", JsonPrimitive(publishedAt))
+    }.toString()
 
     fun availability(status: String, stock: Int?): Availability {
         val normalizedStatus = status.trim().lowercase().replace('-', '_').replace(' ', '_')
