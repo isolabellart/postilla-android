@@ -1077,7 +1077,12 @@ fun WispNavHost(
                 followedPubkeys = followedPubkeys,
                 userPubkey = feedViewModel.getUserPubkey(),
                 onBack = { navController.popBackStack() },
-                onOpenListing = { event -> navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}") },
+                onOpenListing = { event ->
+                    // Preview events may live only in MarketplaceViewModel's cache.
+                    // Hydrate the shared repository before entering detail/editor routes.
+                    feedViewModel.eventRepo.cacheEvent(event)
+                    navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}")
+                },
                 onCreateListing = { navController.navigate("marketplace/edit") }
             )
         }
@@ -1098,7 +1103,12 @@ fun WispNavHost(
                 followedPubkeys = feedViewModel.contactRepo.getFollowList().map { it.pubkey },
                 userPubkey = feedViewModel.getUserPubkey(),
                 onBack = { navController.popBackStack() },
-                onOpenListing = { event -> navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}") },
+                onOpenListing = { event ->
+                    // Preview events may live only in MarketplaceViewModel's cache.
+                    // Hydrate the shared repository before entering detail/editor routes.
+                    feedViewModel.eventRepo.cacheEvent(event)
+                    navController.navigate("marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}?eventId=${event.id}")
+                },
                 onCreateListing = { navController.navigate("marketplace/edit") },
                 sellerPubkey = sellerPubkey,
                 sellerName = sellerProfile?.displayString,
