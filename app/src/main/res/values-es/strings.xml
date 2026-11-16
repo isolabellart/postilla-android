@@ -786,4 +786,45 @@
     <string name="marketplace_storefront_sold">Vendidos</string>
     <string name="marketplace_storefront_rating">Valoración</string>
     <string name="marketplace_storefront_since">Desde</string>
+
+    <!-- Wallet settings and presentation localization -->
+    <string name="wallet_settings_title">Ajustes</string>
+    <string name="wallet_lightning_address_title">Dirección Lightning</string>
+    <string name="wallet_copy_address">Copiar dirección</string>
+    <string name="wallet_qr_code">Código QR</string>
+    <string name="wallet_change">Cambiar</string>
+    <string name="wallet_remove_lightning_address">Eliminar dirección Lightning</string>
+    <string name="wallet_setup_lightning_address">Configurar dirección Lightning</string>
+    <string name="wallet_connection">Conexión de la billetera</string>
+    <string name="wallet_info">Información de la billetera</string>
+    <string name="wallet_display">Visualización</string>
+    <string name="wallet_balance_unit">Unidad del saldo</string>
+    <string name="wallet_security">Seguridad</string>
+    <string name="wallet_backup_recovery_phrase">Guardar frase de recuperación</string>
+    <string name="wallet_backup_to_nostr_relays">Copia de seguridad en relays Nostr</string>
+    <string name="wallet_delete_wallet_backup_relays">Eliminar copia de seguridad de la billetera de los relays</string>
+    <string name="wallet_custody_disclaimer">IMPORTANTE: Postilla nunca custodia los fondos de los usuarios. Tú gestionas tu propia billetera y eres responsable de protegerla adecuadamente.</string>
+    <string name="wallet_withdraw_onchain">Retirar en cadena</string>
+    <string name="wallet_withdraw_onchain_description">Enviar todo a una dirección Bitcoin</string>
+    <string name="wallet_delete_connection_backup_relays">Eliminar copia de seguridad de la conexión de los relays</string>
+    <string name="wallet_delete_wallet">Eliminar billetera</string>
+    <string name="wallet_built_on_spark">Desarrollado sobre Spark</string>
+    <string name="wallet_wallet_id">ID de la billetera</string>
+    <string name="wallet_network">Red</string>
+    <string name="wallet_mainnet">Mainnet</string>
+    <string name="wallet_sdk_version">Versión del SDK</string>
+    <string name="wallet_service_pubkey">Clave pública del servicio</string>
+    <string name="wallet_client_pubkey">Clave pública del cliente</string>
+    <string name="wallet_relay">Relay</string>
+    <string name="wallet_encryption">Cifrado</string>
+    <string name="wallet_supported_methods">Métodos compatibles</string>
+    <string name="wallet_collapse">Contraer</string>
+    <string name="wallet_expand">Expandir</string>
+    <string name="wallet_copy">Copiar</string>
+    <string name="wallet_backup_deleted_toast">Copia de seguridad eliminada de los relays</string>
+    <string name="wallet_delete_backup_title">Eliminar copia de seguridad de los relays</string>
+    <string name="wallet_delete_backup_body">¿Eliminar de tus relays la copia de seguridad guardada de la billetera? Puedes volver a conectarla o restaurarla en cualquier momento con tu frase de recuperación, pero ya no estará disponible desde los relays en otro dispositivo.</string>
+    <string name="wallet_delete">Eliminar</string>
+    <string name="wallet_cancel">Cancelar</string>
+    <string name="wallet_deleting">Eliminando…</string>
 </resources>
