@@ -840,4 +840,23 @@
     <string name="wallet_switch_wallet">Переключиться на другой кошелёк</string>
     <string name="wallet_disconnect_section">Отключить кошелёк</string>
     <string name="wallet_switch_wallet_caption">Ваш кошелёк по умолчанию связан с вашим ключом и всегда может быть восстановлен. При переключении подключается другой кошелёк.</string>
+
+    <!-- Remaining wallet resource translations -->
+    <string name="wallet_connect_lightning">Подключите Lightning-кошелёк для отправки и получения сатоши. Вставьте строку подключения NWC от вашего кошелька.</string>
+    <string name="wallet_recommended">Рекомендуемые кошельки</string>
+    <string name="wallet_lightning_address_setup">Настроить адрес Lightning</string>
+    <string name="wallet_get_username">Получить адрес username@breez.tips</string>
+    <string name="wallet_spark_subtitle">Встроенное самостоятельное хранение. Используйте кошелёк по умолчанию или восстановите его из seed-фразы или ретрансляторов.</string>
+    <string name="wallet_nwc_restore_subtitle">Зашифрованная резервная копия NWC с другого устройства</string>
+    <string name="wallet_receive_invoice_tab">Счёт</string>
+    <string name="wallet_share_address">Поделиться адресом</string>
+    <string name="wallet_share">Поделиться</string>
+    <string name="wallet_powered_by">Работает на базе</string>
+    <string name="wallet_welcome_title">Защищено вашим ключом Nostr</string>
+    <string name="wallet_welcome_body">Восстанавливается на любом устройстве после входа. Нажмите, чтобы также сохранить seed-фразу в резервной копии.</string>
+    <string name="wallet_generate_invoice">Создать счёт</string>
+    <string name="wallet_use_default">Использовать мой кошелёк по умолчанию</string>
+    <string name="wallet_default_subtitle">Производный от вашего ключа Nostr — дополнительная резервная копия не нужна.</string>
+    <string name="wallet_switch_wallet_body">Отключите этот кошелёк, чтобы использовать кошелёк по умолчанию или восстановить другой. Средства останутся в безопасности: вы можете снова подключить этот кошелёк в любое время с помощью фразы восстановления.</string>
+    <string name="wallet_default_seed_info">Этот кошелёк создан на основе вашего ключа Nostr, поэтому фраза ниже нужна только для экспорта в другие приложения. Её не нужно резервировать: ваш nsec и есть резервная копия.</string>
 </resources>
