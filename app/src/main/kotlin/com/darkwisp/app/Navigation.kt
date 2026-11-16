@@ -1333,15 +1333,46 @@ fun WispNavHost(
             val existingEvent by existingEventFlow.collectAsState(
                 initial = eventId?.let { feedViewModel.eventRepo.peekEvent(it) }
             )
-            LaunchedEffect(eventId) {
-                if (eventId != null && feedViewModel.eventRepo.peekEvent(eventId) == null) {
-                    // requestQuotedEvent first hydrates a persisted copy when available,
-                    // then performs the bounded relay lookup if the event is still absent.
-                    feedViewModel.eventRepo.requestQuotedEvent(eventId)
+            var editorLookupTimedOut by remember(eventId) { mutableStateOf(false) }
+            var editorRetryNonce by remember(eventId) { mutableLongStateOf(0L) }
+            LaunchedEffect(eventId, editorRetryNonce) {
+                editorLookupTimedOut = false
+                if (eventId == null || existingEvent != null) return@LaunchedEffect
+                val resolved = withTimeoutOrNull(15_000L) {
+                    val request = launch {
+                        // requestQuotedEvent first hydrates persistence, then checks relays.
+                        feedViewModel.eventRepo.requestQuotedEvent(eventId)
+                    }
+                    try {
+                        snapshotFlow { existingEvent }.first { it?.id == eventId }
+                    } finally {
+                        request.cancel()
+                    }
                 }
+                editorLookupTimedOut = resolved == null
             }
-            MarketplaceEditorScreen(
-                existingEvent = existingEvent,
+            if (eventId != null && existingEvent == null) {
+                if (editorLookupTimedOut) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                    ) {
+                        androidx.compose.material3.Text(
+                            androidx.compose.ui.res.stringResource(R.string.marketplace_naddr_not_found)
+                        )
+                        androidx.compose.material3.Button(onClick = { editorRetryNonce++ }) {
+                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.retry))
+                        }
+                    }
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    }
+                }
+            } else {
+                MarketplaceEditorScreen(
+                    existingEvent = existingEvent,
                 userPubkey = feedViewModel.getUserPubkey(),
                 signer = activeSigner,
                 relayPool = feedViewModel.relayPool,
@@ -1375,7 +1406,8 @@ fun WispNavHost(
                         }
                     }
                 }
-            )
+                )
+            }
         }
 
         composable(Routes.COMPOSE) {
