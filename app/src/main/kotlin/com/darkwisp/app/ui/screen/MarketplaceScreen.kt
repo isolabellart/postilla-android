@@ -96,7 +96,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
@@ -247,6 +251,15 @@ fun MarketplaceScreen(
         }
     }
 
+    val storefrontSoldCount = remember(listings, sellerPubkey) {
+        listings.count { event ->
+            sellerPubkey != null && event.pubkey == sellerPubkey && Nip99.isSold(event)
+        }
+    }
+    val storefrontFirstListingYear = remember(listings, sellerPubkey) {
+        firstMarketplaceListingYear(listings, sellerPubkey)
+    }
+
     val storefrontBookmarkCounts = remember(listings, storefrontWatchlists, sellerPubkey, userPubkey) {
         if (sellerPubkey == null || userPubkey == null || sellerPubkey != userPubkey) {
             emptyMap()
@@ -305,120 +318,116 @@ fun MarketplaceScreen(
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(bottom = 96.dp)
         ) {
             if (sellerPubkey != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(164.dp)
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(126.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        val bannerUrl = sellerProfile?.banner
-                        if (!bannerUrl.isNullOrBlank()) {
-                            AsyncImage(
-                                model = bannerUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Icon(
-                                Icons.Outlined.Storefront,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-                                modifier = Modifier.align(Alignment.Center).size(38.dp)
-                            )
-                        }
-                    }
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp),
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 4.dp
-                    ) {
-                        ProfilePicture(
-                            url = sellerProfile?.picture,
-                            modifier = Modifier.padding(4.dp),
-                            size = 68
-                        )
-                    }
+                item(key = "storefront-header") {
+                    StorefrontHeader(
+                        bannerUrl = sellerProfile?.banner,
+                        pictureUrl = sellerProfile?.picture,
+                        soldCount = storefrontSoldCount,
+                        firstListingYear = storefrontFirstListingYear
+                    )
                 }
             }
             if (loading && listings.isNotEmpty()) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-            if (sellerPubkey == null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(selected = selectedScope == MarketplaceScope.ALL, onClick = { viewModel.setScope(MarketplaceScope.ALL) }, label = { Text(stringResource(R.string.marketplace_all)) })
-                    FilterChip(selected = selectedScope == MarketplaceScope.FOLLOWING, onClick = { viewModel.setScope(MarketplaceScope.FOLLOWING) }, label = { Text(stringResource(R.string.marketplace_following)) })
-                    FilterChip(selected = selectedScope == MarketplaceScope.MINE, onClick = { viewModel.setScope(MarketplaceScope.MINE) }, label = { Text(stringResource(R.string.marketplace_mine)) })
+                item(key = "marketplace-loading-progress") {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = viewModel::setSearchQuery,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searchQuery.isNotBlank()) IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                        Icon(Icons.Default.Close, contentDescription = null)
+            if (sellerPubkey == null) {
+                item(key = "marketplace-scope-filters") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(selected = selectedScope == MarketplaceScope.ALL, onClick = { viewModel.setScope(MarketplaceScope.ALL) }, label = { Text(stringResource(R.string.marketplace_all)) })
+                        FilterChip(selected = selectedScope == MarketplaceScope.FOLLOWING, onClick = { viewModel.setScope(MarketplaceScope.FOLLOWING) }, label = { Text(stringResource(R.string.marketplace_following)) })
+                        FilterChip(selected = selectedScope == MarketplaceScope.MINE, onClick = { viewModel.setScope(MarketplaceScope.MINE) }, label = { Text(stringResource(R.string.marketplace_mine)) })
                     }
-                },
-                placeholder = { Text(stringResource(R.string.marketplace_search_hint)) },
-                shape = RoundedCornerShape(18.dp)
-            )
+                }
+            }
+            item(key = "marketplace-search") {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = viewModel::setSearchQuery,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).height(56.dp),
+                    singleLine = true,
+                    maxLines = 1,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                            Icon(Icons.Default.Close, contentDescription = null)
+                        }
+                    },
+                    placeholder = {
+                        Text(
+                            stringResource(R.string.marketplace_search_hint),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    shape = RoundedCornerShape(18.dp)
+                )
+            }
             if (categories.isNotEmpty()) {
-                Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
-                    Text(stringResource(R.string.marketplace_categories), style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = selectedCategory == null, onClick = { viewModel.setSelectedCategory(null) },
-                            label = { Text(stringResource(R.string.marketplace_all)) })
-                        categories.forEach { category ->
-                            FilterChip(selected = selectedCategory.equals(category, true),
-                                onClick = { viewModel.setSelectedCategory(if (selectedCategory.equals(category, true)) null else category) },
-                                label = { Text(category.replaceFirstChar { it.uppercase() }) })
+                stickyHeader(key = "marketplace-categories") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.background)
+                            .padding(top = 8.dp, bottom = 8.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.marketplace_categories),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                        )
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedCategory == null,
+                                onClick = { viewModel.setSelectedCategory(null) },
+                                label = { Text(stringResource(R.string.marketplace_all)) }
+                            )
+                            categories.forEach { category ->
+                                FilterChip(
+                                    selected = selectedCategory.equals(category, true),
+                                    onClick = { viewModel.setSelectedCategory(if (selectedCategory.equals(category, true)) null else category) },
+                                    label = { Text(category.replaceFirstChar { it.uppercase() }, maxLines = 1) }
+                                )
+                            }
                         }
                     }
                 }
             }
 
             when (val lookup = naddrLookup) {
-                MarketplaceNaddrLookupState.Loading -> Box(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                MarketplaceNaddrLookupState.Loading -> item(key = "marketplace-naddr-loading") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 64.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        androidx.compose.material3.CircularProgressIndicator()
-                        Text(
-                            stringResource(R.string.marketplace_naddr_loading),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                            Text(
+                                stringResource(R.string.marketplace_naddr_loading),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-                is MarketplaceNaddrLookupState.Found -> LazyColumn(
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp)
-                ) {
-                    item(key = Nip99.addressTag(lookup.event)) {
+                is MarketplaceNaddrLookupState.Found -> item(key = Nip99.addressTag(lookup.event)) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                         MarketplaceListingCard(
                             event = lookup.event,
                             eventRepository = eventRepository,
@@ -426,69 +435,63 @@ fun MarketplaceScreen(
                         )
                     }
                 }
-                MarketplaceNaddrLookupState.Invalid -> Box(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        stringResource(R.string.marketplace_naddr_invalid),
-                        color = MaterialTheme.colorScheme.error
-                    )
+                MarketplaceNaddrLookupState.Invalid -> item(key = "marketplace-naddr-invalid") {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.marketplace_naddr_invalid),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
-                MarketplaceNaddrLookupState.Unsupported -> Box(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        stringResource(R.string.marketplace_naddr_unsupported),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                MarketplaceNaddrLookupState.Unsupported -> item(key = "marketplace-naddr-unsupported") {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.marketplace_naddr_unsupported),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                MarketplaceNaddrLookupState.NotFound -> Box(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        stringResource(R.string.marketplace_naddr_not_found),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                MarketplaceNaddrLookupState.NotFound -> item(key = "marketplace-naddr-not-found") {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.marketplace_naddr_not_found),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 MarketplaceNaddrLookupState.Idle -> when {
-                    loading && listings.isEmpty() -> Box(
-                        Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator()
+                    loading && listings.isEmpty() -> item(key = "marketplace-initial-loading") {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 64.dp), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                        }
                     }
-                    error != null && listings.isEmpty() -> Box(
-                        Modifier.fillMaxSize().padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(stringResource(R.string.marketplace_load_error, error ?: ""))
+                    error != null && listings.isEmpty() -> item(key = "marketplace-load-error") {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.marketplace_load_error, error ?: ""))
+                        }
                     }
-                    listings.isEmpty() -> Box(
-                        Modifier.fillMaxSize().padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(if (searchQuery.isNotBlank() || selectedCategory != null) stringResource(R.string.marketplace_no_results)
-                                else stringResource(R.string.marketplace_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (sellerPubkey != null && canCreateListing && searchQuery.isBlank() && selectedCategory == null) {
-                                OutlinedButton(onClick = onCreateListing) {
-                                    Icon(Icons.Default.Add, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.marketplace_add_listing))
+                    listings.isEmpty() -> item(key = "marketplace-empty") {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (searchQuery.isNotBlank() || selectedCategory != null) stringResource(R.string.marketplace_no_results)
+                                    else stringResource(R.string.marketplace_empty),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (sellerPubkey != null && canCreateListing && searchQuery.isBlank() && selectedCategory == null) {
+                                    OutlinedButton(onClick = onCreateListing) {
+                                        Icon(Icons.Default.Add, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.marketplace_add_listing))
+                                    }
                                 }
                             }
                         }
                     }
-                    else -> LazyColumn(
-                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(listings, key = { Nip99.addressTag(it) }) { event ->
-                            val bookmarkCount = storefrontBookmarkCounts[Nip99.addressTag(event)]
+                    else -> items(listings, key = { Nip99.addressTag(it) }) { event ->
+                        val bookmarkCount = storefrontBookmarkCounts[Nip99.addressTag(event)]
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp)) {
                             MarketplaceListingCard(
                                 event = event,
                                 eventRepository = eventRepository,
@@ -503,6 +506,157 @@ fun MarketplaceScreen(
     }
 }
 
+private fun firstMarketplaceListingYear(listings: List<NostrEvent>, sellerPubkey: String?): String? {
+    if (sellerPubkey.isNullOrBlank()) return null
+    val firstYear = listings.asSequence()
+        .filter { it.pubkey == sellerPubkey }
+        .mapNotNull { event ->
+            val publishedAt = Nip99.publishedAt(event).trim()
+            val epochSeconds = publishedAt.toLongOrNull()
+            if (epochSeconds != null) {
+                runCatching {
+                    Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).year
+                }.getOrNull()
+            } else {
+                runCatching { LocalDate.parse(publishedAt.take(10)).year }.getOrNull()
+                    ?: runCatching {
+                        Instant.parse(publishedAt).atZone(ZoneId.systemDefault()).year
+                    }.getOrNull()
+            }
+        }
+        .minOrNull()
+    return firstYear?.toString()
+}
+
+@Composable
+private fun StorefrontHeader(
+    bannerUrl: String?,
+    pictureUrl: String?,
+    soldCount: Int,
+    firstListingYear: String?
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(184.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(126.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (!bannerUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = bannerUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.Storefront,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.align(Alignment.Center).size(38.dp)
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp),
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 4.dp
+        ) {
+            ProfilePicture(
+                url = pictureUrl,
+                modifier = Modifier.padding(4.dp),
+                size = 68
+            )
+        }
+        StorefrontStatsStrip(
+            soldCount = soldCount,
+            firstListingYear = firstListingYear,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .padding(start = 88.dp, end = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun StorefrontStatsStrip(
+    soldCount: Int,
+    firstListingYear: String?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.height(42.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(soldCount.toString(), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(
+                    stringResource(R.string.marketplace_storefront_sold),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("★", color = Color(0xFFFF9800), style = MaterialTheme.typography.titleSmall)
+                    Text("—", style = MaterialTheme.typography.titleSmall)
+                }
+                Text(
+                    stringResource(R.string.marketplace_storefront_rating),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(firstListingYear ?: "—", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(
+                    stringResource(R.string.marketplace_storefront_since),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MarketplaceListingCard
 @Composable
 internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRepository, bookmarkCount: Int? = null, onClick: () -> Unit) {
     val image = Nip99.images(event).firstOrNull()
