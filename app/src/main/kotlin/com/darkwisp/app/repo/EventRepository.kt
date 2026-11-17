@@ -1307,6 +1307,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (muteRepo?.isBlocked(author) == true) return null
         var best: NostrEvent? = null
         for (event in eventCache.values) {
+            if (!isVisible(event)) continue
             if (Nip99.isMarketplaceKind(kind)) {
                 if (!matchesAddressableEventCoordinate(event, kind, author, dTag)) continue
             } else {
@@ -1338,6 +1339,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             ?.getEventsByAuthorAndKind(author, kind, limit)
             .orEmpty()
             .asSequence()
+            .filter(::isVisible)
             .filter { matchesAddressableEventCoordinate(it, kind, author, dTag) }
             .maxWithOrNull(compareBy<NostrEvent> { it.created_at }.thenBy { it.id })
     }
@@ -1352,7 +1354,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             // resolution; otherwise an older in-memory address index can mask it.
             trackIncoming(it)
         }
-        if (event != null && muteRepo?.isBlocked(event.pubkey) == true) return null
+        if (event != null && !isVisible(event)) return null
         return event
     }
 
