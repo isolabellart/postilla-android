@@ -424,4 +424,20 @@ class Nip99Test {
         assertTrue(Nip99.matchesLocation(listing, "  "))
     }
 
+    @Test
+    fun `buildTags preserves untouched image dimensions order and price frequency`() {
+        val originalImage = listOf("image", "https://example.com/art.jpg", "1200x800", "3")
+        val originalPrice = listOf("price", "12", "EUR", "month")
+        val tags = Nip99.buildTags(
+            dTag = "preserved-metadata", title = "Artwork", summary = "", publishedAt = "1800000000",
+            amount = "12", currency = "eur", location = "", category = "",
+            images = listOf("https://example.com/art.jpg"), status = "active",
+            format = "physical", preservedTags = listOf(originalImage, originalPrice)
+        )
+        assertTrue(tags.contains(originalImage))
+        assertTrue(tags.contains(originalPrice))
+        assertEquals(1, tags.count { it.firstOrNull() == "image" })
+        assertEquals(1, tags.count { it.firstOrNull() == "price" })
+    }
+
 }

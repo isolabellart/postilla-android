@@ -296,14 +296,26 @@ object Nip99 {
         if (publishedStock != null) result.add(listOf("stock", publishedStock.toString()))
         if (location.isNotBlank()) result.add(listOf("location", location.trim()))
         if (amount.isNotBlank() && currency.isNotBlank()) {
-            result.add(listOf("price", amount.trim(), currency.trim().uppercase()))
+            val normalizedCurrency = currency.trim().uppercase()
+            val preservedFrequency = preservedTags.firstOrNull { tag ->
+                tag.size >= 4 && tag[0] == "price" &&
+                    tag[1].trim() == amount.trim() &&
+                    tag[2].trim().equals(normalizedCurrency, ignoreCase = true)
+            }?.take(4)
+            result.add(preservedFrequency ?: listOf("price", amount.trim(), normalizedCurrency))
         }
         category.split(',', '#', '\n')
             .map { it.trim().removePrefix("#").lowercase() }
             .filter { it.isNotBlank() }
             .distinct()
             .forEach { result.add(listOf("t", it)) }
-        images.map(String::trim).filter(String::isNotBlank).distinct()
+        val normalizedImages = images.map(String::trim).filter(String::isNotBlank).distinct()
+        val preservedImageTags = preservedTags.filter { tag ->
+            tag.size > 2 && tag.firstOrNull() == "image" && tag.getOrNull(1) in normalizedImages
+        }
+        preservedImageTags.forEach { result.add(it) }
+        val imagesWithPreservedMetadata = preservedImageTags.mapNotNull { it.getOrNull(1) }.toSet()
+        normalizedImages.filterNot { it in imagesWithPreservedMetadata }
             .forEach { result.add(listOf("image", it)) }
         val regeneratedTags = setOf("d", "title", "summary", "published_at", "status", "type", "visibility", "stock", "location", "price", "t", "image", "client")
         preservedTags.filter { it.size >= 2 && it[0] !in regeneratedTags }.forEach { result.add(it) }
