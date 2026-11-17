@@ -140,7 +140,9 @@ object Nip99 {
     fun matchesSoldFilter(event: NostrEvent, hideSold: Boolean, viewerPubkey: String?): Boolean =
         !hideSold || isOwnedListing(event, viewerPubkey) || !isSold(event)
 
-    fun isSold(event: NostrEvent): Boolean = availability(event).state == AvailabilityState.SOLD_OUT
+    fun isSold(event: NostrEvent): Boolean =
+        if (event.kind == KIND_LEGACY_PRODUCT) status(event) == "sold"
+        else availability(event).state == AvailabilityState.SOLD_OUT
 
     fun stock(event: NostrEvent): Int? {
         val stockTags = event.tags.filter { it.firstOrNull() == "stock" }
