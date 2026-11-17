@@ -712,8 +712,15 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 // NIP-22 comments never appear in feeds — cached only, rendered in
                 // thread/article views and counted as replies.
             }
-            30023, Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> {
+            30023 -> {
                 binaryInsert(event, fromFeed = true)
+            }
+            Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> {
+                // Hidden listings stay cached for the owner, but not in other
+                // viewers' global feed or filtered feed projections.
+                if (Nip99.isVisibleToViewer(event, currentUserPubkey)) {
+                    binaryInsert(event, fromFeed = true)
+                }
             }
             20, 21, 22 -> {
                 Log.d("GALLERY", "[EventRepo] routing kind ${event.kind} to binaryInsert id=${event.id.take(12)}")
@@ -722,6 +729,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             6 -> {
                 // Repost: reconcile metadata, then insert its embedded event into the feed.
                 val inner = recordRepostIfEligible(event) ?: return
+                if (Nip99.isMarketplaceKind(inner.kind) && !Nip99.isVisibleToViewer(inner, currentUserPubkey)) return
                 if (event.content.isNotBlank()) {
                     try {
                         val isReply = Nip10.isReply(inner)
