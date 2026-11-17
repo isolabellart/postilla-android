@@ -188,8 +188,7 @@ object Nip99 {
         !hideSold || !isSold(event)
 
     fun isSold(event: NostrEvent): Boolean =
-        if (event.kind == KIND_LEGACY_PRODUCT) status(event) == "sold"
-        else availability(event).state == AvailabilityState.SOLD_OUT
+        status(event) == "sold" || availability(event).state == AvailabilityState.SOLD_OUT
 
     fun stock(event: NostrEvent): Int? {
         val stockTags = event.tags.filter { it.firstOrNull() == "stock" }

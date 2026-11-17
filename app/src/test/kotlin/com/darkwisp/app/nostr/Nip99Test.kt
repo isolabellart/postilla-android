@@ -415,6 +415,19 @@ class Nip99Test {
     }
 
     @Test
+    fun `legacy active listing with zero quantity is sold out for Hide sold`() {
+        val legacySoldOut = event(listOf(
+            listOf("d", "legacy-sold-zero"),
+            listOf("status", "active")
+        )).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            content = """{"name":"Legacy item","status":"active","quantity":0}"""
+        )
+        assertTrue(Nip99.isSold(legacySoldOut))
+        assertFalse(Nip99.matchesSoldFilter(legacySoldOut, hideSold = true))
+    }
+
+    @Test
     fun `legacy preorder status maps to preorder visibility and is not sold out`() {
         val legacyPreOrder = event(listOf(
             listOf("d", "legacy-preorder"),
