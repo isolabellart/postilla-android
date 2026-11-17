@@ -425,6 +425,41 @@ class Nip99Test {
     }
 
     @Test
+    fun `migration preserves legacy extension metadata and recurring price frequency`() {
+        val legacy = event(listOf(listOf("d", "legacy-migration"))).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            content = """{"name":"Legacy item","description":"Description","price":{"amount":"12","currency":"EUR","frequency":"month"},"currency":"EUR","quantity":2,"shipping":{"origin":"Italy","methods":["courier"]},"specs":{"material":"oil","support":"wood"}}"""
+        )
+
+        val preserved = Nip99.migrationPreservedTags(legacy)
+        assertTrue(preserved.contains(listOf("price", "12", "EUR", "month")))
+        val metadata = preserved.single { it.firstOrNull() == "nip15-metadata" }
+        assertTrue(metadata[1].contains("\"shipping\""))
+        assertTrue(metadata[1].contains("\"specs\""))
+
+        val migratedTags = Nip99.buildTags(
+            dTag = Nip99.dTag(legacy),
+            title = Nip99.title(legacy),
+            summary = Nip99.summary(legacy),
+            publishedAt = "1800000000",
+            amount = Nip99.price(legacy)?.amount.orEmpty(),
+            currency = Nip99.price(legacy)?.currency.orEmpty(),
+            location = Nip99.location(legacy),
+            category = Nip99.categories(legacy).joinToString(","),
+            images = Nip99.images(legacy),
+            status = Nip99.status(legacy),
+            stock = Nip99.stock(legacy),
+            format = "physical",
+            visibility = "pre-order",
+            preservedTags = preserved
+        )
+        assertTrue(migratedTags.contains(listOf("type", "simple", "physical")))
+        assertTrue(migratedTags.contains(listOf("visibility", "pre-order")))
+        assertTrue(migratedTags.contains(listOf("price", "12", "EUR", "month")))
+        assertTrue(migratedTags.any { it.firstOrNull() == "nip15-metadata" })
+    }
+
+    @Test
     fun `buildTags preserves untouched image dimensions order and price frequency`() {
         val originalImage = listOf("image", "https://example.com/art.jpg", "1200x800", "3")
         val originalPrice = listOf("price", "12", "EUR", "month")
