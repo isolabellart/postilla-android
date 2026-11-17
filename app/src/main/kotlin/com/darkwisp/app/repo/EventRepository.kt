@@ -1204,6 +1204,9 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun cacheEvent(event: NostrEvent) {
+        // Cache-only resolution must respect NIP-09 tombstones too; otherwise a stale
+        // naddr/preview lookup could reintroduce a withdrawn addressable listing.
+        if (!isVisible(event)) return
         // Profile and cache-only fetches can see repost wrappers before addEvent().
         // Record their author/target relationship here as well; registration is
         // idempotent because repostEvents is keyed by the wrapper event ID.
