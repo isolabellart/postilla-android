@@ -168,7 +168,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         _listings.value = scoped.asSequence()
             .filter { Nip99.isVisibleToViewer(it, userPubkey) }
             .filter { Nip99.matchesLocation(it, selectedLocation) }
-            .filter { Nip99.matchesSoldFilter(it, hideSold, userPubkey) }
+            .filter { Nip99.matchesSoldFilter(it, hideSold) }
             .filter { event -> category == null || Nip99.categories(event).any { it.trim().equals(category, ignoreCase = true) } }
             .filter { event ->
                 if (query.isBlank()) true else {
