@@ -403,16 +403,31 @@ class Nip99Test {
     }
 
     @Test
-    fun `hide sold filter keeps own inventory and filters other sold listings`() {
+    fun `hide sold filter hides sold listings from owners and other viewers`() {
         val sold = event(listOf(
             listOf("d", "sold-listing"),
             listOf("status", "active"),
             listOf("stock", "0")
         ))
         assertTrue(Nip99.isSold(sold))
-        assertFalse(Nip99.matchesSoldFilter(sold, hideSold = true, viewerPubkey = "22".repeat(32)))
-        assertTrue(Nip99.matchesSoldFilter(sold, hideSold = true, viewerPubkey = sold.pubkey))
-        assertTrue(Nip99.matchesSoldFilter(sold, hideSold = false, viewerPubkey = "22".repeat(32)))
+        assertFalse(Nip99.matchesSoldFilter(sold, hideSold = true))
+        assertTrue(Nip99.matchesSoldFilter(sold, hideSold = false))
+    }
+
+    @Test
+    fun `legacy preorder status maps to preorder visibility and is not sold out`() {
+        val legacyPreOrder = event(listOf(
+            listOf("d", "legacy-preorder"),
+            listOf("status", "pre-order")
+        )).copy(
+            kind = Nip99.KIND_LEGACY_PRODUCT,
+            content = """{"name":"Pre-order item","quantity":0,"type":"digital"}"""
+        )
+        assertEquals("pre-order", Nip99.visibility(legacyPreOrder))
+        assertEquals("digital", Nip99.productFormat(legacyPreOrder))
+        assertEquals("pre-order", Nip99.status(legacyPreOrder))
+        assertEquals(Nip99.AvailabilityState.UNKNOWN, Nip99.availability(legacyPreOrder).state)
+        assertFalse(Nip99.isSold(legacyPreOrder))
     }
 
     @Test
