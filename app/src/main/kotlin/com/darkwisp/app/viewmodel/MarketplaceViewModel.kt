@@ -139,7 +139,9 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun publishVisibleCache(selectedScope: MarketplaceScope, authors: Set<String>, userPubkey: String?, sellerPubkey: String? = currentSellerPubkey) {
         val snapshot = synchronized(cacheLock) { cachedByAddress.values.toList() }
-        val scoped = snapshot.filter { matchesScope(it, selectedScope, authors, userPubkey, sellerPubkey) }
+        val scoped = snapshot
+            .filter { matchesScope(it, selectedScope, authors, userPubkey, sellerPubkey) }
+            .filter { currentEventRepository?.isEventVisibleToUser(it) != false }
         // Publish seller inventory progressively from local persistence and every relay
         // batch. The storefront header and review lookup must not wait for a global EOSE quorum.
         if (sellerPubkey != null) {
