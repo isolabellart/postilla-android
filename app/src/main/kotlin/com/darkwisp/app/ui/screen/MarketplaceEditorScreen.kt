@@ -460,11 +460,13 @@ fun MarketplaceEditorScreen(
                                     context.getString(R.string.marketplace_withdraw_invalid_address)
                                 }
 
-                                val preservedTags = when (existingEvent?.kind) {
-                                    Nip99.KIND_LISTING -> existingEvent.tags
-                                    Nip99.KIND_LEGACY_PRODUCT -> Nip99.migrationPreservedTags(existingEvent)
-                                    else -> emptyList()
-                                }
+                                val preservedTags = existingEvent?.let { sourceEvent ->
+                                    when (sourceEvent.kind) {
+                                        Nip99.KIND_LISTING -> sourceEvent.tags
+                                        Nip99.KIND_LEGACY_PRODUCT -> Nip99.migrationPreservedTags(sourceEvent)
+                                        else -> emptyList()
+                                    }
+                                }.orEmpty()
                                 val tags = Nip99.buildTags(
                                     dTag = dTag,
                                     title = title,
