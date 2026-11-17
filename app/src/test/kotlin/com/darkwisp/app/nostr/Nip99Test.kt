@@ -381,7 +381,7 @@ class Nip99Test {
 
         assertTrue(tags.contains(listOf("status", "sold")))
         assertTrue(tags.contains(listOf("type", "simple", "physical")))
-        assertTrue(tags.contains(listOf("visibility", "pre-order")))
+        assertTrue(tags.contains(listOf("visibility", "on-sale")))
         assertTrue(tags.contains(listOf("stock", "0")))
         assertTrue(tags.contains(listOf("spec", "material", "oil")))
         assertTrue(tags.any { it.firstOrNull() == "a" })

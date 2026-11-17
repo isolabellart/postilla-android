@@ -308,7 +308,7 @@ fun MarketplaceEditorScreen(
                             )
                             FilterChip(
                                 selected = status == "sold",
-                                onClick = { status = "sold" },
+                                onClick = { status = "sold"; visibility = "on-sale" },
                                 label = { Text(stringResource(R.string.marketplace_sold)) }
                             )
                         }
@@ -413,7 +413,7 @@ fun MarketplaceEditorScreen(
                         MarketplaceDraftPreview(
                             title = title, summary = summary, amount = amount, currency = currency,
                             location = location, images = images, status = status, stock = stock.toIntOrNull(),
-                            visibility = if (existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT) "on-sale" else visibility
+                            visibility = if (existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT || status == "sold") "on-sale" else visibility
                         )
                     }
                     if (error != null) {
@@ -655,7 +655,7 @@ private fun MarketplaceDraftPreview(title: String, summary: String, amount: Stri
             Text(title.ifBlank { stringResource(R.string.marketplace_preview_untitled) }, style = MaterialTheme.typography.titleLarge, maxLines = 2)
             if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
             if (amount.isNotBlank()) Text("$amount $currency", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            if (visibility == "pre-order") MarketplacePreOrderBadge()
+            if (visibility == "pre-order" && !status.equals("sold", ignoreCase = true)) MarketplacePreOrderBadge()
             MarketplaceAvailabilityBadge(availability)
             if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

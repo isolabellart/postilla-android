@@ -279,7 +279,9 @@ object Nip99 {
         val publishedStock = if (sold) 0 else stock
         val normalizedFormat = format.trim().lowercase().takeIf { it in PRODUCT_FORMATS } ?: "digital"
         val normalizedType = productType.trim().lowercase().takeIf { it in PRODUCT_TYPES } ?: "simple"
-        val normalizedVisibility = visibility.trim().lowercase().replace('_', '-').takeIf { it in VISIBILITIES } ?: "on-sale"
+        // A sold listing cannot simultaneously advertise pre-orders or hidden inventory.
+        val normalizedVisibility = if (sold) "on-sale"
+            else visibility.trim().lowercase().replace('_', '-').takeIf { it in VISIBILITIES } ?: "on-sale"
         val result = mutableListOf(
             listOf("d", dTag.trim()),
             listOf("title", title.trim()),
