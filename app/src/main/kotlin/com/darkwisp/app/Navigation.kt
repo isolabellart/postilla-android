@@ -1145,10 +1145,28 @@ fun WispNavHost(
                 .observeEvent(eventId)
                 .collectAsState(initial = feedViewModel.eventRepo.peekEvent(eventId))
             val viewerPubkey = feedViewModel.getUserPubkey()
-            val hiddenFromViewer = event?.let { !Nip99.isVisibleToViewer(it, viewerPubkey) } == true
+            val addressableEventFlow = remember(event?.kind, event?.pubkey, event?.let(Nip99::dTag)) {
+                event?.takeIf { Nip99.isMarketplaceKind(it.kind) }?.let { listing ->
+                    feedViewModel.eventRepo.observeAddressableEvent(listing.kind, listing.pubkey, Nip99.dTag(listing))
+                } ?: kotlinx.coroutines.flow.flowOf(null)
+            }
+            val latestAddressableEvent by addressableEventFlow.collectAsState(initial = event)
+            val latestListing = latestAddressableEvent ?: event
+            val hiddenFromViewer = event?.let {
+                !Nip99.isVisibleToViewer(it, viewerPubkey) ||
+                    (Nip99.isMarketplaceKind(it.kind) && latestListing != null &&
+                        !Nip99.isVisibleToViewer(latestListing, viewerPubkey))
+            } == true
             LaunchedEffect(eventId) {
                 if (feedViewModel.eventRepo.peekEvent(eventId) == null) {
                     feedViewModel.eventRepo.requestQuotedEvent(eventId)
+                }
+            }
+            LaunchedEffect(event?.kind, event?.pubkey, event?.let(Nip99::dTag)) {
+                event?.takeIf { Nip99.isMarketplaceKind(it.kind) }?.let { listing ->
+                    feedViewModel.eventRepo.requestAddressableEvent(
+                        listing.kind, listing.pubkey, Nip99.dTag(listing)
+                    )
                 }
             }
             if (hiddenFromViewer) {

@@ -716,9 +716,18 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 binaryInsert(event, fromFeed = true)
             }
             Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> {
-                // Hidden listings stay cached for the owner, but not in other
-                // viewers' global feed or filtered feed projections.
-                if (Nip99.isVisibleToViewer(event, currentUserPubkey)) {
+                val addressableListing = addressSnapshot(
+                    addressKey(event.kind, event.pubkey, Nip99.dTag(event))
+                )
+                if (addressableListing != null && !Nip99.isVisibleToViewer(addressableListing, currentUserPubkey)) {
+                    // A newer Hidden revision must also remove older public revisions
+                    // already present in this viewer's feed, without deleting their cache copies.
+                    removeMarketplaceAddressFromFeed(event.kind, event.pubkey, Nip99.dTag(event))
+                } else if (addressableListing?.id == event.id &&
+                    Nip99.isVisibleToViewer(event, currentUserPubkey)
+                ) {
+                    // Keep one current revision per Marketplace address in the global feed.
+                    removeMarketplaceAddressFromFeed(event.kind, event.pubkey, Nip99.dTag(event))
                     binaryInsert(event, fromFeed = true)
                 }
             }
@@ -1139,6 +1148,32 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     /** Publish the current filtered feed snapshot to observers. */
     private fun publishFeed() {
         _feed.value = synchronized(feedList) { ArrayList(filteredFeed) }
+    }
+
+    /**
+     * Remove obsolete revisions of one addressable Marketplace listing from the
+     * visible feed only. Event/cache/persistence are deliberately left intact so
+     * the owner can still open and edit a Hidden listing.
+     */
+    private fun removeMarketplaceAddressFromFeed(kind: Int, author: String, dTag: String) {
+        if (!Nip99.isMarketplaceKind(kind) || dTag.isBlank()) return
+        val removedIds = mutableSetOf<String>()
+        synchronized(feedList) {
+            val iterator = feedList.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (candidate.kind == kind && candidate.pubkey == author && Nip99.dTag(candidate) == dTag) {
+                    removedIds.add(candidate.id)
+                    iterator.remove()
+                }
+            }
+            if (removedIds.isNotEmpty()) {
+                feedIds.removeAll(removedIds)
+                filteredFeed.removeAll { it.id in removedIds }
+                filteredFeedIds.removeAll(removedIds)
+            }
+        }
+        if (removedIds.isNotEmpty()) feedDirty.trySend(Unit)
     }
 
     private fun binaryInsert(event: NostrEvent, sortTime: Long = event.created_at, fromFeed: Boolean = false) {
