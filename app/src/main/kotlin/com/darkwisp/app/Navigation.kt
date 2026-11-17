@@ -1144,12 +1144,25 @@ fun WispNavHost(
             val event by feedViewModel.eventRepo
                 .observeEvent(eventId)
                 .collectAsState(initial = feedViewModel.eventRepo.peekEvent(eventId))
+            val viewerPubkey = feedViewModel.getUserPubkey()
+            val hiddenFromViewer = event?.let { !Nip99.isVisibleToViewer(it, viewerPubkey) } == true
             LaunchedEffect(eventId) {
                 if (feedViewModel.eventRepo.peekEvent(eventId) == null) {
                     feedViewModel.eventRepo.requestQuotedEvent(eventId)
                 }
             }
-            if (event == null) {
+            if (hiddenFromViewer) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.marketplace_hidden_unavailable))
+                    androidx.compose.material3.Button(onClick = { navController.popBackStack() }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.cd_back))
+                    }
+                }
+            } else if (event == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.CircularProgressIndicator()
                 }
@@ -1232,18 +1245,21 @@ fun WispNavHost(
                 .collectAsState(initial = cachedFallbackEvent)
             // Keep the exact cached revision for withdrawn listings, but never let an
             // older address-index snapshot replace a newer event selected by its ID.
-            val event = Nip01EventOrder.newest(
+            val candidateEvent = Nip01EventOrder.newest(
                 listOfNotNull(cachedFallbackEvent, addressableEvent).filter { candidate ->
                     candidate.kind == listingKind &&
                         candidate.pubkey == author &&
                         Nip99.dTag(candidate) == dTag
                 }
             )
+            val viewerPubkey = feedViewModel.getUserPubkey()
+            val event = candidateEvent?.takeIf { Nip99.isVisibleToViewer(it, viewerPubkey) }
+            val hiddenFromViewer = candidateEvent != null && event == null
             var detailLookupTimedOut by remember(listingKind, author, dTag) { mutableStateOf(false) }
             var detailRetryNonce by remember(listingKind, author, dTag) { mutableLongStateOf(0L) }
-            LaunchedEffect(listingKind, author, dTag, relayHints, fallbackEventId, detailRetryNonce) {
+            LaunchedEffect(listingKind, author, dTag, relayHints, fallbackEventId, detailRetryNonce, viewerPubkey, hiddenFromViewer) {
                 detailLookupTimedOut = false
-                if (event != null) return@LaunchedEffect
+                if (event != null || hiddenFromViewer) return@LaunchedEffect
                 val resolved = withTimeoutOrNull(15_000L) {
                     val addressRequest = launch {
                         feedViewModel.eventRepo.requestAddressableEvent(
@@ -1267,7 +1283,18 @@ fun WispNavHost(
                 }
                 detailLookupTimedOut = resolved == null
             }
-            if (event == null && detailLookupTimedOut) {
+            if (hiddenFromViewer) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.marketplace_hidden_unavailable))
+                    androidx.compose.material3.Button(onClick = { navController.popBackStack() }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.cd_back))
+                    }
+                }
+            } else if (event == null && detailLookupTimedOut) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
