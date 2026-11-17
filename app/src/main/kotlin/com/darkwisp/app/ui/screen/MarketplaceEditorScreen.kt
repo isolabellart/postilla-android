@@ -450,6 +450,7 @@ fun MarketplaceEditorScreen(
                         scope.launch {
                             saving = true
                             error = null
+                            var newListingConfirmed = false
                             try {
                                 val legacySource = existingEvent?.takeIf {
                                     it.kind == Nip99.KIND_LEGACY_PRODUCT
@@ -516,7 +517,6 @@ fun MarketplaceEditorScreen(
                                     )
                                 }
 
-                                var newListingConfirmed = false
                                 publishMarketplaceEvent(relayPool, event, context)
                                 newListingConfirmed = true
                                 if (legacyDeletionEvent != null) {
@@ -536,7 +536,7 @@ fun MarketplaceEditorScreen(
                                 ).show()
                                 onPublished(event)
                             } catch (e: Exception) {
-                                error = if (newListingConfirmed && legacySource != null) {
+                                error = if (newListingConfirmed && existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT) {
                                     context.getString(R.string.marketplace_withdraw_failed, e.message ?: "")
                                 } else {
                                     context.getString(R.string.marketplace_publish_failed, e.message ?: "")
