@@ -150,7 +150,7 @@ object Routes {
     const val MARKETPLACE_SELLER = "marketplace/seller/{pubkey}"
     const val MARKETPLACE_DETAIL = "marketplace/detail/{eventId}"
     const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}?relays={relays}&eventId={eventId}&kind={kind}"
-    const val MARKETPLACE_EDITOR = "marketplace/edit?eventId={eventId}"
+    const val MARKETPLACE_EDITOR = "marketplace/edit?eventId={eventId}&author={author}&dTag={dTag}&kind={kind}"
     const val COMPOSE = "compose"
     const val RELAYS = "relays"
     const val PROFILE_EDIT = "profile/edit"
@@ -200,6 +200,14 @@ private fun marketplaceAddressRoute(event: NostrEvent): String {
         if (event.kind != Nip99.KIND_LISTING) add("kind=${event.kind}")
     }
     return "$base?${params.joinToString("&")}"
+}
+
+private fun marketplaceEditorRoute(event: NostrEvent): String = buildString {
+    append("marketplace/edit?")
+    append("eventId=${android.net.Uri.encode(event.id)}")
+    append("&author=${android.net.Uri.encode(event.pubkey)}")
+    append("&dTag=${android.net.Uri.encode(Nip99.dTag(event))}")
+    append("&kind=${event.kind}")
 }
 
 /** Unknown profile counts as zappable — the zap send path surfaces the error. */
@@ -1157,7 +1165,7 @@ fun WispNavHost(
                         feedViewModel.bookmarkSetRepo.updateFromEvent(bookmarkEvent)
                     },
                     bookmarkSetRepository = feedViewModel.bookmarkSetRepo,
-                    onEdit = { navController.navigate("marketplace/edit?eventId=${android.net.Uri.encode(listing.id)}") },
+                    onEdit = { navController.navigate(marketplaceEditorRoute(listing)) },
                     onContactSeller = { message ->
                         val listingAddress = Nip19.naddrEncode(
                             dTag = Nip99.dTag(listing),
@@ -1287,7 +1295,7 @@ fun WispNavHost(
                         feedViewModel.bookmarkSetRepo.updateFromEvent(bookmarkEvent)
                     },
                     bookmarkSetRepository = feedViewModel.bookmarkSetRepo,
-                    onEdit = { navController.navigate("marketplace/edit?eventId=${android.net.Uri.encode(event!!.id)}") },
+                    onEdit = { navController.navigate(marketplaceEditorRoute(event!!)) },
                     onContactSeller = { message ->
                         val listingAddress = Nip19.naddrEncode(
                             dTag = Nip99.dTag(event!!),
@@ -1322,36 +1330,99 @@ fun WispNavHost(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("author") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("dTag") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("kind") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
             val eventId = backStackEntry.arguments?.getString("eventId")
-            val existingEventFlow = remember(eventId) {
+            val editorAuthor = backStackEntry.arguments?.getString("author")
+            val editorDTag = backStackEntry.arguments?.getString("dTag")
+            val editorKind = backStackEntry.arguments?.getString("kind")
+                ?.toIntOrNull()?.takeIf(Nip99::isMarketplaceKind)
+            val hasAddressLookup = editorKind != null &&
+                !editorAuthor.isNullOrBlank() && !editorDTag.isNullOrBlank()
+            val hasExistingTarget = eventId != null || hasAddressLookup
+
+            val eventByIdFlow = remember(eventId) {
                 eventId?.let { feedViewModel.eventRepo.observeEvent(it) }
                     ?: kotlinx.coroutines.flow.flowOf(null)
             }
-            val existingEvent by existingEventFlow.collectAsState(
+            val eventById by eventByIdFlow.collectAsState(
                 initial = eventId?.let { feedViewModel.eventRepo.peekEvent(it) }
             )
-            var editorLookupTimedOut by remember(eventId) { mutableStateOf(false) }
-            var editorRetryNonce by remember(eventId) { mutableLongStateOf(0L) }
-            LaunchedEffect(eventId, editorRetryNonce) {
+            val cachedAddressEvent = remember(editorKind, editorAuthor, editorDTag) {
+                if (hasAddressLookup) {
+                    feedViewModel.eventRepo.findAddressableEvent(
+                        editorKind!!, editorAuthor!!, editorDTag!!
+                    )
+                } else null
+            }
+            val eventByAddressFlow = remember(editorKind, editorAuthor, editorDTag) {
+                if (hasAddressLookup) {
+                    feedViewModel.eventRepo.observeAddressableEvent(
+                        editorKind!!, editorAuthor!!, editorDTag!!
+                    )
+                } else {
+                    kotlinx.coroutines.flow.flowOf(null)
+                }
+            }
+            val eventByAddress by eventByAddressFlow.collectAsState(initial = cachedAddressEvent)
+            val existingEvent = Nip01EventOrder.newest(
+                listOfNotNull(eventById, eventByAddress, cachedAddressEvent).filter { candidate ->
+                    if (hasAddressLookup) {
+                        candidate.kind == editorKind &&
+                            candidate.pubkey == editorAuthor &&
+                            Nip99.dTag(candidate) == editorDTag
+                    } else {
+                        candidate.id == eventId
+                    }
+                }
+            )
+
+            var editorLookupTimedOut by remember(eventId, editorAuthor, editorDTag, editorKind) {
+                mutableStateOf(false)
+            }
+            var editorRetryNonce by remember(eventId, editorAuthor, editorDTag, editorKind) {
+                mutableLongStateOf(0L)
+            }
+            LaunchedEffect(eventId, editorAuthor, editorDTag, editorKind, editorRetryNonce) {
                 editorLookupTimedOut = false
-                if (eventId == null || existingEvent != null) return@LaunchedEffect
+                if (!hasExistingTarget || existingEvent != null) return@LaunchedEffect
                 val resolved = withTimeoutOrNull(15_000L) {
-                    val request = launch {
-                        // requestQuotedEvent first hydrates persistence, then checks relays.
-                        feedViewModel.eventRepo.requestQuotedEvent(eventId)
+                    val addressRequest = if (hasAddressLookup) {
+                        launch {
+                            feedViewModel.eventRepo.requestAddressableEvent(
+                                editorKind!!, editorAuthor!!, editorDTag!!
+                            )
+                        }
+                    } else null
+                    val idRequest = eventId?.let { requestedId ->
+                        launch { feedViewModel.eventRepo.requestQuotedEvent(requestedId) }
                     }
                     try {
-                        snapshotFlow { existingEvent }.first { it?.id == eventId }
+                        snapshotFlow { existingEvent }.first { it != null }
                     } finally {
-                        request.cancel()
+                        addressRequest?.cancel()
+                        idRequest?.cancel()
                     }
                 }
                 editorLookupTimedOut = resolved == null
             }
-            if (eventId != null && existingEvent == null) {
+            if (hasExistingTarget && existingEvent == null) {
                 if (editorLookupTimedOut) {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -1379,6 +1450,13 @@ fun WispNavHost(
                 eventRepository = feedViewModel.eventRepo,
                 onBack = { navController.popBackStack() },
                 onPublished = { event ->
+                    existingEvent?.takeIf { it.kind == Nip99.KIND_LEGACY_PRODUCT }?.let { oldListing ->
+                        marketplaceViewModel.removeByExactAddress(
+                            oldListing.kind,
+                            oldListing.pubkey,
+                            Nip99.dTag(oldListing)
+                        )
+                    }
                     marketplaceViewModel.addOrUpdate(event)
 
                     // The editor is opened on top of the source screen. After editing,
