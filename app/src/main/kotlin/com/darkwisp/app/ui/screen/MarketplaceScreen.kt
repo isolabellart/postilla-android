@@ -11,7 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.ui.component.MarketplaceAvailabilityBadge
-import com.darkwisp.app.ui.component.MarketplacePreOrderBadge
+import com.darkwisp.app.ui.component.MarketplaceVisibilityBadge
+import com.darkwisp.app.ui.component.MarketplaceFormatBadge
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
@@ -498,13 +499,23 @@ fun MarketplaceScreen(
                         }
                     }
                 }
-                is MarketplaceNaddrLookupState.Found -> item(key = Nip99.addressTag(lookup.event)) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                        MarketplaceListingCard(
-                            event = lookup.event,
-                            eventRepository = eventRepository,
-                            onClick = { onOpenListing(lookup.event) }
-                        )
+                is MarketplaceNaddrLookupState.Found -> {
+                    if (Nip99.matchesSoldFilter(lookup.event, hideSold)) {
+                        item(key = Nip99.addressTag(lookup.event)) {
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                MarketplaceListingCard(
+                                    event = lookup.event,
+                                    eventRepository = eventRepository,
+                                    onClick = { onOpenListing(lookup.event) }
+                                )
+                            }
+                        }
+                    } else {
+                        item(key = "marketplace-naddr-sold-hidden") {
+                            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                Text(stringResource(R.string.marketplace_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
                 MarketplaceNaddrLookupState.Invalid -> item(key = "marketplace-naddr-invalid") {
@@ -792,8 +803,14 @@ internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRep
                     Text(Nip99.priceLabel(event).orEmpty(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
-                if (Nip99.visibility(event) == "pre-order") MarketplacePreOrderBadge()
-                MarketplaceAvailabilityBadge(availability)
+                val visibility = Nip99.visibility(event)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MarketplaceVisibilityBadge(visibility)
+                    MarketplaceFormatBadge(Nip99.productFormat(event))
+                }
+                if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
+                    MarketplaceAvailabilityBadge(availability)
+                }
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {
                     Text(location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -1329,8 +1346,14 @@ fun MarketplaceDetailScreen(
                     )
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
-                if (Nip99.visibility(event) == "pre-order") MarketplacePreOrderBadge()
-                MarketplaceAvailabilityBadge(availability)
+                val visibility = Nip99.visibility(event)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MarketplaceVisibilityBadge(visibility)
+                    MarketplaceFormatBadge(Nip99.productFormat(event))
+                }
+                if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
+                    MarketplaceAvailabilityBadge(availability)
+                }
                 if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.titleMedium)
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {
