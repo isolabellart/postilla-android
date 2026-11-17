@@ -82,6 +82,12 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
     val selectedCategory: StateFlow<String?> = _selectedCategory
     private val _availableCategories = MutableStateFlow<List<String>>(emptyList())
     val availableCategories: StateFlow<List<String>> = _availableCategories
+    private val _selectedLocation = MutableStateFlow<String?>(null)
+    val selectedLocation: StateFlow<String?> = _selectedLocation
+    private val _availableLocations = MutableStateFlow<List<String>>(emptyList())
+    val availableLocations: StateFlow<List<String>> = _availableLocations
+    private val _hideSold = MutableStateFlow(true)
+    val hideSold: StateFlow<Boolean> = _hideSold
 
     private val _naddrLookupState = MutableStateFlow<MarketplaceNaddrLookupState>(
         MarketplaceNaddrLookupState.Idle
@@ -139,16 +145,28 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         if (sellerPubkey != null) {
             _sellerInventory.value = scoped.asSequence()
                 .filter { it.pubkey == sellerPubkey && Nip99.dTag(it).isNotBlank() }
-                .filter { Nip99.status(it) != "hidden" && currentEventRepository?.isEventVisibleToUser(it) != false }
+                .filter { Nip99.isVisibleToViewer(it, userPubkey) && currentEventRepository?.isEventVisibleToUser(it) != false }
                 .sortedByDescending { it.created_at }
                 .take(MAX_CACHED_LISTINGS)
                 .toList()
         }
         _availableCategories.value = scoped.flatMap { Nip99.categories(it) }.map { it.trim().lowercase() }
             .filter { it.isNotBlank() }.distinct().sorted()
+        _availableLocations.value = scoped.asSequence()
+            .filter { Nip99.isVisibleToViewer(it, userPubkey) }
+            .map { Nip99.location(it).trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .sortedBy { it.lowercase() }
+            .toList()
         val query = _searchQuery.value.trim().lowercase()
         val category = _selectedCategory.value?.lowercase()
+        val selectedLocation = _selectedLocation.value
+        val hideSold = _hideSold.value
         _listings.value = scoped.asSequence()
+            .filter { Nip99.isVisibleToViewer(it, userPubkey) }
+            .filter { Nip99.matchesLocation(it, selectedLocation) }
+            .filter { Nip99.matchesSoldFilter(it, hideSold, userPubkey) }
             .filter { event -> category == null || Nip99.categories(event).any { it.trim().equals(category, ignoreCase = true) } }
             .filter { event ->
                 if (query.isBlank()) true else {
@@ -168,6 +186,16 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSelectedCategory(category: String?) {
         _selectedCategory.value = category
+        publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
+    }
+
+    fun setSelectedLocation(location: String?) {
+        _selectedLocation.value = location?.trim()?.takeIf { it.isNotEmpty() }
+        publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
+    }
+
+    fun setHideSold(hide: Boolean) {
+        _hideSold.value = hide
         publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
     }
 
@@ -305,7 +333,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         event.kind == kind &&
             event.pubkey == author &&
             Nip99.dTag(event) == dTag &&
-            Nip99.status(event) != "hidden" &&
+            Nip99.isVisibleToViewer(event, currentUserPubkey) &&
             eventRepository.isEventVisibleToUser(event)
 
     private fun publishNaddrLookupState(
@@ -384,7 +412,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                         limit = 5_000
                     ).filter {
                         Nip99.dTag(it).isNotBlank() &&
-                            Nip99.status(it) != "hidden" &&
+                            Nip99.isVisibleToViewer(it, userPubkey) &&
                             eventRepository.isEventVisibleToUser(it)
                     }
                     synchronized(cacheLock) {
@@ -447,7 +475,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                                 sellerInitialEventsByRelay
                                     .computeIfAbsent(relayEvent.relayUrl) { ConcurrentHashMap() }[event.id] = event
                             }
-                            if (!eventRepository.isEventVisibleToUser(event) || Nip99.status(event) == "hidden") return@collect
+                            if (!eventRepository.isEventVisibleToUser(event) || !Nip99.isVisibleToViewer(event, userPubkey)) return@collect
 
                             // NIP-99 recommends a title tag, but it is not a hard
                             // validity requirement. Do not hide otherwise valid listings.
@@ -667,7 +695,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                         Nip99.dTag(event).isNotBlank()
                     ) {
                         rawPageEvents.putIfAbsent(event.id, event)
-                        if (Nip99.status(event) != "hidden" && eventRepository.isEventVisibleToUser(event)) {
+                        if (Nip99.isVisibleToViewer(event, currentUserPubkey) && eventRepository.isEventVisibleToUser(event)) {
                             pageEvents.putIfAbsent(event.id, event)
                         }
                     }
@@ -725,7 +753,7 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 .filter { event ->
                     event.pubkey == sellerPubkey &&
                         Nip99.dTag(event).isNotBlank() &&
-                        Nip99.status(event) != "hidden" &&
+                        Nip99.isVisibleToViewer(event, currentUserPubkey) &&
                         eventRepository.isEventVisibleToUser(event)
                 }
                 .sortedByDescending { it.created_at }

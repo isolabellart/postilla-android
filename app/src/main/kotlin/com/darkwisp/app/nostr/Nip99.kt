@@ -21,6 +21,9 @@ object Nip99 {
     const val KIND_DRAFT = 30403
     const val KIND_LEGACY_PRODUCT = 30018
     val MARKETPLACE_KINDS = listOf(KIND_LISTING, KIND_LEGACY_PRODUCT)
+    val PRODUCT_TYPES = listOf("simple", "variable", "variation")
+    val PRODUCT_FORMATS = listOf("digital", "physical")
+    val VISIBILITIES = listOf("on-sale", "pre-order", "hidden")
 
     data class Price(val amount: String, val currency: String, val frequency: String? = null)
     enum class AvailabilityState { AVAILABLE, SOLD_OUT, UNKNOWN }
@@ -89,31 +92,55 @@ object Nip99 {
         tag(event, "location")?.getOrNull(1)?.takeIf(String::isNotBlank)
             ?: jsonField(event, "location").orEmpty()
 
-    /**
-     * Read status from canonical NIP-99 tags and legacy NIP-15 JSON payloads.
-     * Unknown values are preserved; a withdrawn/deleted address is not inferred as sold.
-     */
+    private fun normalizeMarketplaceValue(value: String): String =
+        value.trim().lowercase().replace('-', '_').replace(' ', '_')
+
+    /** OpenMarkets/Gamma visibility; absent or invalid values default to on-sale. */
+    fun visibility(event: NostrEvent): String {
+        val tagged = tag(event, "visibility")?.getOrNull(1) ?: jsonField(event, "visibility")
+        val normalized = tagged?.trim()?.lowercase()?.replace('_', '-')
+        if (normalized != null && normalized in VISIBILITIES) return normalized
+        val legacyStatus = tag(event, "status")?.getOrNull(1) ?: jsonField(event, "status")
+        return if (normalizeMarketplaceValue(legacyStatus.orEmpty()) == "hidden") "hidden" else "on-sale"
+    }
+
+    fun productType(event: NostrEvent): String =
+        tag(event, "type")?.getOrNull(1)?.trim()?.lowercase()?.takeIf { it in PRODUCT_TYPES } ?: "simple"
+
+    fun productFormat(event: NostrEvent): String =
+        tag(event, "type")?.getOrNull(2)?.trim()?.lowercase()?.takeIf { it in PRODUCT_FORMATS } ?: "digital"
+
+    /** Existing sale-state accessor retained for legacy NIP-99 UI and JSON payloads. */
     fun status(event: NostrEvent): String {
-        val raw = tag(event, "status")?.getOrNull(1)
-            ?: tag(event, "visibility")?.getOrNull(1)
-            ?: jsonField(event, "status")
-            ?: jsonField(event, "visibility")
-            ?: return "active"
-        val normalized = raw.trim().lowercase().replace('-', '_').replace(' ', '_')
-        return when (normalized) {
-            "sold", "sold_out", "out_of_stock" -> "sold"
-            "hidden" -> "hidden"
-            else -> normalized.ifBlank { "active" }
+        val rawStatus = tag(event, "status")?.getOrNull(1) ?: jsonField(event, "status")
+        val normalizedStatus = rawStatus?.let(::normalizeMarketplaceValue)
+        return when {
+            normalizedStatus != null && normalizedStatus in setOf("sold", "sold_out", "out_of_stock") -> "sold"
+            normalizedStatus != null && normalizedStatus in setOf("hidden", "withdrawn", "deleted", "cancelled", "canceled") -> normalizedStatus
+            visibility(event) == "hidden" -> "hidden"
+            visibility(event) == "pre-order" -> "pre-order"
+            normalizedStatus.isNullOrBlank() -> "active"
+            else -> normalizedStatus.replace('_', '-')
         }
     }
 
     /** True only when the active public key owns a supported Marketplace event. */
     fun isOwnedListing(event: NostrEvent, pubkey: String?): Boolean =
-        !pubkey.isNullOrBlank() &&
-            isMarketplaceKind(event.kind) &&
-            event.pubkey.equals(pubkey, ignoreCase = true)
+        !pubkey.isNullOrBlank() && isMarketplaceKind(event.kind) && event.pubkey.equals(pubkey, ignoreCase = true)
 
-    fun isSold(event: NostrEvent): Boolean = status(event) == "sold"
+    /** Hidden listings are visible only to their author. */
+    fun isVisibleToViewer(event: NostrEvent, viewerPubkey: String?): Boolean =
+        visibility(event) != "hidden" || isOwnedListing(event, viewerPubkey)
+
+    fun matchesLocation(event: NostrEvent, selectedLocation: String?): Boolean {
+        val selected = selectedLocation?.trim()?.takeIf { it.isNotEmpty() } ?: return true
+        return location(event).trim().equals(selected, ignoreCase = true)
+    }
+
+    fun matchesSoldFilter(event: NostrEvent, hideSold: Boolean, viewerPubkey: String?): Boolean =
+        !hideSold || isOwnedListing(event, viewerPubkey) || !isSold(event)
+
+    fun isSold(event: NostrEvent): Boolean = availability(event).state == AvailabilityState.SOLD_OUT
 
     fun stock(event: NostrEvent): Int? {
         val stockTags = event.tags.filter { it.firstOrNull() == "stock" }
@@ -132,7 +159,7 @@ object Nip99 {
     }
 
     fun availability(event: NostrEvent): Availability =
-        availability(status = status(event), stock = stock(event))
+        availability(status = status(event), stock = stock(event), visibility = visibility(event))
 
     /** Serialize an edited legacy kind-30018 product using the JSON shape this reader accepts. */
     fun buildLegacyProductContent(
@@ -166,13 +193,20 @@ object Nip99 {
         put("published_at", JsonPrimitive(publishedAt))
     }.toString()
 
-    fun availability(status: String, stock: Int?): Availability {
-        val normalizedStatus = status.trim().lowercase().replace('-', '_').replace(' ', '_')
+    fun availability(status: String, stock: Int?): Availability =
+        availability(status = status, stock = stock, visibility = null)
+
+    fun availability(status: String, stock: Int?, visibility: String?): Availability {
+        val normalizedStatus = normalizeMarketplaceValue(status)
+        val normalizedVisibility = visibility?.trim()?.lowercase()?.replace('_', '-')
         return when {
-            normalizedStatus in setOf("hidden", "withdrawn", "deleted", "cancelled", "canceled") ->
+            normalizedVisibility == "hidden" || normalizedStatus in setOf("hidden", "withdrawn", "deleted", "cancelled", "canceled") ->
                 Availability(AvailabilityState.UNKNOWN, stock)
             normalizedStatus in setOf("sold", "sold_out", "out_of_stock") ->
                 Availability(AvailabilityState.SOLD_OUT, stock)
+            normalizedVisibility == "pre-order" || normalizedStatus == "pre_order" ->
+                if (stock != null && stock > 0) Availability(AvailabilityState.AVAILABLE, stock)
+                else Availability(AvailabilityState.UNKNOWN, stock)
             stock == null || stock < 0 -> Availability(AvailabilityState.UNKNOWN)
             stock == 0 -> Availability(AvailabilityState.SOLD_OUT, 0)
             else -> Availability(AvailabilityState.AVAILABLE, stock)
@@ -234,17 +268,28 @@ object Nip99 {
         category: String,
         images: List<String>,
         status: String,
-        stock: Int? = null
+        stock: Int? = null,
+        format: String = "digital",
+        visibility: String = "on-sale",
+        productType: String = "simple",
+        preservedTags: List<List<String>> = emptyList()
     ): List<List<String>> {
         require(stock == null || stock >= 0) { "Stock cannot be negative" }
+        val sold = normalizeMarketplaceValue(status) in setOf("sold", "sold_out", "out_of_stock")
+        val publishedStock = if (sold) 0 else stock
+        val normalizedFormat = format.trim().lowercase().takeIf { it in PRODUCT_FORMATS } ?: "digital"
+        val normalizedType = productType.trim().lowercase().takeIf { it in PRODUCT_TYPES } ?: "simple"
+        val normalizedVisibility = visibility.trim().lowercase().replace('_', '-').takeIf { it in VISIBILITIES } ?: "on-sale"
         val result = mutableListOf(
             listOf("d", dTag.trim()),
             listOf("title", title.trim()),
             listOf("summary", summary.trim()),
             listOf("published_at", publishedAt),
-            listOf("status", if (status.equals("sold", true)) "sold" else "active")
+            listOf("status", if (sold) "sold" else "active"),
+            listOf("type", normalizedType, normalizedFormat),
+            listOf("visibility", normalizedVisibility)
         )
-        if (stock != null) result.add(listOf("stock", stock.toString()))
+        if (publishedStock != null) result.add(listOf("stock", publishedStock.toString()))
         if (location.isNotBlank()) result.add(listOf("location", location.trim()))
         if (amount.isNotBlank() && currency.isNotBlank()) {
             result.add(listOf("price", amount.trim(), currency.trim().uppercase()))
@@ -256,6 +301,8 @@ object Nip99 {
             .forEach { result.add(listOf("t", it)) }
         images.map(String::trim).filter(String::isNotBlank).distinct()
             .forEach { result.add(listOf("image", it)) }
+        val regeneratedTags = setOf("d", "title", "summary", "published_at", "status", "type", "visibility", "stock", "location", "price", "t", "image", "client")
+        preservedTags.filter { it.size >= 2 && it[0] !in regeneratedTags }.forEach { result.add(it) }
         result.add(listOf("client", "Postilla"))
         return result
     }
