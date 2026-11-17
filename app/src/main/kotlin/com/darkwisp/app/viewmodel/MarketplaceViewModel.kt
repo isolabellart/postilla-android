@@ -787,6 +787,16 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
         publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
     }
 
+    fun removeByExactAddress(kind: Int, pubkey: String, dTag: String) {
+        if (dTag.isBlank()) return
+        synchronized(cacheLock) {
+            cachedByAddress.entries.removeAll { (_, event) ->
+                event.kind == kind && event.pubkey == pubkey && Nip99.dTag(event) == dTag
+            }
+        }
+        publishVisibleCache(_scope.value, currentAuthors, currentUserPubkey, currentSellerPubkey)
+    }
+
     fun removeByAddress(pubkey: String, dTag: String) {
         if (dTag.isBlank()) return
         synchronized(cacheLock) {
