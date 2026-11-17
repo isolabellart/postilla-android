@@ -128,9 +128,11 @@ jobs:
           test -x "$APKSIGNER"
           SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1)"
           printf '%s\n' "$SIGNATURE_OUTPUT" | tee "$RUNNER_TEMP/postilla-release-signature.txt"
-          ACTUAL_CERT_SHA256="$(printf '%s\n' "$SIGNATURE_OUTPUT" \
-            | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
-            | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL_CERT_SHA256="$(
+            printf '%s\n' "$SIGNATURE_OUTPUT" \
+              | awk -F': ' '/certificate SHA-256 digest:/ {print $2; exit}' \
+              | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          )"
           EXPECTED_CERT_SHA256="86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841"
           if [[ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]]; then
             echo "::error::APK certificate mismatch. Expected $EXPECTED_CERT_SHA256, got ${ACTUAL_CERT_SHA256:-<missing>}."
