@@ -48,6 +48,43 @@ object Nip99 {
     private fun jsonField(event: NostrEvent, name: String): String? =
         jsonString(jsonContent(event)?.get(name))?.takeIf(String::isNotBlank)
 
+    /**
+     * Preserve legacy NIP-15 extension fields when converting a product into NIP-99.
+     *
+     * Standard product fields are mapped to NIP-99 tags/content by the editor. Unknown
+     * JSON fields are carried losslessly in one namespaced tag so that vendor metadata
+     * (for example specifications or shipping data) is not silently discarded.
+     */
+    fun migrationPreservedTags(event: NostrEvent): List<List<String>> {
+        if (event.kind != KIND_LEGACY_PRODUCT) return event.tags
+
+        val preserved = event.tags.filter { it.size >= 2 && it[0] != "d" }.toMutableList()
+        val legacyPrice = price(event)
+        if (legacyPrice?.frequency != null && preserved.none { it.firstOrNull() == "price" }) {
+            preserved.add(
+                listOf(
+                    "price",
+                    legacyPrice.amount,
+                    legacyPrice.currency.trim().uppercase(),
+                    legacyPrice.frequency
+                )
+            )
+        }
+
+        val knownFields = setOf(
+            "name", "title", "summary", "description", "price", "currency",
+            "location", "categories", "images", "image", "status",
+            "quantity", "stock", "published_at", "type", "visibility"
+        )
+        val extensionFields = jsonContent(event)
+            ?.filterKeys { it !in knownFields }
+            .orEmpty()
+        if (extensionFields.isNotEmpty()) {
+            preserved.add(listOf("nip15-metadata", JsonObject(extensionFields).toString()))
+        }
+        return preserved.distinct()
+    }
+
     fun tag(event: NostrEvent, name: String): List<String>? =
         event.tags.firstOrNull { it.size >= 2 && it[0] == name }
 
