@@ -9,6 +9,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +68,7 @@ import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.MarketplaceCurrencies
 import com.darkwisp.app.ui.screen.MarketplaceLightningEstimate
 import com.darkwisp.app.ui.component.MarketplaceAvailabilityBadge
+import com.darkwisp.app.ui.component.MarketplacePreOrderBadge
 
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
@@ -105,7 +108,15 @@ fun MarketplaceEditorScreen(
     var location by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.location(it) } ?: "") }
     var category by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.categories(it).joinToString(", ") } ?: "") }
     var images by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.images(it) } ?: emptyList()) }
-    var status by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.status(it) } ?: "active") }
+    var status by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { if (Nip99.isSold(it)) "sold" else "active" } ?: "active") }
+    var format by remember(existingEvent?.id) {
+        mutableStateOf(existingEvent?.let {
+            if (Nip99.tag(it, "type") == null &&
+                (it.kind == Nip99.KIND_LEGACY_PRODUCT || Nip99.tag(it, "client")?.getOrNull(1) == "Postilla")
+            ) "physical" else Nip99.productFormat(it)
+        } ?: "physical")
+    }
+    var visibility by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.visibility(it) } ?: "on-sale") }
     var stock by remember(existingEvent?.id) { mutableStateOf(existingEvent?.let { Nip99.stock(it)?.toString() }.orEmpty()) }
     val dTag = remember(existingEvent?.id) {
         existingEvent?.let { Nip99.dTag(it) }?.takeIf { it.isNotBlank() }
@@ -302,6 +313,38 @@ fun MarketplaceEditorScreen(
                             )
                         }
                     }
+                    if (existingEvent?.kind != Nip99.KIND_LEGACY_PRODUCT) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.marketplace_format_label), style = MaterialTheme.typography.titleSmall)
+                                FilterChip(
+                                    selected = format == "digital",
+                                    onClick = { format = "digital" },
+                                    label = { Text(stringResource(R.string.marketplace_digital)) }
+                                )
+                                FilterChip(
+                                    selected = format == "physical",
+                                    onClick = { format = "physical" },
+                                    label = { Text(stringResource(R.string.marketplace_physical)) }
+                                )
+                            }
+                        }
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(stringResource(R.string.marketplace_visibility_label), style = MaterialTheme.typography.titleSmall)
+                                FilterChip(selected = visibility == "on-sale", onClick = { visibility = "on-sale" },
+                                    label = { Text(stringResource(R.string.marketplace_on_sale)) })
+                                FilterChip(selected = visibility == "pre-order", onClick = { visibility = "pre-order" },
+                                    label = { Text(stringResource(R.string.marketplace_pre_order)) })
+                                FilterChip(selected = visibility == "hidden", onClick = { visibility = "hidden" },
+                                    label = { Text(stringResource(R.string.marketplace_hidden)) })
+                            }
+                        }
+                    }
                     if (existingEvent != null && Nip99.isOwnedListing(existingEvent, userPubkey)) {
                         item {
                             TextButton(
@@ -369,7 +412,8 @@ fun MarketplaceEditorScreen(
                     item {
                         MarketplaceDraftPreview(
                             title = title, summary = summary, amount = amount, currency = currency,
-                            location = location, images = images, status = status, stock = stock.toIntOrNull()
+                            location = location, images = images, status = status, stock = stock.toIntOrNull(),
+                            visibility = if (existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT) "on-sale" else visibility
                         )
                     }
                     if (error != null) {
@@ -420,7 +464,11 @@ fun MarketplaceEditorScreen(
                                     category = category,
                                     images = images,
                                     status = status,
-                                    stock = declaredStock
+                                    stock = declaredStock,
+                                    format = format,
+                                    visibility = visibility,
+                                    productType = existingEvent?.takeIf { it.kind == Nip99.KIND_LISTING }?.let { Nip99.productType(it) } ?: "simple",
+                                    preservedTags = existingEvent?.takeIf { it.kind == Nip99.KIND_LISTING }?.tags.orEmpty()
                                 )
                                 // Keep legacy kind-30018 products addressable under their
                                 // original coordinate when edited; modern listings use NIP-99.
@@ -577,8 +625,8 @@ fun MarketplaceEditorScreen(
     }
 }
 @Composable
-private fun MarketplaceDraftPreview(title: String, summary: String, amount: String, currency: String, location: String, images: List<String>, status: String, stock: Int?) {
-    val availability = Nip99.availability(status, stock)
+private fun MarketplaceDraftPreview(title: String, summary: String, amount: String, currency: String, location: String, images: List<String>, status: String, stock: Int?, visibility: String = "on-sale") {
+    val availability = Nip99.availability(status, stock, visibility)
     Column(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
@@ -607,6 +655,7 @@ private fun MarketplaceDraftPreview(title: String, summary: String, amount: Stri
             Text(title.ifBlank { stringResource(R.string.marketplace_preview_untitled) }, style = MaterialTheme.typography.titleLarge, maxLines = 2)
             if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
             if (amount.isNotBlank()) Text("$amount $currency", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            if (visibility == "pre-order") MarketplacePreOrderBadge()
             MarketplaceAvailabilityBadge(availability)
             if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

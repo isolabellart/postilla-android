@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.ui.component.MarketplaceAvailabilityBadge
+import com.darkwisp.app.ui.component.MarketplacePreOrderBadge
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
@@ -156,6 +157,9 @@ fun MarketplaceScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val categories by viewModel.availableCategories.collectAsState()
+    val hideSold by viewModel.hideSold.collectAsState()
+    val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val locations by viewModel.availableLocations.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val naddrLookup by viewModel.naddrLookupState.collectAsState()
@@ -370,16 +374,21 @@ fun MarketplaceScreen(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
-            if (sellerPubkey == null) {
-                item(key = "marketplace-scope-filters") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+            item(key = "marketplace-scope-filters") {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (sellerPubkey == null) {
                         FilterChip(selected = selectedScope == MarketplaceScope.ALL, onClick = { viewModel.setScope(MarketplaceScope.ALL) }, label = { Text(stringResource(R.string.marketplace_all)) })
                         FilterChip(selected = selectedScope == MarketplaceScope.FOLLOWING, onClick = { viewModel.setScope(MarketplaceScope.FOLLOWING) }, label = { Text(stringResource(R.string.marketplace_following)) })
                         FilterChip(selected = selectedScope == MarketplaceScope.MINE, onClick = { viewModel.setScope(MarketplaceScope.MINE) }, label = { Text(stringResource(R.string.marketplace_mine)) })
                     }
+                    FilterChip(
+                        selected = hideSold,
+                        onClick = { viewModel.setHideSold(!hideSold) },
+                        label = { Text(stringResource(R.string.marketplace_hide_sold)) }
+                    )
                 }
             }
             item(key = "marketplace-search") {
@@ -441,6 +450,36 @@ fun MarketplaceScreen(
                 }
             }
 
+            if (locations.isNotEmpty()) {
+                item(key = "marketplace-location-filter") {
+                    Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)) {
+                        Text(
+                            stringResource(R.string.marketplace_locations),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                        )
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedLocation == null,
+                                onClick = { viewModel.setSelectedLocation(null) },
+                                label = { Text(stringResource(R.string.marketplace_all)) }
+                            )
+                            locations.forEach { place ->
+                                val selected = selectedLocation.equals(place, true)
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.setSelectedLocation(if (selected) null else place) },
+                                    label = { Text(place, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             when (val lookup = naddrLookup) {
                 MarketplaceNaddrLookupState.Loading -> item(key = "marketplace-naddr-loading") {
                     Box(
@@ -508,7 +547,7 @@ fun MarketplaceScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    if (searchQuery.isNotBlank() || selectedCategory != null) stringResource(R.string.marketplace_no_results)
+                                    if (searchQuery.isNotBlank() || selectedCategory != null || selectedLocation != null) stringResource(R.string.marketplace_no_results)
                                     else stringResource(R.string.marketplace_empty),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -753,6 +792,7 @@ internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRep
                     Text(Nip99.priceLabel(event).orEmpty(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
+                if (Nip99.visibility(event) == "pre-order") MarketplacePreOrderBadge()
                 MarketplaceAvailabilityBadge(availability)
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {
@@ -1289,6 +1329,7 @@ fun MarketplaceDetailScreen(
                     )
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
+                if (Nip99.visibility(event) == "pre-order") MarketplacePreOrderBadge()
                 MarketplaceAvailabilityBadge(availability)
                 if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.titleMedium)
                 val location = Nip99.location(event)
