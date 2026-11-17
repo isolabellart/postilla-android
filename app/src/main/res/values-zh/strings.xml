@@ -903,4 +903,13 @@
     <string name="wallet_switch_wallet_body">断开此钱包后，你可以使用默认钱包或恢复其他钱包。资金仍然安全：随时输入恢复短语即可重新连接此钱包。</string>
     <string name="wallet_default_seed_info">此钱包由你的 Nostr 密钥派生，因此下方短语仅用于导出到其他钱包应用。无需备份它：你的 nsec 就是备份。</string>
     <string name="marketplace_search_hint">搜索</string>
+    <string name="marketplace_format_label">格式</string>
+    <string name="marketplace_digital">数字</string>
+    <string name="marketplace_physical">实体</string>
+    <string name="marketplace_visibility_label">可见性</string>
+    <string name="marketplace_on_sale">在售</string>
+    <string name="marketplace_pre_order">预售</string>
+    <string name="marketplace_hidden">隐藏</string>
+    <string name="marketplace_hide_sold">隐藏已售出</string>
+    <string name="marketplace_locations">地点</string>
 </resources>

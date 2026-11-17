@@ -902,4 +902,13 @@
     <string name="wallet_switch_wallet_body">このウォレットを切断すると、デフォルトのウォレットを使用するか、別のウォレットを復元できます。資金は安全です。復元フレーズを入力すれば、いつでも再接続できます。</string>
     <string name="wallet_default_seed_info">このウォレットはNostrキーから生成されています。下のフレーズは他のウォレットアプリへのエクスポート専用です。バックアップは不要です。nsecがバックアップになります。</string>
     <string name="marketplace_search_hint">検索</string>
+    <string name="marketplace_format_label">形式</string>
+    <string name="marketplace_digital">デジタル</string>
+    <string name="marketplace_physical">物理</string>
+    <string name="marketplace_visibility_label">表示</string>
+    <string name="marketplace_on_sale">販売中</string>
+    <string name="marketplace_pre_order">予約注文</string>
+    <string name="marketplace_hidden">非表示</string>
+    <string name="marketplace_hide_sold">売却済みを隠す</string>
+    <string name="marketplace_locations">場所</string>
 </resources>

@@ -863,4 +863,13 @@
     <string name="wallet_switch_wallet_body">Отключите этот кошелёк, чтобы использовать кошелёк по умолчанию или восстановить другой. Средства останутся в безопасности: вы можете снова подключить этот кошелёк в любое время с помощью фразы восстановления.</string>
     <string name="wallet_default_seed_info">Этот кошелёк создан на основе вашего ключа Nostr, поэтому фраза ниже нужна только для экспорта в другие приложения. Её не нужно резервировать: ваш nsec и есть резервная копия.</string>
     <string name="marketplace_search_hint">Поиск</string>
+    <string name="marketplace_format_label">Формат</string>
+    <string name="marketplace_digital">Цифровой</string>
+    <string name="marketplace_physical">Физический</string>
+    <string name="marketplace_visibility_label">Видимость</string>
+    <string name="marketplace_on_sale">В продаже</string>
+    <string name="marketplace_pre_order">Предзаказ</string>
+    <string name="marketplace_hidden">Скрыто</string>
+    <string name="marketplace_hide_sold">Скрыть проданные</string>
+    <string name="marketplace_locations">Местоположения</string>
 </resources>
