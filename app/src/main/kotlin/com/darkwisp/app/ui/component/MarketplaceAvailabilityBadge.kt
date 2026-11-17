@@ -38,19 +38,29 @@ fun MarketplaceAvailabilityBadge(availability: Nip99.Availability, modifier: Mod
 }
 
 
-/** Display marker for listings accepting pre-orders. */
+/** Visibility marker shared by seller previews and the editor preview. */
 @Composable
-fun MarketplacePreOrderBadge(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        shape = RoundedCornerShape(6.dp)
-    ) {
-        Text(
-            stringResource(R.string.marketplace_pre_order),
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelMedium
-        )
+fun MarketplaceVisibilityBadge(visibility: String, modifier: Modifier = Modifier) {
+    val (label, containerColor, contentColor) = when (visibility) {
+        "hidden" -> Triple(stringResource(R.string.marketplace_hidden),
+            MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
+        "pre-order" -> Triple(stringResource(R.string.marketplace_pre_order),
+            MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+        else -> Triple(stringResource(R.string.marketplace_on_sale),
+            MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+    Surface(modifier = modifier, color = containerColor, contentColor = contentColor, shape = RoundedCornerShape(6.dp)) {
+        Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+/** Digital / physical item marker. */
+@Composable
+fun MarketplaceFormatBadge(format: String, modifier: Modifier = Modifier) {
+    val label = if (format == "physical") stringResource(R.string.marketplace_physical)
+        else stringResource(R.string.marketplace_digital)
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant, shape = RoundedCornerShape(6.dp)) {
+        Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
     }
 }
