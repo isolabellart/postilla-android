@@ -138,14 +138,24 @@ object Nip99 {
         val normalized = tagged?.trim()?.lowercase()?.replace('_', '-')
         if (normalized != null && normalized in VISIBILITIES) return normalized
         val legacyStatus = tag(event, "status")?.getOrNull(1) ?: jsonField(event, "status")
-        return if (normalizeMarketplaceValue(legacyStatus.orEmpty()) == "hidden") "hidden" else "on-sale"
+        return when (normalizeMarketplaceValue(legacyStatus.orEmpty())) {
+            "hidden" -> "hidden"
+            "pre_order" -> "pre-order"
+            else -> "on-sale"
+        }
     }
 
     fun productType(event: NostrEvent): String =
         tag(event, "type")?.getOrNull(1)?.trim()?.lowercase()?.takeIf { it in PRODUCT_TYPES } ?: "simple"
 
-    fun productFormat(event: NostrEvent): String =
-        tag(event, "type")?.getOrNull(2)?.trim()?.lowercase()?.takeIf { it in PRODUCT_FORMATS } ?: "digital"
+    fun productFormat(event: NostrEvent): String {
+        val typeTag = tag(event, "type")
+        val taggedFormat = typeTag?.getOrNull(2)
+            ?: typeTag?.getOrNull(1)?.takeIf { it.trim().lowercase() in PRODUCT_FORMATS }
+        val rawFormat = taggedFormat ?: jsonField(event, "format") ?: jsonField(event, "type")
+        return rawFormat?.trim()?.lowercase()?.takeIf { it in PRODUCT_FORMATS }
+            ?: if (event.kind == KIND_LEGACY_PRODUCT) "physical" else "digital"
+    }
 
     /** Existing sale-state accessor retained for legacy NIP-99 UI and JSON payloads. */
     fun status(event: NostrEvent): String {
@@ -167,15 +177,15 @@ object Nip99 {
 
     /** Hidden listings are visible only to their author. */
     fun isVisibleToViewer(event: NostrEvent, viewerPubkey: String?): Boolean =
-        visibility(event) != "hidden" || isOwnedListing(event, viewerPubkey)
+        (visibility(event) != "hidden" && status(event) != "hidden") || isOwnedListing(event, viewerPubkey)
 
     fun matchesLocation(event: NostrEvent, selectedLocation: String?): Boolean {
         val selected = selectedLocation?.trim()?.takeIf { it.isNotEmpty() } ?: return true
         return location(event).trim().equals(selected, ignoreCase = true)
     }
 
-    fun matchesSoldFilter(event: NostrEvent, hideSold: Boolean, viewerPubkey: String?): Boolean =
-        !hideSold || isOwnedListing(event, viewerPubkey) || !isSold(event)
+    fun matchesSoldFilter(event: NostrEvent, hideSold: Boolean): Boolean =
+        !hideSold || !isSold(event)
 
     fun isSold(event: NostrEvent): Boolean =
         if (event.kind == KIND_LEGACY_PRODUCT) status(event) == "sold"
