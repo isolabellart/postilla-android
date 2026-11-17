@@ -152,8 +152,14 @@ class MarketplaceViewModel(app: Application) : AndroidViewModel(app) {
                 .take(MAX_CACHED_LISTINGS)
                 .toList()
         }
-        _availableCategories.value = scoped.flatMap { Nip99.categories(it) }.map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }.distinct().sorted()
+        _availableCategories.value = scoped.asSequence()
+            .filter { Nip99.isVisibleToViewer(it, userPubkey) }
+            .flatMap { Nip99.categories(it).asSequence() }
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+            .toList()
         _availableLocations.value = scoped.asSequence()
             .filter { Nip99.isVisibleToViewer(it, userPubkey) }
             .map { Nip99.location(it).trim() }
