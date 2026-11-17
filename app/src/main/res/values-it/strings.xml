@@ -769,7 +769,7 @@
     <string name="marketplace_location_field">Località</string>
     <string name="marketplace_category_field">Categorie</string>
     <string name="marketplace_category_hint">Separa le categorie con una virgola</string>
-    <string name="marketplace_status_label">Stato dell’annuncio</string>
+    <string name="marketplace_status_label">Stato di vendita</string>
     <string name="marketplace_active">Disponibile</string>
     <string name="marketplace_sold">Venduto</string>
     <string name="marketplace_withdraw_listing">Ritira annuncio</string>
@@ -827,6 +827,7 @@
     <string name="marketplace_naddr_invalid">L’indirizzo naddr non è valido o è incompleto.</string>
     <string name="marketplace_naddr_unsupported">Questo naddr non identifica un annuncio Marketplace supportato.</string>
     <string name="marketplace_naddr_not_found">Nessun annuncio corrispondente è stato restituito dai relay raggiunti. Potrebbe essere temporaneamente non disponibile.</string>
+    <string name="marketplace_hidden_unavailable">Questo annuncio è nascosto dal venditore.</string>
     <string name="marketplace_categories">Esplora le categorie</string>
     <string name="marketplace_no_results">Nessun annuncio corrisponde alla ricerca.</string>
     <string name="marketplace_storefront">Vetrina</string>
