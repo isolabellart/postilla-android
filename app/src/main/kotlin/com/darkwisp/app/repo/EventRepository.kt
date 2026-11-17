@@ -655,6 +655,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
         if (!seenEventIds.add(event.id)) {
             insertReplyFeedEvent(event)
+            // A Marketplace revision can be hydrated through a cache/detail path
+            // before the relay feed delivers it. Still enforce a newer Hidden revision
+            // against older public copies already displayed in the feed.
+            purgeMarketplaceAddressIfLatestHidden(event)
             // A kind-6 repost may have entered seenEventIds through cacheEvent() or
             // another profile path before reaching this pipeline. Reconcile its
             // metadata even when the event itself is already deduplicated.
@@ -1150,6 +1154,15 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         _feed.value = synchronized(feedList) { ArrayList(filteredFeed) }
     }
 
+    /** Remove stale public feed revisions as soon as a newer Hidden version is known. */
+    private fun purgeMarketplaceAddressIfLatestHidden(event: NostrEvent) {
+        if (!Nip99.isMarketplaceKind(event.kind)) return
+        val latest = addressSnapshot(addressKey(event.kind, event.pubkey, Nip99.dTag(event))) ?: return
+        if (!Nip99.isVisibleToViewer(latest, currentUserPubkey)) {
+            removeMarketplaceAddressFromFeed(event.kind, event.pubkey, Nip99.dTag(event))
+        }
+    }
+
     /**
      * Remove obsolete revisions of one addressable Marketplace listing from the
      * visible feed only. Event/cache/persistence are deliberately left intact so
@@ -1258,6 +1271,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         seenEventIds.add(event.id)
         eventCache[event.id] = event
         trackIncoming(event)
+        purgeMarketplaceAddressIfLatestHidden(event)
         // Don't persist future-dated notes — scheduled posts fetched from the scheduler
         // relay would poison the ObjectBox cache and the feed's since filter on next boot.
         if (event.created_at <= System.currentTimeMillis() / 1000 + 30) {
