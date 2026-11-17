@@ -313,7 +313,6 @@ fun MarketplaceEditorScreen(
                             )
                         }
                     }
-                    if (existingEvent?.kind != Nip99.KIND_LEGACY_PRODUCT) {
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(stringResource(R.string.marketplace_format_label), style = MaterialTheme.typography.titleSmall)
@@ -344,7 +343,6 @@ fun MarketplaceEditorScreen(
                                     label = { Text(stringResource(R.string.marketplace_hidden)) })
                             }
                         }
-                    }
                     if (existingEvent != null && Nip99.isOwnedListing(existingEvent, userPubkey)) {
                         item {
                             TextButton(
@@ -413,7 +411,7 @@ fun MarketplaceEditorScreen(
                         MarketplaceDraftPreview(
                             title = title, summary = summary, amount = amount, currency = currency,
                             location = location, images = images, status = status, stock = stock.toIntOrNull(),
-                            visibility = if (existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT || status == "sold") "on-sale" else visibility
+                            visibility = if (status == "sold") "on-sale" else visibility
                         )
                     }
                     if (error != null) {
@@ -453,6 +451,19 @@ fun MarketplaceEditorScreen(
                             saving = true
                             error = null
                             try {
+                                val legacySource = existingEvent?.takeIf {
+                                    it.kind == Nip99.KIND_LEGACY_PRODUCT
+                                }
+                                val legacySourceDTag = legacySource?.let { Nip99.dTag(it) }
+                                require(legacySource == null || !legacySourceDTag.isNullOrBlank()) {
+                                    context.getString(R.string.marketplace_withdraw_invalid_address)
+                                }
+
+                                val preservedTags = when (existingEvent?.kind) {
+                                    Nip99.KIND_LISTING -> existingEvent.tags
+                                    Nip99.KIND_LEGACY_PRODUCT -> Nip99.migrationPreservedTags(existingEvent)
+                                    else -> emptyList()
+                                }
                                 val tags = Nip99.buildTags(
                                     dTag = dTag,
                                     title = title,
@@ -468,37 +479,10 @@ fun MarketplaceEditorScreen(
                                     format = format,
                                     visibility = visibility,
                                     productType = existingEvent?.takeIf { it.kind == Nip99.KIND_LISTING }?.let { Nip99.productType(it) } ?: "simple",
-                                    preservedTags = existingEvent?.takeIf { it.kind == Nip99.KIND_LISTING }?.tags.orEmpty()
+                                    preservedTags = preservedTags
                                 )
-                                // Keep legacy kind-30018 products addressable under their
-                                // original coordinate when edited; modern listings use NIP-99.
-                                val eventKind = if (existingEvent?.kind == Nip99.KIND_LEGACY_PRODUCT) {
-                                    Nip99.KIND_LEGACY_PRODUCT
-                                } else {
-                                    Nip99.KIND_LISTING
-                                }
-                                val eventTags = if (eventKind == Nip99.KIND_LEGACY_PRODUCT) {
-                                    listOf(listOf("d", dTag))
-                                } else {
-                                    tags
-                                }
-                                val eventContent = if (eventKind == Nip99.KIND_LEGACY_PRODUCT) {
-                                    Nip99.buildLegacyProductContent(
-                                        title = title.trim(),
-                                        summary = summary.trim(),
-                                        description = description.trim(),
-                                        amount = amount.trim(),
-                                        currency = currency.trim(),
-                                        location = location.trim(),
-                                        categories = category.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                        images = images,
-                                        status = status,
-                                        stock = declaredStock,
-                                        publishedAt = publishedAt
-                                    )
-                                } else {
-                                    description.trim()
-                                }
+                                // All newly saved Marketplace listings use the canonical NIP-99 kind.
+                                val eventKind = Nip99.KIND_LISTING
                                 val latestKnownCreatedAt = eventRepository.findAddressableEvent(
                                     kind = eventKind,
                                     author = signer.pubkeyHex,
@@ -514,11 +498,33 @@ fun MarketplaceEditorScreen(
                                 )
                                 val event = signer.signEvent(
                                     kind = eventKind,
-                                    content = eventContent,
-                                    tags = eventTags,
+                                    content = description.trim(),
+                                    tags = tags,
                                     createdAt = createdAt
                                 )
+                                // Sign the legacy deletion before publishing the replacement. The old
+                                // product is withdrawn only after the new NIP-99 event is relay-confirmed.
+                                val legacyDeletionEvent = legacySource?.let { oldListing ->
+                                    signer.signEvent(
+                                        kind = Nip09.KIND_DELETION,
+                                        content = context.getString(R.string.marketplace_withdrawal_reason),
+                                        tags = Nip09.buildAddressableDeletionTags(
+                                            kind = Nip99.KIND_LEGACY_PRODUCT,
+                                            pubkey = oldListing.pubkey,
+                                            dTag = legacySourceDTag!!
+                                        )
+                                    )
+                                }
+
+                                var newListingConfirmed = false
                                 publishMarketplaceEvent(relayPool, event, context)
+                                newListingConfirmed = true
+                                if (legacyDeletionEvent != null) {
+                                    // NIP-09 is best-effort across the relay network. We require
+                                    // confirmation before hiding the old item locally.
+                                    publishMarketplaceEvent(relayPool, legacyDeletionEvent, context)
+                                    eventRepository.addEvent(legacyDeletionEvent)
+                                }
                                 eventRepository.addEvent(event)
                                 Toast.makeText(
                                     context,
@@ -530,7 +536,11 @@ fun MarketplaceEditorScreen(
                                 ).show()
                                 onPublished(event)
                             } catch (e: Exception) {
-                                error = context.getString(R.string.marketplace_publish_failed, e.message ?: "")
+                                error = if (newListingConfirmed && legacySource != null) {
+                                    context.getString(R.string.marketplace_withdraw_failed, e.message ?: "")
+                                } else {
+                                    context.getString(R.string.marketplace_publish_failed, e.message ?: "")
+                                }
                             } finally {
                                 saving = false
                             }
