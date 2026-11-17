@@ -344,4 +344,84 @@ class Nip99Test {
         assertFalse(Nip99.isMarketplaceKind(30023))
         assertFalse(Nip99.isMarketplaceKind(Nip99.KIND_DRAFT))
     }
+    @Test
+    fun `reads OpenMarkets type visibility and specification defaults`() {
+        val legacy = event(listOf(listOf("d", "without-extension")))
+        assertEquals("simple", Nip99.productType(legacy))
+        assertEquals("digital", Nip99.productFormat(legacy))
+        assertEquals("on-sale", Nip99.visibility(legacy))
+
+        val physicalPreOrder = event(listOf(
+            listOf("d", "physical-preorder"),
+            listOf("type", "simple", "physical"),
+            listOf("visibility", "pre-order"),
+            listOf("status", "active"),
+            listOf("stock", "0")
+        ))
+        assertEquals("simple", Nip99.productType(physicalPreOrder))
+        assertEquals("physical", Nip99.productFormat(physicalPreOrder))
+        assertEquals("pre-order", Nip99.visibility(physicalPreOrder))
+        assertEquals(Nip99.AvailabilityState.UNKNOWN, Nip99.availability(physicalPreOrder).state)
+        assertFalse(Nip99.isSold(physicalPreOrder))
+    }
+
+    @Test
+    fun `publishes Gamma tags together with legacy NIP99 status and sold stock zero`() {
+        val tags = Nip99.buildTags(
+            dTag = "gamma-item", title = "Gamma item", summary = "", publishedAt = "1800000000",
+            amount = "15", currency = "EUR", location = "Italy", category = "", images = emptyList(),
+            status = "sold", stock = 9, format = "physical", visibility = "pre-order",
+            preservedTags = listOf(
+                listOf("a", "30402:2222222222222222222222222222222222222222222222222222222222222222:parent"),
+                listOf("spec", "material", "oil"),
+                listOf("status", "active"),
+                listOf("title", "old")
+            )
+        )
+
+        assertTrue(tags.contains(listOf("status", "sold")))
+        assertTrue(tags.contains(listOf("type", "simple", "physical")))
+        assertTrue(tags.contains(listOf("visibility", "pre-order")))
+        assertTrue(tags.contains(listOf("stock", "0")))
+        assertTrue(tags.contains(listOf("spec", "material", "oil")))
+        assertTrue(tags.any { it.firstOrNull() == "a" })
+        assertEquals(1, tags.count { it.firstOrNull() == "status" })
+        assertEquals(1, tags.count { it.firstOrNull() == "title" })
+    }
+
+    @Test
+    fun `hidden listings are visible to their owner but not other viewers`() {
+        val hidden = event(listOf(
+            listOf("d", "private-listing"),
+            listOf("status", "active"),
+            listOf("visibility", "hidden")
+        ))
+        assertEquals("hidden", Nip99.visibility(hidden))
+        assertFalse(Nip99.isVisibleToViewer(hidden, "22".repeat(32)))
+        assertTrue(Nip99.isVisibleToViewer(hidden, hidden.pubkey))
+        assertTrue(Nip99.isVisibleToViewer(event(listOf(listOf("d", "public"))), "22".repeat(32)))
+    }
+
+    @Test
+    fun `hide sold filter keeps own inventory and filters other sold listings`() {
+        val sold = event(listOf(
+            listOf("d", "sold-listing"),
+            listOf("status", "active"),
+            listOf("stock", "0")
+        ))
+        assertTrue(Nip99.isSold(sold))
+        assertFalse(Nip99.matchesSoldFilter(sold, hideSold = true, viewerPubkey = "22".repeat(32)))
+        assertTrue(Nip99.matchesSoldFilter(sold, hideSold = true, viewerPubkey = sold.pubkey))
+        assertTrue(Nip99.matchesSoldFilter(sold, hideSold = false, viewerPubkey = "22".repeat(32)))
+    }
+
+    @Test
+    fun `location filter matches case insensitively and ignores surrounding spaces`() {
+        val listing = event(listOf(listOf("d", "location"), listOf("location", "  Genova  ")))
+        assertTrue(Nip99.matchesLocation(listing, "genova"))
+        assertFalse(Nip99.matchesLocation(listing, "Milano"))
+        assertTrue(Nip99.matchesLocation(listing, null))
+        assertTrue(Nip99.matchesLocation(listing, "  "))
+    }
+
 }
