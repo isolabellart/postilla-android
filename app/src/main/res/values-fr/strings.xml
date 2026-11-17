@@ -903,4 +903,13 @@
     <string name="wallet_switch_wallet_body">Déconnectez ce portefeuille pour utiliser votre portefeuille par défaut ou en restaurer un autre. Vos fonds restent en sécurité : vous pouvez reconnecter ce portefeuille à tout moment avec sa phrase de récupération.</string>
     <string name="wallet_default_seed_info">Ce portefeuille est dérivé de votre clé Nostr ; la phrase ci-dessous sert uniquement à l’exporter vers d’autres applications. Vous n’avez pas besoin de la sauvegarder : votre nsec constitue la sauvegarde.</string>
     <string name="marketplace_search_hint">Rechercher</string>
+    <string name="marketplace_format_label">Format</string>
+    <string name="marketplace_digital">Numérique</string>
+    <string name="marketplace_physical">Physique</string>
+    <string name="marketplace_visibility_label">Visibilité</string>
+    <string name="marketplace_on_sale">En vente</string>
+    <string name="marketplace_pre_order">Précommande</string>
+    <string name="marketplace_hidden">Masqué</string>
+    <string name="marketplace_hide_sold">Masquer les vendus</string>
+    <string name="marketplace_locations">Lieux</string>
 </resources>

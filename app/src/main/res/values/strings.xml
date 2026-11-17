@@ -1140,4 +1140,13 @@
     <string name="wallet_delete">Delete</string>
     <string name="wallet_cancel">Cancel</string>
     <string name="wallet_deleting">Deleting…</string>
+    <string name="marketplace_format_label">Format</string>
+    <string name="marketplace_digital">Digital</string>
+    <string name="marketplace_physical">Physical</string>
+    <string name="marketplace_visibility_label">Visibility</string>
+    <string name="marketplace_on_sale">On sale</string>
+    <string name="marketplace_pre_order">Pre-order</string>
+    <string name="marketplace_hidden">Hidden</string>
+    <string name="marketplace_hide_sold">Hide sold</string>
+    <string name="marketplace_locations">Locations</string>
 </resources>

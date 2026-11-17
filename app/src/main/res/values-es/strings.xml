@@ -902,4 +902,13 @@
     <string name="wallet_switch_wallet_body">Desconecta esta cartera para usar la predeterminada o restaurar otra. Tus fondos siguen seguros: puedes volver a conectar esta cartera en cualquier momento introduciendo su frase de recuperación.</string>
     <string name="wallet_default_seed_info">Esta cartera deriva de tu clave de Nostr, así que la frase siguiente solo sirve para exportarla a otras aplicaciones. No necesitas respaldarla: tu nsec es la copia de seguridad.</string>
     <string name="marketplace_search_hint">Buscar</string>
+    <string name="marketplace_format_label">Formato</string>
+    <string name="marketplace_digital">Digital</string>
+    <string name="marketplace_physical">Físico</string>
+    <string name="marketplace_visibility_label">Visibilidad</string>
+    <string name="marketplace_on_sale">En venta</string>
+    <string name="marketplace_pre_order">Preventa</string>
+    <string name="marketplace_hidden">Oculto</string>
+    <string name="marketplace_hide_sold">Ocultar vendidos</string>
+    <string name="marketplace_locations">Ubicaciones</string>
 </resources>

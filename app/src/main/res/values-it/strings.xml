@@ -973,4 +973,13 @@
     <string name="wallet_default_subtitle">Derivato dalla tua chiave Nostr: non serve un backup aggiuntivo.</string>
     <string name="wallet_switch_wallet_body">Disconnetti questo portafoglio per usare quello predefinito o ripristinarne un altro. I fondi restano al sicuro: puoi riconnettere questo portafoglio in qualsiasi momento inserendo la frase di recupero.</string>
     <string name="wallet_default_seed_info">Questo portafoglio deriva dalla tua chiave Nostr, quindi la frase qui sotto serve solo per esportarlo in altre app. Non devi farne il backup: il tuo nsec è già il backup.</string>
+    <string name="marketplace_format_label">Formato</string>
+    <string name="marketplace_digital">Digitale</string>
+    <string name="marketplace_physical">Fisico</string>
+    <string name="marketplace_visibility_label">Visibilità</string>
+    <string name="marketplace_on_sale">In vendita</string>
+    <string name="marketplace_pre_order">Preordine</string>
+    <string name="marketplace_hidden">Nascosto</string>
+    <string name="marketplace_hide_sold">Nascondi venduti</string>
+    <string name="marketplace_locations">Località</string>
 </resources>

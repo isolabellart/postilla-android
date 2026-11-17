@@ -903,4 +903,13 @@
     <string name="wallet_switch_wallet_body">Trenne dieses Wallet, um dein Standard-Wallet zu verwenden oder ein anderes wiederherzustellen. Deine Guthaben bleiben sicher: Du kannst dieses Wallet jederzeit mit deiner Wiederherstellungsphrase erneut verbinden.</string>
     <string name="wallet_default_seed_info">Dieses Wallet wird aus deinem Nostr-Schlüssel abgeleitet. Die Phrase unten dient daher nur zum Export in andere Wallet-Apps. Du musst sie nicht sichern – dein nsec ist das Backup.</string>
     <string name="marketplace_search_hint">Suchen</string>
+    <string name="marketplace_format_label">Format</string>
+    <string name="marketplace_digital">Digital</string>
+    <string name="marketplace_physical">Physisch</string>
+    <string name="marketplace_visibility_label">Sichtbarkeit</string>
+    <string name="marketplace_on_sale">Im Verkauf</string>
+    <string name="marketplace_pre_order">Vorbestellung</string>
+    <string name="marketplace_hidden">Ausgeblendet</string>
+    <string name="marketplace_hide_sold">Verkaufte ausblenden</string>
+    <string name="marketplace_locations">Orte</string>
 </resources>
