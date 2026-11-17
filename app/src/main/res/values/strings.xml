@@ -1009,7 +1009,7 @@
     <string name="marketplace_location_field">Location</string>
     <string name="marketplace_category_field">Categories</string>
     <string name="marketplace_category_hint">Separate categories with commas</string>
-    <string name="marketplace_status_label">Listing status</string>
+    <string name="marketplace_status_label">Sale status</string>
     <string name="marketplace_active">Active</string>
     <string name="marketplace_sold">Sold</string>
     <string name="marketplace_withdraw_listing">Withdraw listing</string>
@@ -1066,6 +1066,7 @@
     <string name="marketplace_naddr_invalid">This naddr is invalid or incomplete.</string>
     <string name="marketplace_naddr_unsupported">This naddr does not identify a supported Marketplace listing.</string>
     <string name="marketplace_naddr_not_found">No matching listing was returned by the relays reached. It may be temporarily unavailable.</string>
+    <string name="marketplace_hidden_unavailable">This listing is hidden by its seller.</string>
     <string name="marketplace_categories">Explore categories</string>
     <string name="marketplace_no_results">No listings match your search.</string>
     <string name="marketplace_storefront">Storefront</string>
