@@ -514,7 +514,8 @@ fun MarketplaceEditorScreen(
                                         tags = Nip09.buildAddressableDeletionTags(
                                             kind = Nip99.KIND_LEGACY_PRODUCT,
                                             pubkey = oldListing.pubkey,
-                                            dTag = legacySourceDTag!!
+                                            dTag = legacySourceDTag!!,
+                                            eventId = oldListing.id
                                         )
                                     )
                                 }
@@ -592,7 +593,8 @@ fun MarketplaceEditorScreen(
                                     tags = Nip09.buildAddressableDeletionTags(
                                         kind = existingEvent.kind,
                                         pubkey = existingEvent.pubkey,
-                                        dTag = listingDTag
+                                        dTag = listingDTag,
+                                        eventId = existingEvent.id
                                     )
                                 )
                                 publishMarketplaceEvent(relayPool, deletionEvent, context)
