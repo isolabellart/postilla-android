@@ -1381,17 +1381,24 @@ fun WispNavHost(
                 }
             }
             val eventByAddress by eventByAddressFlow.collectAsState(initial = cachedAddressEvent)
-            val existingEvent = Nip01EventOrder.newest(
-                listOfNotNull(eventById, eventByAddress, cachedAddressEvent).filter { candidate ->
-                    if (hasAddressLookup) {
-                        candidate.kind == editorKind &&
-                            candidate.pubkey == editorAuthor &&
-                            Nip99.dTag(candidate) == editorDTag
-                    } else {
-                        candidate.id == eventId
-                    }
+            val existingEvent by remember(
+                eventId, editorKind, editorAuthor, editorDTag,
+                eventById, eventByAddress, cachedAddressEvent
+            ) {
+                derivedStateOf {
+                    Nip01EventOrder.newest(
+                        listOfNotNull(eventById, eventByAddress, cachedAddressEvent).filter { candidate ->
+                            if (hasAddressLookup) {
+                                candidate.kind == editorKind &&
+                                    candidate.pubkey == editorAuthor &&
+                                    Nip99.dTag(candidate) == editorDTag
+                            } else {
+                                candidate.id == eventId
+                            }
+                        }
+                    )
                 }
-            )
+            }
 
             var editorLookupTimedOut by remember(eventId, editorAuthor, editorDTag, editorKind) {
                 mutableStateOf(false)
