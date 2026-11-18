@@ -14,7 +14,7 @@ android {
     val debugApplicationIdSuffix = rootProject.extra["debugApplicationIdSuffix"] as String
 
     namespace = "com.darkwisp.app"
-    compileSdk = 35
+    compileSdk = 37
 
     val localProps = Properties().apply {
         val f = rootProject.file("local.properties")
