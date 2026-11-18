@@ -951,6 +951,7 @@ fun WispNavHost(
                 onNoteClick = { event ->
                     navController.navigate("thread/${event.id}")
                 },
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onQuotedNoteClick = { eventId ->
                     navController.navigate("thread/$eventId")
                 },
