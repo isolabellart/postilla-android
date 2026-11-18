@@ -25,6 +25,10 @@ class Nip99Test {
         val nonPositive = event(listOf(listOf("d", "zero-date"), listOf("published_at", "0")))
 
         assertEquals(1_757_668_715L, Nip99.publishedAtTimestamp(valid))
+        val validJson = event(emptyList()).copy(
+            content = """{"published_at":"1757668715"}"""
+        )
+        assertEquals(1_757_668_715L, Nip99.publishedAtTimestamp(validJson))
         assertNull(Nip99.publishedAtTimestamp(missing))
         assertNull(Nip99.publishedAtTimestamp(malformed))
         assertNull(Nip99.publishedAtTimestamp(nonPositive))
@@ -188,12 +192,31 @@ class Nip99Test {
 
         assertTrue(tags.contains(listOf("d", "painting-01")))
         assertTrue(tags.contains(listOf("title", "Original oil painting")))
+        assertTrue(tags.contains(listOf("published_at", "1800000000")))
         assertTrue(tags.contains(listOf("price", "450", "EUR")))
         assertTrue(tags.contains(listOf("status", "sold")))
         assertTrue(tags.contains(listOf("t", "art")))
         assertTrue(tags.contains(listOf("t", "handmade")))
         assertTrue(tags.contains(listOf("t", "painting")))
         assertEquals(1, tags.count { it.firstOrNull() == "image" })
+    }
+
+    @Test
+    fun `buildTags omits an unknown publication date instead of inventing one`() {
+        val tags = Nip99.buildTags(
+            dTag = "legacy-listing",
+            title = "Legacy listing",
+            summary = "",
+            publishedAt = null,
+            amount = "",
+            currency = "",
+            location = "",
+            category = "",
+            images = emptyList(),
+            status = "active"
+        )
+
+        assertFalse(tags.any { it.firstOrNull() == "published_at" })
     }
 
     @Test

@@ -264,7 +264,8 @@ object Nip99 {
 
     /** Returns the original NIP-99 publication timestamp only when the tag is valid. */
     fun publishedAtTimestamp(event: NostrEvent): Long? =
-        tag(event, "published_at")?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }
+        (tag(event, "published_at")?.getOrNull(1) ?: jsonField(event, "published_at"))
+            ?.toLongOrNull()?.takeIf { it > 0L }
 
     fun publishedAt(event: NostrEvent): String =
         tag(event, "published_at")?.getOrNull(1)
@@ -314,7 +315,7 @@ object Nip99 {
         dTag: String,
         title: String,
         summary: String,
-        publishedAt: String,
+        publishedAt: String?,
         amount: String,
         currency: String,
         location: String,
@@ -338,11 +339,15 @@ object Nip99 {
         val result = mutableListOf(
             listOf("d", dTag.trim()),
             listOf("title", title.trim()),
-            listOf("summary", summary.trim()),
-            listOf("published_at", publishedAt),
-            listOf("status", if (sold) "sold" else "active"),
-            listOf("type", normalizedType, normalizedFormat),
-            listOf("visibility", normalizedVisibility)
+            listOf("summary", summary.trim())
+        )
+        publishedAt?.takeIf(String::isNotBlank)?.let { result.add(listOf("published_at", it)) }
+        result.addAll(
+            listOf(
+                listOf("status", if (sold) "sold" else "active"),
+                listOf("type", normalizedType, normalizedFormat),
+                listOf("visibility", normalizedVisibility)
+            )
         )
         if (publishedStock != null) result.add(listOf("stock", publishedStock.toString()))
         if (location.isNotBlank()) result.add(listOf("location", location.trim()))

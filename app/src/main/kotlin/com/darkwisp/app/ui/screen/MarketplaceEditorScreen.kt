@@ -122,7 +122,8 @@ fun MarketplaceEditorScreen(
             ?: ("listing-" + UUID.randomUUID().toString())
     }
     val publishedAt = remember(existingEvent?.id) {
-        existingEvent?.let { Nip99.publishedAt(it) } ?: (System.currentTimeMillis() / 1000).toString()
+        if (existingEvent == null) (System.currentTimeMillis() / 1000).toString()
+        else Nip99.publishedAtTimestamp(existingEvent)?.toString()
     }
 
     var uploading by remember { mutableStateOf(false) }
