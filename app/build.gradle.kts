@@ -106,6 +106,9 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // AGP 9.1 disables generated resValue resources by default; Postilla
+        // uses them for localized app labels and variant-specific names.
+        resValues = true
     }
 }
 
