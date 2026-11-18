@@ -1241,6 +1241,14 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         }
     }
 
+    /** Sets a one-time composer prefill and leaves two new lines for the user's text. */
+    fun setInitialContent(value: String) {
+        val reference = value.trimEnd()
+        if (reference.isBlank() || _content.value.text.isNotBlank()) return
+        val prepared = "$reference\n\n"
+        updateContent(TextFieldValue(prepared, TextRange(prepared.length)))
+    }
+
     /** Appends a reference to the current composer without discarding an existing draft. */
     fun appendContent(value: String) {
         val addition = value.trim()
