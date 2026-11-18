@@ -1563,27 +1563,35 @@ fun WispNavHost(
             )
         ) { backStackEntry ->
             val initialComposeContent = backStackEntry.arguments?.getString("prefillContent")
+            val routeComposeViewModel = if (initialComposeContent != null) {
+                viewModel<com.darkwisp.app.viewmodel.ComposeViewModel>(
+                    viewModelStoreOwner = backStackEntry,
+                    key = "marketplace-boost-compose"
+                )
+            } else {
+                composeViewModel
+            }
             // Initialize PoW toggle from persisted preferences
             LaunchedEffect(Unit) {
-                composeViewModel.initPowState(feedViewModel.powPrefs.isNotePowEnabled())
+                routeComposeViewModel.initPowState(feedViewModel.powPrefs.isNotePowEnabled())
             }
             // Auto-save draft when leaving compose screen (back button, navigation, etc.)
             DisposableEffect(Unit) {
                 onDispose {
-                    if (composeViewModel.content.value.text.isNotBlank()) {
-                        composeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
+                    if (routeComposeViewModel.content.value.text.isNotBlank()) {
+                        routeComposeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
                     }
                 }
             }
             ComposeScreen(
-                viewModel = composeViewModel,
+                viewModel = routeComposeViewModel,
                 relayPool = feedViewModel.relayPool,
                 replyTo = replyTarget,
                 quoteTo = quoteTarget,
                 initialContent = initialComposeContent,
                 onBack = { navController.popBackStack() },
                 onSaveDraft = {
-                    composeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
+                    routeComposeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
                     navController.popBackStack()
                 },
                 outboxRouter = feedViewModel.outboxRouter,
