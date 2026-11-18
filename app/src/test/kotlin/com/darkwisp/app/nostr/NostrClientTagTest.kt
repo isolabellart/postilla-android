@@ -3,6 +3,7 @@ package com.darkwisp.app.nostr
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class NostrClientTagTest {
@@ -34,6 +35,24 @@ class NostrClientTagTest {
 
         assertFalse(result.any { it.firstOrNull() == "client" })
         assertEquals(listOf("e", "reply-target"), result.single())
+    }
+
+    @Test
+    fun remoteSignerCannotReturnAnEventWithAChangedLegacyClientTag() {
+        val requested = NostrEvent.createUnsigned(
+            pubkey = "11".repeat(32),
+            createdAt = 1L,
+            kind = 1111,
+            tags = NostrClientTag.apply(emptyList(), enabled = true),
+            content = "A comment"
+        )
+        val altered = requested.copy(
+            tags = requested.tags + listOf(listOf("client", "Dark Wisp"))
+        )
+
+        assertThrows(SignerRejectedException::class.java) {
+            validateRemoteSignedEvent(requested, altered)
+        }
     }
 
     @Test

@@ -122,7 +122,6 @@ import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip13
-import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.ClientMessage

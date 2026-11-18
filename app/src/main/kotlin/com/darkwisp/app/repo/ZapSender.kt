@@ -119,10 +119,10 @@ class ZapSender(
                 .ifEmpty { relayPool.getRelayUrls().take(3) }
         }
 
-        val allExtraTags = buildList {
-            if (interfacePrefs.isClientTagEnabled()) add(NostrClientTag.tag)
-            addAll(extraTags)
-        }
+        val allExtraTags = NostrClientTag.apply(
+            extraTags,
+            interfacePrefs.isClientTagEnabled()
+        )
 
         val zapRequest = when {
             isAnonymous -> {
