@@ -920,4 +920,14 @@
     <string name="marketplace_translation_same_language">Ce texte est déjà dans la langue sélectionnée.</string>
     <string name="marketplace_published_at">Publié le %1$s</string>
     <string name="marketplace_boost">Partager l’annonce</string>
+    <string name="marketplace_comment_reply">Répondre</string>
+    <string name="marketplace_comment_like">Aimer ce commentaire</string>
+    <string name="marketplace_comment_unlike">Retirer le J’aime de ce commentaire</string>
+    <string name="marketplace_comment_replying_to">Réponse à %1$s</string>
+    <string name="marketplace_comment_cancel_reply">Annuler la réponse</string>
+    <string name="marketplace_comment_publish_failed">Impossible de publier le commentaire. Réessayez.</string>
+    <string name="marketplace_image_previous">Image précédente</string>
+    <string name="marketplace_image_next">Image suivante</string>
+    <string name="marketplace_image_counter">%1$d sur %2$d</string>
+    <string name="compose_resize_text_area">Redimensionner le champ de texte</string>
 </resources>
