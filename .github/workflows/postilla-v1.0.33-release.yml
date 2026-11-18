@@ -32,7 +32,7 @@ jobs:
           PREVIOUS_RELEASE_COMMIT="57503656e090710b7162faba87056f1cedfd9db7"
           git merge-base --is-ancestor "$PREVIOUS_RELEASE_COMMIT" HEAD
           git merge-base --is-ancestor "$TESTED_STAGING_COMMIT" HEAD
-          git diff --quiet "$TESTED_STAGING_COMMIT" HEAD -- . ':(exclude).github/workflows/postilla-v1.0.33-release.yml' ':(exclude)zapstore.yaml'
+          git diff --quiet "$TESTED_STAGING_COMMIT" HEAD -- . ':(exclude).github/workflows/postilla-v1.0.33-release.yml' ':(exclude).github/workflows/dark-wisp-enhanced-release.yml' ':(exclude)zapstore.yaml'
           echo "Verified v1.0.25 base and the exact user-approved, CI-green Postilla 1.0.33 application source."
           echo "Release source: $(git rev-parse HEAD)"
           if [[ -n "$(git ls-remote --tags origin refs/tags/v1.0.33)" ]]; then
