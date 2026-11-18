@@ -4049,9 +4049,11 @@ fun WispNavHost(
                     val signer = activeSigner ?: return@NotificationsScreen
                     notifReplyScope.launch {
                         val hint = feedViewModel.outboxRouter?.getRelayHint(replyToEvent.pubkey) ?: ""
-                        val tags = com.darkwisp.app.nostr.Nip10.buildReplyTags(replyToEvent, hint) +
-                            com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(content, notifResolvedEmojis) +
-                            if (notifInterfacePrefs.isClientTagEnabled()) listOf(listOf("client", "Dark Wisp")) else emptyList()
+                        val tags = com.darkwisp.app.nostr.NostrClientTag.apply(
+                            com.darkwisp.app.nostr.Nip10.buildReplyTags(replyToEvent, hint) +
+                                com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(content, notifResolvedEmojis),
+                            notifInterfacePrefs.isClientTagEnabled()
+                        )
 
                         // If the parent is a private reply we received, keep the thread encrypted
                         // by gift-wrapping this reply too. Otherwise fall through to the public path.
