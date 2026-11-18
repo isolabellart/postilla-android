@@ -3,7 +3,7 @@ name: Postilla staging validation 1.0.33
 on:
   push:
     branches:
-      - staging/postilla-preview-1.0.33-client-tag-compose-marketplace-20261118
+      - staging/postilla-preview-1.0.33-client-tag-compose-20261118
   workflow_dispatch:
 
 concurrency:
