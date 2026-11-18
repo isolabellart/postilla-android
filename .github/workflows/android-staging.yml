@@ -9,6 +9,7 @@ on:
       - feat/feed-redesign-navigation
       - feature/nip99-marketplace-integrated-fixes
       - fix/marketplace-stability-zoom
+      - feature/concord-communities-staging
   workflow_dispatch:
 
 permissions:
@@ -39,7 +40,7 @@ jobs:
       - name: Upload staging APK
         uses: actions/upload-artifact@v4
         with:
-          name: dark-wisp-marketplace-integrated-staging
+          name: postilla-concord-communities-staging
           path: app/build/outputs/apk/staging/*.apk
           if-no-files-found: error
 
