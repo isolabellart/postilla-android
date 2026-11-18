@@ -27,6 +27,16 @@ Per una nuova versione:
 
 Nome asset obbligatorio: `Postilla-vX.Y.Z.apk`.
 
+Secret GitHub Actions necessari al workflow Android (nomi, non valori):
+
+- `DARK_WISP_ENHANCED_KEYSTORE_BASE64`
+- `DARK_WISP_ENHANCED_STORE_PASSWORD`
+- `DARK_WISP_ENHANCED_KEY_ALIAS`
+- `DARK_WISP_ENHANCED_KEY_PASSWORD`
+- `DARK_WISP_ENHANCED_RELEASE_TOKEN`
+
+Devono rimanere configurati nel repository. Non copiarli nei file, nei log, nei commit o nella documentazione.
+
 Il workflow Android non deve contenere credenziali Zapstore né eseguire direttamente `zsp publish`.
 
 ## 3. Pubblicazione Zapstore automatica
