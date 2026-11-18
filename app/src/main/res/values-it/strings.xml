@@ -983,4 +983,12 @@
     <string name="marketplace_hidden">Nascosto</string>
     <string name="marketplace_hide_sold">Nascondi venduti</string>
     <string name="marketplace_locations">Località</string>
+    <string name="marketplace_translate">Traduci</string>
+    <string name="marketplace_show_original">Mostra originale</string>
+    <string name="marketplace_show_translation">Mostra traduzione</string>
+    <string name="marketplace_translation_loading">Traduzione in corso…</string>
+    <string name="marketplace_translation_failed">Traduzione non disponibile. Riprova.</string>
+    <string name="marketplace_translation_same_language">Il testo è già nella lingua selezionata.</string>
+    <string name="marketplace_published_at">Pubblicato il %1$s</string>
+    <string name="marketplace_boost">Condividi annuncio</string>
 </resources>

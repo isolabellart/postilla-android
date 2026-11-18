@@ -262,6 +262,10 @@ object Nip99 {
         }
     }
 
+    /** Returns the original NIP-99 publication timestamp only when the tag is valid. */
+    fun publishedAtTimestamp(event: NostrEvent): Long? =
+        tag(event, "published_at")?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }
+
     fun publishedAt(event: NostrEvent): String =
         tag(event, "published_at")?.getOrNull(1)
             ?: jsonField(event, "published_at")

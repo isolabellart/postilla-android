@@ -912,4 +912,12 @@
     <string name="marketplace_hidden">숨김</string>
     <string name="marketplace_hide_sold">판매 완료 숨기기</string>
     <string name="marketplace_locations">위치</string>
+    <string name="marketplace_translate">번역</string>
+    <string name="marketplace_show_original">원문 보기</string>
+    <string name="marketplace_show_translation">번역문 보기</string>
+    <string name="marketplace_translation_loading">번역 중…</string>
+    <string name="marketplace_translation_failed">번역을 사용할 수 없습니다. 다시 시도하세요.</string>
+    <string name="marketplace_translation_same_language">이 텍스트는 이미 선택한 언어입니다.</string>
+    <string name="marketplace_published_at">게시일 %1$s</string>
+    <string name="marketplace_boost">상품 공유</string>
 </resources>

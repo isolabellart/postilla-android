@@ -118,7 +118,8 @@ fun ThreadScreen(
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
     /** Whether the user can private-zap [event]'s author (local keypair + DM relays on both sides). */
-    canPrivateZapFor: (NostrEvent) -> Boolean = { false }
+    canPrivateZapFor: (NostrEvent) -> Boolean = { false },
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 ) {
     val flatThread by viewModel.flatThread.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -187,7 +188,7 @@ fun ThreadScreen(
 
     val resolvedEmojisState = rememberUpdatedState(resolvedEmojis)
     val unicodeEmojisState = rememberUpdatedState(unicodeEmojis)
-    val noteActions = remember(userPubkey) {
+    val noteActions = remember(userPubkey, onMarketplaceListingClick) {
         NoteActions(
             onReply = onReply,
             onReact = onReact,
@@ -197,6 +198,7 @@ fun ThreadScreen(
             onZapInstant = onZapInstant,
             onProfileClick = onProfileClick,
             onNoteClick = { eventId -> onQuotedNoteClick?.invoke(eventId) },
+            onMarketplaceListingClick = onMarketplaceListingClick,
             onAddToList = onAddToList,
             onFollowAuthor = onToggleFollow,
             onBlockAuthor = onBlockUser,

@@ -163,9 +163,13 @@ fun ComposeScreen(
     powManager: PowManager? = null,
     powPrefs: PowPreferences? = null,
     resolvedEmojis: Map<String, String> = emptyMap(),
-    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null,
+    initialContent: String? = null
 ) {
     val content by viewModel.content.collectAsState()
+    LaunchedEffect(initialContent) {
+        initialContent?.takeIf(String::isNotBlank)?.let(viewModel::appendContent)
+    }
     val publishing by viewModel.publishing.collectAsState()
     val error by viewModel.error.collectAsState()
     val uploadedUrls by viewModel.uploadedUrls.collectAsState()

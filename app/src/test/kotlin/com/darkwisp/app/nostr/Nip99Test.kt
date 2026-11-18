@@ -18,6 +18,19 @@ class Nip99Test {
     )
 
     @Test
+    fun `published date comes only from a valid NIP-99 published_at tag`() {
+        val valid = event(listOf(listOf("d", "dated"), listOf("published_at", "1757668715")))
+        val missing = event(listOf(listOf("d", "legacy-without-date")))
+        val malformed = event(listOf(listOf("d", "malformed-date"), listOf("published_at", "not-a-timestamp")))
+        val nonPositive = event(listOf(listOf("d", "zero-date"), listOf("published_at", "0")))
+
+        assertEquals(1_757_668_715L, Nip99.publishedAtTimestamp(valid))
+        assertNull(Nip99.publishedAtTimestamp(missing))
+        assertNull(Nip99.publishedAtTimestamp(malformed))
+        assertNull(Nip99.publishedAtTimestamp(nonPositive))
+    }
+
+    @Test
     fun `reads standard listing fields and price`() {
         val listing = event(
             listOf(

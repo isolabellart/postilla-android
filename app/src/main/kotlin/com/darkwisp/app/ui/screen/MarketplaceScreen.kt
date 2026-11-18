@@ -52,6 +52,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ExpandMore
@@ -84,6 +85,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -98,11 +100,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.Instant
+import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Date
+import java.util.Locale
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
@@ -120,6 +126,9 @@ import com.darkwisp.app.ui.component.ZapDialog
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.TranslationState
+import com.darkwisp.app.repo.TranslationStatus
 import com.darkwisp.app.repo.MarketplaceReviewRepository
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.nostr.SellerReviewSummary
@@ -860,7 +869,9 @@ fun MarketplaceDetailScreen(
     fetchPaymentTargets: (suspend (String) -> List<com.darkwisp.app.nostr.NipA3.PaymentTarget>)?,
     onOpenProfile: (String) -> Unit = {},
     onBookmarkSetChanged: (NostrEvent) -> Unit = {},
-    bookmarkSetRepository: BookmarkSetRepository
+    bookmarkSetRepository: BookmarkSetRepository,
+    translationRepository: TranslationRepository? = null,
+    onBoostListing: (String) -> Unit = {}
 ) {
     val profileVersion by eventRepository.profileVersionFor(event.pubkey).collectAsState(initial = 0)
     val sellerProfile = remember(eventRepository, event.pubkey, profileVersion) {
@@ -872,6 +883,28 @@ fun MarketplaceDetailScreen(
     val title = Nip99.displayTitle(event, stringResource(R.string.marketplace_preview_untitled))
     val images = Nip99.images(event)
     val summary = Nip99.summary(event)
+    val description = Nip99.description(event)
+    val translationVersion by translationRepository?.version?.collectAsState()
+        ?: remember { mutableIntStateOf(0) }
+    val titleToTranslate = Nip99.title(event).takeIf(String::isNotBlank)
+    val titleTranslationKey = "marketplace:${event.id}:title"
+    val summaryTranslationKey = "marketplace:${event.id}:summary"
+    val descriptionTranslationKey = "marketplace:${event.id}:description"
+    val titleTranslationState = remember(translationVersion, titleTranslationKey) {
+        translationRepository?.getState(titleTranslationKey) ?: TranslationState()
+    }
+    val summaryTranslationState = remember(translationVersion, summaryTranslationKey) {
+        translationRepository?.getState(summaryTranslationKey) ?: TranslationState()
+    }
+    val descriptionTranslationState = remember(translationVersion, descriptionTranslationKey) {
+        translationRepository?.getState(descriptionTranslationKey) ?: TranslationState()
+    }
+    var showOriginalTitle by remember(event.id) { mutableStateOf(false) }
+    var showOriginalSummary by remember(event.id) { mutableStateOf(false) }
+    var showOriginalDescription by remember(event.id) { mutableStateOf(false) }
+    val formattedPublishedAt = remember(event.id) {
+        Nip99.publishedAtTimestamp(event)?.let(::formatMarketplacePublishedDate)
+    }
     val availability = Nip99.availability(event)
     val sold = availability.state == Nip99.AvailabilityState.SOLD_OUT
     var message by remember(event.id) {
@@ -1336,7 +1369,25 @@ fun MarketplaceDetailScreen(
                         }
                     }
                 }
-                Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (translationRepository != null && titleToTranslate != null) {
+                    MarketplaceTranslatableText(
+                        originalText = titleToTranslate,
+                        state = titleTranslationState,
+                        showOriginal = showOriginalTitle,
+                        textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        onTranslate = { translationRepository.translate(titleTranslationKey, titleToTranslate) },
+                        onToggleOriginal = { showOriginalTitle = !showOriginalTitle }
+                    )
+                } else {
+                    Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                }
+                formattedPublishedAt?.let { date ->
+                    Text(
+                        stringResource(R.string.marketplace_published_at, date),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Nip99.price(event)?.let { price ->
                     Text(
                         Nip99.priceLabel(event).orEmpty(),
@@ -1354,12 +1405,38 @@ fun MarketplaceDetailScreen(
                 if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
                     MarketplaceAvailabilityBadge(availability)
                 }
-                if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.titleMedium)
+                if (summary.isNotBlank()) {
+                    if (translationRepository != null) {
+                        MarketplaceTranslatableText(
+                            originalText = summary,
+                            state = summaryTranslationState,
+                            showOriginal = showOriginalSummary,
+                            textStyle = MaterialTheme.typography.titleMedium,
+                            onTranslate = { translationRepository.translate(summaryTranslationKey, summary) },
+                            onToggleOriginal = { showOriginalSummary = !showOriginalSummary }
+                        )
+                    } else {
+                        Text(summary, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {
                     Text(stringResource(R.string.marketplace_location_value, location), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(Nip99.description(event), style = MaterialTheme.typography.bodyLarge)
+                if (description.isNotBlank()) {
+                    if (translationRepository != null) {
+                        MarketplaceTranslatableText(
+                            originalText = description,
+                            state = descriptionTranslationState,
+                            showOriginal = showOriginalDescription,
+                            textStyle = MaterialTheme.typography.bodyLarge,
+                            onTranslate = { translationRepository.translate(descriptionTranslationKey, description) },
+                            onToggleOriginal = { showOriginalDescription = !showOriginalDescription }
+                        )
+                    } else {
+                        Text(description, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
                 if (isOwnListing) {
                     Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.marketplace_edit)) }
                 }
@@ -1535,16 +1612,12 @@ fun MarketplaceDetailScreen(
                     if (signer == null) Text(stringResource(R.string.marketplace_comment_signin), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("naddr", listingNaddr))
-                        Toast.makeText(context, R.string.marketplace_naddr_copied, Toast.LENGTH_SHORT).show()
-                    },
+                    onClick = { onBoostListing("nostr:$listingNaddr") },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Icon(Icons.Default.Share, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.marketplace_copy_naddr))
+                    Text(stringResource(R.string.marketplace_boost))
                 }
             }
         }
@@ -1701,3 +1774,59 @@ private fun ZoomableMarketplaceImage(
         }
     }
 }
+
+@Composable
+private fun MarketplaceTranslatableText(
+    originalText: String,
+    state: TranslationState,
+    showOriginal: Boolean,
+    textStyle: TextStyle,
+    onTranslate: () -> Unit,
+    onToggleOriginal: () -> Unit
+) {
+    val isLoading = state.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+        state.status == TranslationStatus.DOWNLOADING_MODEL ||
+        state.status == TranslationStatus.TRANSLATING
+    val hasTranslation = state.status == TranslationStatus.DONE && state.translatedText.isNotBlank()
+    Text(
+        text = if (hasTranslation && !showOriginal) state.translatedText else originalText,
+        style = textStyle
+    )
+    when {
+        hasTranslation -> OutlinedButton(onClick = onToggleOriginal) {
+            Text(
+                stringResource(
+                    if (showOriginal) R.string.marketplace_show_translation
+                    else R.string.marketplace_show_original
+                )
+            )
+        }
+        state.status == TranslationStatus.SAME_LANGUAGE -> Text(
+            stringResource(R.string.marketplace_translation_same_language),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        state.status == TranslationStatus.ERROR -> Text(
+            stringResource(R.string.marketplace_translation_failed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+    if (!hasTranslation && state.status != TranslationStatus.SAME_LANGUAGE) {
+        OutlinedButton(onClick = onTranslate, enabled = !isLoading) {
+            Text(
+                stringResource(
+                    if (isLoading) R.string.marketplace_translation_loading
+                    else R.string.marketplace_translate
+                )
+            )
+        }
+        if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+}
+
+private fun formatMarketplacePublishedDate(timestampSeconds: Long): String? = runCatching {
+    val milliseconds = Math.multiplyExact(timestampSeconds, 1_000L)
+    DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(Date(milliseconds))
+}.getOrNull()
+

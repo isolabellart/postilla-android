@@ -911,4 +911,12 @@
     <string name="marketplace_hidden">Oculto</string>
     <string name="marketplace_hide_sold">Ocultar vendidos</string>
     <string name="marketplace_locations">Localizações</string>
+    <string name="marketplace_translate">Traduzir</string>
+    <string name="marketplace_show_original">Mostrar original</string>
+    <string name="marketplace_show_translation">Mostrar tradução</string>
+    <string name="marketplace_translation_loading">Traduzindo…</string>
+    <string name="marketplace_translation_failed">Tradução indisponível. Tente novamente.</string>
+    <string name="marketplace_translation_same_language">Este texto já está no idioma selecionado.</string>
+    <string name="marketplace_published_at">Publicado em %1$s</string>
+    <string name="marketplace_boost">Compartilhar anúncio</string>
 </resources>

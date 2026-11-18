@@ -1150,4 +1150,12 @@
     <string name="marketplace_hidden">Hidden</string>
     <string name="marketplace_hide_sold">Hide sold</string>
     <string name="marketplace_locations">Locations</string>
+    <string name="marketplace_translate">Translate</string>
+    <string name="marketplace_show_original">Show original</string>
+    <string name="marketplace_show_translation">Show translation</string>
+    <string name="marketplace_translation_loading">Translating…</string>
+    <string name="marketplace_translation_failed">Translation unavailable. Try again.</string>
+    <string name="marketplace_translation_same_language">This text is already in the selected language.</string>
+    <string name="marketplace_published_at">Published %1$s</string>
+    <string name="marketplace_boost">Boost listing</string>
 </resources>

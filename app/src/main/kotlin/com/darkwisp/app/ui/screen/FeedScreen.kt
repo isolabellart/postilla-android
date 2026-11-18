@@ -431,7 +431,7 @@ fun FeedScreen(
 
     val noteActions = remember(
         viewModel, userPubkey, followList, onReply, onReact, onRepost, onQuote,
-        onProfileClick, onQuotedNoteClick, onAddToList, onHashtagClick,
+        onProfileClick, onQuotedNoteClick, onListingClick, onAddToList, onHashtagClick,
         onArticleClick, onGroupRoom, onLiveStreamClick, fetchGroupPreview
     ) {
         NoteActions(
@@ -451,6 +451,7 @@ fun FeedScreen(
             },
             onProfileClick = onProfileClick,
             onNoteClick = { eventId -> onQuotedNoteClick?.invoke(eventId) },
+            onMarketplaceListingClick = onListingClick,
             onAddToList = onAddToList,
             onFollowAuthor = { pubkey -> viewModel.toggleFollow(pubkey) },
             onBlockAuthor = { pubkey -> viewModel.blockUser(pubkey) },

@@ -951,6 +951,7 @@ fun WispNavHost(
                 onNoteClick = { event ->
                     navController.navigate("thread/${event.id}")
                 },
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onQuotedNoteClick = { eventId ->
                     navController.navigate("thread/$eventId")
                 },
@@ -1219,7 +1220,13 @@ fun WispNavHost(
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     recipientHasLud16 = zapRecipientHasLud16(feedViewModel, listing.pubkey),
                     profileLookup = { feedViewModel.profileRepo.get(it) },
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    translationRepository = feedViewModel.translationRepo,
+                    onBoostListing = { listingReference ->
+                        replyTarget = null
+                        quoteTarget = null
+                        navController.navigate("${Routes.COMPOSE}?prefillContent=${android.net.Uri.encode(listingReference)}")
+                    }
                 )
             }
         }
@@ -1363,7 +1370,13 @@ fun WispNavHost(
                     onGoToWallet = { navController.navigate(Routes.WALLET) },
                     recipientHasLud16 = zapRecipientHasLud16(feedViewModel, event!!.pubkey),
                     profileLookup = { feedViewModel.profileRepo.get(it) },
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    translationRepository = feedViewModel.translationRepo,
+                    onBoostListing = { listingReference ->
+                        replyTarget = null
+                        quoteTarget = null
+                        navController.navigate("${Routes.COMPOSE}?prefillContent=${android.net.Uri.encode(listingReference)}")
+                    }
                 )
             }
         }
@@ -1540,7 +1553,17 @@ fun WispNavHost(
             }
         }
 
-        composable(Routes.COMPOSE) {
+        composable(
+            route = "${Routes.COMPOSE}?prefillContent={prefillContent}",
+            arguments = listOf(
+                navArgument("prefillContent") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val initialComposeContent = backStackEntry.arguments?.getString("prefillContent")
             // Initialize PoW toggle from persisted preferences
             LaunchedEffect(Unit) {
                 composeViewModel.initPowState(feedViewModel.powPrefs.isNotePowEnabled())
@@ -1558,6 +1581,7 @@ fun WispNavHost(
                 relayPool = feedViewModel.relayPool,
                 replyTo = replyTarget,
                 quoteTo = quoteTarget,
+                initialContent = initialComposeContent,
                 onBack = { navController.popBackStack() },
                 onSaveDraft = {
                     composeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
@@ -2411,6 +2435,7 @@ fun WispNavHost(
                 isFollowing = { pubkey -> feedViewModel.contactRepo.isFollowing(pubkey) },
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
+                        onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                         nip05Repo = feedViewModel.nip05Repo,
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
@@ -2768,6 +2793,7 @@ fun WispNavHost(
 
             val hashtagNoteActions = remember {
                 com.darkwisp.app.ui.component.NoteActions(
+                    onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                     onReply = { event ->
                         replyTarget = event
                         quoteTarget = null
@@ -2933,6 +2959,7 @@ fun WispNavHost(
 
             val setFeedNoteActions = remember {
                 com.darkwisp.app.ui.component.NoteActions(
+                    onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                     onReply = { event ->
                         replyTarget = event
                         quoteTarget = null
@@ -3112,6 +3139,7 @@ fun WispNavHost(
 
             val articleNoteActions = remember {
                 com.darkwisp.app.ui.component.NoteActions(
+                    onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                     onReply = { event ->
                         replyTarget = event
                         quoteTarget = null

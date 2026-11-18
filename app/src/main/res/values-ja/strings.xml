@@ -911,4 +911,12 @@
     <string name="marketplace_hidden">非表示</string>
     <string name="marketplace_hide_sold">売却済みを隠す</string>
     <string name="marketplace_locations">場所</string>
+    <string name="marketplace_translate">翻訳</string>
+    <string name="marketplace_show_original">原文を表示</string>
+    <string name="marketplace_show_translation">翻訳を表示</string>
+    <string name="marketplace_translation_loading">翻訳中…</string>
+    <string name="marketplace_translation_failed">翻訳できません。もう一度お試しください。</string>
+    <string name="marketplace_translation_same_language">このテキストはすでに選択した言語です。</string>
+    <string name="marketplace_published_at">公開日 %1$s</string>
+    <string name="marketplace_boost">出品をシェア</string>
 </resources>

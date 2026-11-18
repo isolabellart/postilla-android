@@ -872,4 +872,12 @@
     <string name="marketplace_hidden">Скрыто</string>
     <string name="marketplace_hide_sold">Скрыть проданные</string>
     <string name="marketplace_locations">Местоположения</string>
+    <string name="marketplace_translate">Перевести</string>
+    <string name="marketplace_show_original">Показать оригинал</string>
+    <string name="marketplace_show_translation">Показать перевод</string>
+    <string name="marketplace_translation_loading">Перевод выполняется…</string>
+    <string name="marketplace_translation_failed">Перевод недоступен. Попробуйте ещё раз.</string>
+    <string name="marketplace_translation_same_language">Этот текст уже на выбранном языке.</string>
+    <string name="marketplace_published_at">Опубликовано %1$s</string>
+    <string name="marketplace_boost">Поделиться объявлением</string>
 </resources>

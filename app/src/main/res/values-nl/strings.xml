@@ -911,4 +911,12 @@
     <string name="marketplace_hidden">Verborgen</string>
     <string name="marketplace_hide_sold">Verkochte verbergen</string>
     <string name="marketplace_locations">Locaties</string>
+    <string name="marketplace_translate">Vertalen</string>
+    <string name="marketplace_show_original">Origineel tonen</string>
+    <string name="marketplace_show_translation">Vertaling tonen</string>
+    <string name="marketplace_translation_loading">Bezig met vertalen…</string>
+    <string name="marketplace_translation_failed">Vertaling niet beschikbaar. Probeer het opnieuw.</string>
+    <string name="marketplace_translation_same_language">Deze tekst is al in de geselecteerde taal.</string>
+    <string name="marketplace_published_at">Gepubliceerd op %1$s</string>
+    <string name="marketplace_boost">Advertentie delen</string>
 </resources>

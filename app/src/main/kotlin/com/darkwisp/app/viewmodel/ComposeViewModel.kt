@@ -1241,6 +1241,16 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         }
     }
 
+    /** Appends a reference to the current composer without discarding an existing draft. */
+    fun appendContent(value: String) {
+        val addition = value.trim()
+        if (addition.isBlank()) return
+        val current = _content.value.text
+        if (current.contains(addition)) return
+        val merged = if (current.isBlank()) addition else "${current.trimEnd()}\n\n$addition"
+        updateContent(TextFieldValue(merged, TextRange(merged.length)))
+    }
+
     fun clear() {
         currentDraftId = null
         _content.value = TextFieldValue()

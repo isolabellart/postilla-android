@@ -912,4 +912,12 @@
     <string name="marketplace_hidden">隐藏</string>
     <string name="marketplace_hide_sold">隐藏已售出</string>
     <string name="marketplace_locations">地点</string>
+    <string name="marketplace_translate">翻译</string>
+    <string name="marketplace_show_original">显示原文</string>
+    <string name="marketplace_show_translation">显示译文</string>
+    <string name="marketplace_translation_loading">正在翻译…</string>
+    <string name="marketplace_translation_failed">暂时无法翻译，请重试。</string>
+    <string name="marketplace_translation_same_language">此文本已经是所选语言。</string>
+    <string name="marketplace_published_at">发布于 %1$s</string>
+    <string name="marketplace_boost">分享商品</string>
 </resources>
