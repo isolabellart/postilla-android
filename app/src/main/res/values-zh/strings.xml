@@ -920,4 +920,14 @@
     <string name="marketplace_translation_same_language">此文本已经是所选语言。</string>
     <string name="marketplace_published_at">发布于 %1$s</string>
     <string name="marketplace_boost">分享商品</string>
+    <string name="marketplace_comment_reply">回复</string>
+    <string name="marketplace_comment_like">点赞评论</string>
+    <string name="marketplace_comment_unlike">取消评论点赞</string>
+    <string name="marketplace_comment_replying_to">回复给 %1$s</string>
+    <string name="marketplace_comment_cancel_reply">取消回复</string>
+    <string name="marketplace_comment_publish_failed">无法发布评论，请重试。</string>
+    <string name="marketplace_image_previous">上一张图片</string>
+    <string name="marketplace_image_next">下一张图片</string>
+    <string name="marketplace_image_counter">第 %1$d 张，共 %2$d 张</string>
+    <string name="compose_resize_text_area">调整文本框大小</string>
 </resources>
