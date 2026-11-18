@@ -107,6 +107,12 @@ android {
 }
 
 dependencies {
+    // Concord protocol engine. Keep the existing secp256k1 0.16.0 pin until
+    // the GrapheneOS performance investigation explicitly clears a native upgrade.
+    implementation(libs.quartz) {
+        exclude(group = "fr.acinq.secp256k1")
+    }
+
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation("junit:junit:4.13.2")
 
