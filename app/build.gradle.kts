@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -86,8 +87,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
     }
 
     packaging {
@@ -107,6 +110,12 @@ android {
 }
 
 dependencies {
+    // Quartz 2.15.1 supplies Concord protocol classes. Keep Postilla's secp256k1
+    // 0.16.0 pin until the separate GrapheneOS performance investigation is cleared.
+    implementation(libs.quartz) {
+        exclude(group = "fr.acinq.secp256k1")
+    }
+
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation("junit:junit:4.13.2")
 
