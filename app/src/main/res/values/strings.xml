@@ -1158,4 +1158,14 @@
     <string name="marketplace_translation_same_language">This text is already in the selected language.</string>
     <string name="marketplace_published_at">Published %1$s</string>
     <string name="marketplace_boost">Boost listing</string>
+    <string name="marketplace_comment_reply">Reply</string>
+    <string name="marketplace_comment_like">Like comment</string>
+    <string name="marketplace_comment_unlike">Remove like from comment</string>
+    <string name="marketplace_comment_replying_to">Replying to %1$s</string>
+    <string name="marketplace_comment_cancel_reply">Cancel reply</string>
+    <string name="marketplace_comment_publish_failed">Could not publish the comment. Try again.</string>
+    <string name="marketplace_image_previous">Previous image</string>
+    <string name="marketplace_image_next">Next image</string>
+    <string name="marketplace_image_counter">%1$d of %2$d</string>
+    <string name="compose_resize_text_area">Resize text field</string>
 </resources>
