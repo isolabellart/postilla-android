@@ -6,6 +6,10 @@ on:
       - staging/postilla-preview-1.0.29-marketplace-polish-20261118
   workflow_dispatch:
 
+concurrency:
+  group: postilla-preview-1.0.29-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
