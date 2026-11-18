@@ -1221,6 +1221,7 @@ fun WispNavHost(
                     profileLookup = { feedViewModel.profileRepo.get(it) },
                     fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
                     translationRepository = feedViewModel.translationRepo,
+                    onReactComment = { comment -> feedViewModel.sendReaction(comment) },
                     onBoostListing = { listingReference ->
                         replyTarget = null
                         quoteTarget = null
@@ -1371,6 +1372,7 @@ fun WispNavHost(
                     profileLookup = { feedViewModel.profileRepo.get(it) },
                     fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
                     translationRepository = feedViewModel.translationRepo,
+                    onReactComment = { comment -> feedViewModel.sendReaction(comment) },
                     onBoostListing = { listingReference ->
                         replyTarget = null
                         quoteTarget = null
