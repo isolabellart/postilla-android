@@ -41,7 +41,7 @@ object Nip78 {
 
         val tags = listOf(
             listOf("d", dTag),
-            listOf("client", "Dark Wisp"),
+            NostrClientTag.tag,
             listOf("encryption", "nip44")
         )
 
@@ -144,7 +144,7 @@ object Nip78 {
         val encrypted = signer.nip44Encrypt(uri.trim(), signer.pubkeyHex)
         val tags = listOf(
             listOf("d", NWC_BACKUP_D_TAG),
-            listOf("client", "Wisp"),
+            NostrClientTag.tag,
             listOf("encryption", "nip44")
         )
         return signer.signEvent(kind = KIND, content = encrypted, tags = tags)

@@ -7,6 +7,7 @@ import com.darkwisp.app.nostr.Bolt11
 import com.darkwisp.app.nostr.Keys
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.NostrSigner
+import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.relay.RelayPool
 import okhttp3.OkHttpClient
 
@@ -119,7 +120,7 @@ class ZapSender(
         }
 
         val allExtraTags = buildList {
-            if (interfacePrefs.isClientTagEnabled()) add(listOf("client", "Dark Wisp"))
+            if (interfacePrefs.isClientTagEnabled()) add(NostrClientTag.tag)
             addAll(extraTags)
         }
 

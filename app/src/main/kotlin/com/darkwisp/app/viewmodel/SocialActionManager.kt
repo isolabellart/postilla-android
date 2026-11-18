@@ -16,6 +16,7 @@ import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip88
+import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.ContactRepository
@@ -267,7 +268,7 @@ class SocialActionManager(
                     val hint = outboxRouter.getRelayHint(event.pubkey)
                     val tags = Nip18.buildRepostTags(event, hint).toMutableList()
                     if (interfacePrefs.isClientTagEnabled()) {
-                        tags.add(listOf("client", "Dark Wisp"))
+                        tags.add(NostrClientTag.tag)
                     }
                     val repostEvent = s.signEvent(kind = 6, content = event.toJson(), tags = tags)
                     val msg = ClientMessage.event(repostEvent)
@@ -447,7 +448,7 @@ class SocialActionManager(
                 }
 
                 if (interfacePrefs.isClientTagEnabled()) {
-                    tags = tags + listOf(listOf("client", "Dark Wisp"))
+                    tags = tags + listOf(NostrClientTag.tag)
                 }
 
                 val createdAt: Long
@@ -716,7 +717,7 @@ class SocialActionManager(
             try {
                 val tags = Nip88.buildResponseTags(pollEventId, optionIds).toMutableList()
                 if (interfacePrefs.isClientTagEnabled()) {
-                    tags.add(listOf("client", "Dark Wisp"))
+                    tags.add(NostrClientTag.tag)
                 }
                 val event = s.signEvent(kind = Nip88.KIND_POLL_RESPONSE, content = "", tags = tags)
                 val msg = ClientMessage.event(event)

@@ -375,7 +375,7 @@ object Nip99 {
             .forEach { result.add(listOf("image", it)) }
         val regeneratedTags = setOf("d", "title", "summary", "published_at", "status", "type", "visibility", "stock", "location", "price", "t", "image", "client")
         preservedTags.filter { it.size >= 2 && it[0] !in regeneratedTags }.forEach { result.add(it) }
-        result.add(listOf("client", "Postilla"))
+        result.add(NostrClientTag.tag)
         return result
     }
 }

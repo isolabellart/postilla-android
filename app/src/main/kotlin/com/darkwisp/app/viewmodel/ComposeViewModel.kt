@@ -27,6 +27,7 @@ import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.toHex
+import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.BlossomRepository
@@ -711,7 +712,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (replyTo != null && _privateReply.value) {
             for (hashtag in _hashtags.value) tags.add(listOf("t", hashtag))
             tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
-            if (interfacePrefs.isClientTagEnabled()) tags.add(listOf("client", "Postilla"))
+            if (interfacePrefs.isClientTagEnabled()) tags.add(NostrClientTag.tag)
             return publishPrivateReply(content, replyTo, tags, signer, relayPool, powPrefs)
         }
 
@@ -822,7 +823,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
 
         if (interfacePrefs.isClientTagEnabled()) {
-            tags.add(listOf("client", "Postilla"))
+            tags.add(NostrClientTag.tag)
         }
 
         // Scheduled post — sign with future created_at and send to scheduler relays
