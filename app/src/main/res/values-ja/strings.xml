@@ -919,4 +919,14 @@
     <string name="marketplace_translation_same_language">このテキストはすでに選択した言語です。</string>
     <string name="marketplace_published_at">公開日 %1$s</string>
     <string name="marketplace_boost">出品をシェア</string>
+    <string name="marketplace_comment_reply">返信</string>
+    <string name="marketplace_comment_like">コメントに「いいね」</string>
+    <string name="marketplace_comment_unlike">コメントの「いいね」を取り消す</string>
+    <string name="marketplace_comment_replying_to">%1$s への返信</string>
+    <string name="marketplace_comment_cancel_reply">返信をキャンセル</string>
+    <string name="marketplace_comment_publish_failed">コメントを投稿できませんでした。もう一度お試しください。</string>
+    <string name="marketplace_image_previous">前の画像</string>
+    <string name="marketplace_image_next">次の画像</string>
+    <string name="marketplace_image_counter">%1$d / %2$d</string>
+    <string name="compose_resize_text_area">テキスト入力欄のサイズを変更</string>
 </resources>
