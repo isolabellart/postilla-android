@@ -32,6 +32,28 @@ object Nip22 {
     fun referencesAddressableRoot(event: NostrEvent, addressTag: String): Boolean =
         event.kind == KIND_COMMENT && event.tags.any { it.size >= 2 && it[0] == "A" && it[1] == addressTag }
 
+    /** Build a kind-1111 reply to a comment while retaining the listing as the thread root. */
+    fun buildAddressableCommentReplyTags(root: NostrEvent, parentComment: NostrEvent): List<List<String>> {
+        require(parentComment.kind == KIND_COMMENT) { "NIP-22 replies must target another kind-1111 comment" }
+        val address = addressableRootTag(root)
+        return listOf(
+            listOf("A", address),
+            listOf("K", root.kind.toString()),
+            listOf("P", root.pubkey),
+            listOf("e", parentComment.id, "", parentComment.pubkey),
+            listOf("k", KIND_COMMENT.toString()),
+            listOf("p", parentComment.pubkey)
+        )
+    }
+
+    /** Immediate parent comment ID for replies in an addressable NIP-22 thread. */
+    fun getParentCommentId(event: NostrEvent): String? {
+        if (event.kind != KIND_COMMENT) return null
+        val parentKind = event.tags.firstOrNull { it.size >= 2 && it[0] == "k" }?.get(1)
+        if (parentKind != KIND_COMMENT.toString()) return null
+        return event.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+    }
+
 
     /**
      * Root scope of a comment: the uppercase `E` tag per NIP-22. Lowercase `e`
