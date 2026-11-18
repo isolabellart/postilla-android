@@ -77,25 +77,17 @@ jobs:
             echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Inspect AGP 9 staging and test task names
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew --no-daemon --no-build-cache --max-workers=2 :app:tasks --all | tee "$RUNNER_TEMP/postilla-gradle-tasks.txt"
-          echo "---- Relevant staging/test tasks ----"
-          grep -Ei 'staging|test.*unit|unit.*test|assemble' "$RUNNER_TEMP/postilla-gradle-tasks.txt" || true
-
       - name: Run staging unit tests
         run: |
           ./gradlew --no-daemon --no-build-cache --max-workers=2 \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-            testStagingUnitTest --stacktrace
+            :app:testDebugUnitTest --stacktrace
 
       - name: Build signed staging APK
         run: |
           ./gradlew --no-daemon --no-build-cache --max-workers=2 \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-            assembleStaging --stacktrace
+            :app:assembleStaging --stacktrace
 
       - name: Verify staging package identity, version and permanent signature
         shell: bash
