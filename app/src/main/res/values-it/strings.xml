@@ -991,4 +991,14 @@
     <string name="marketplace_translation_same_language">Il testo è già nella lingua selezionata.</string>
     <string name="marketplace_published_at">Pubblicato il %1$s</string>
     <string name="marketplace_boost">Condividi annuncio</string>
+    <string name="marketplace_comment_reply">Rispondi</string>
+    <string name="marketplace_comment_like">Mi piace al commento</string>
+    <string name="marketplace_comment_unlike">Rimuovi Mi piace dal commento</string>
+    <string name="marketplace_comment_replying_to">In risposta a %1$s</string>
+    <string name="marketplace_comment_cancel_reply">Annulla risposta</string>
+    <string name="marketplace_comment_publish_failed">Impossibile pubblicare il commento. Riprova.</string>
+    <string name="marketplace_image_previous">Immagine precedente</string>
+    <string name="marketplace_image_next">Immagine successiva</string>
+    <string name="marketplace_image_counter">%1$d di %2$d</string>
+    <string name="compose_resize_text_area">Ridimensiona il campo di testo</string>
 </resources>
