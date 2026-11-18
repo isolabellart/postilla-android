@@ -38,6 +38,22 @@ class NostrClientTagTest {
     }
 
     @Test
+    fun notificationReplyCanonicalizesLegacyClientTagBeforeSigning() {
+        val replyTags = listOf(
+            listOf("e", "reply-target"),
+            listOf("p", "reply-author"),
+            listOf("client", "Dark Wisp")
+        )
+
+        val tags = NostrClientTag.apply(replyTags, enabled = true)
+
+        assertEquals(listOf(listOf("client", "Postilla")), tags.filter { it.firstOrNull() == "client" })
+        assertFalse(tags.any { it.getOrNull(1) == "Dark Wisp" })
+        assertTrue(tags.any { it == listOf("e", "reply-target") })
+        assertTrue(tags.any { it == listOf("p", "reply-author") })
+    }
+
+    @Test
     fun remoteSignerCannotReturnAnEventWithAChangedLegacyClientTag() {
         val requested = NostrEvent.createUnsigned(
             pubkeyHex = "11".repeat(32),
