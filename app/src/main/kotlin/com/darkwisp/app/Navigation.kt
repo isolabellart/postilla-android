@@ -117,6 +117,7 @@ import com.darkwisp.app.viewmodel.AuthViewModel
 import com.darkwisp.app.viewmodel.ComposeViewModel
 import com.darkwisp.app.viewmodel.DmConversationViewModel
 import com.darkwisp.app.viewmodel.DmListViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunitiesViewModel
 import com.darkwisp.app.viewmodel.FeedType
 import com.darkwisp.app.viewmodel.FeedViewModel
 import com.darkwisp.app.viewmodel.ProfileViewModel
@@ -237,6 +238,7 @@ fun WispNavHost(
     val profileViewModel: ProfileViewModel = viewModel()
     val dmListViewModel: DmListViewModel = viewModel()
     val groupListViewModel: com.darkwisp.app.viewmodel.GroupListViewModel = viewModel()
+    val concordCommunitiesViewModel: ConcordCommunitiesViewModel = viewModel()
     val blossomServersViewModel: BlossomServersViewModel = viewModel()
     val appContext = LocalContext.current.applicationContext
     val walletViewModel: WalletViewModel = viewModel(
@@ -1730,6 +1732,8 @@ fun WispNavHost(
             DmListScreen(
                 viewModel = dmListViewModel,
                 groupListViewModel = groupListViewModel,
+                concordViewModel = concordCommunitiesViewModel,
+                relayPool = feedViewModel.relayPool,
                 eventRepo = feedViewModel.eventRepo,
                 userPubkey = feedViewModel.getUserPubkey(),
                 signer = activeSigner,

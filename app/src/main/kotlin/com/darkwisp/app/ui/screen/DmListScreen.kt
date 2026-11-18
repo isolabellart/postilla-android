@@ -20,13 +20,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -69,6 +66,8 @@ import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.viewmodel.DmListViewModel
 import com.darkwisp.app.ui.theme.wispSwitchColors
 import com.darkwisp.app.viewmodel.GroupListViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunitiesViewModel
+import com.darkwisp.app.relay.RelayPool
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -78,6 +77,8 @@ import java.util.Locale
 fun DmListScreen(
     viewModel: DmListViewModel,
     groupListViewModel: GroupListViewModel,
+    concordViewModel: ConcordCommunitiesViewModel,
+    relayPool: RelayPool,
     eventRepo: EventRepository,
     userPubkey: String? = null,
     signer: NostrSigner? = null,
@@ -93,9 +94,13 @@ fun DmListScreen(
     var showJoinDialog by remember { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showDiscoverSheet by remember { mutableStateOf(false) }
-    var showFabMenu by remember { mutableStateOf(false) }
+    var showLegacyRooms by rememberSaveable { mutableStateOf(false) }
     var joinError by remember { mutableStateOf<GroupListViewModel.JoinError?>(null) }
     var adminError by remember { mutableStateOf<GroupListViewModel.AdminError?>(null) }
+
+    LaunchedEffect(signer, relayPool) {
+        concordViewModel.initialize(signer, relayPool)
+    }
 
     // Collect one-shot join rejections from the relay and surface them as a dialog.
     LaunchedEffect(groupListViewModel) {
@@ -125,38 +130,12 @@ fun DmListScreen(
             )
         },
         floatingActionButton = {
-            Box {
+            if (selectedTab == 0) {
                 FloatingActionButton(
-                    onClick = {
-                        if (selectedTab == 0) onNewGroupDm()
-                        else showFabMenu = true
-                    },
+                    onClick = onNewGroupDm,
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
-                    if (selectedTab == 0) {
-                        Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
-                    } else {
-                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
-                    }
-                }
-                if (selectedTab == 1) {
-                    DropdownMenu(
-                        expanded = showFabMenu,
-                        onDismissRequest = { showFabMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_discover_groups)) },
-                            onClick = { showFabMenu = false; showDiscoverSheet = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_join_group)) },
-                            onClick = { showFabMenu = false; showJoinDialog = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_create_group)) },
-                            onClick = { showFabMenu = false; showCreateDialog = true }
-                        )
-                    }
+                    Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
                 }
             }
         }
@@ -175,7 +154,7 @@ fun DmListScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text(stringResource(R.string.tab_chat_rooms)) }
+                    text = { Text(stringResource(R.string.tab_communities)) }
                 )
             }
 
@@ -184,16 +163,47 @@ fun DmListScreen(
 
             when (selectedTab) {
                 0 -> DmListContent(conversations, eventRepo, onConversation)
-                1 -> GroupListContent(
-                    groups = groups,
-                    eventRepo = eventRepo,
-                    onGroupRoom = onGroupRoom,
-                    unreadGroups = unreadGroups,
-                    notifiedGroups = notifiedGroups,
-                    onToggleNotify = { relayUrl, groupId, enabled ->
-                        groupListViewModel.setGroupNotified(relayUrl, groupId, enabled)
+                1 -> {
+                    if (showLegacyRooms) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(onClick = { showLegacyRooms = false }) {
+                                    Text("‹ Communities")
+                                }
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { showDiscoverSheet = true }) {
+                                    Text(stringResource(R.string.action_discover_groups))
+                                }
+                                TextButton(onClick = { showJoinDialog = true }) {
+                                    Text(stringResource(R.string.action_join_group))
+                                }
+                                TextButton(onClick = { showCreateDialog = true }) {
+                                    Text(stringResource(R.string.action_create_group))
+                                }
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                GroupListContent(
+                                    groups = groups,
+                                eventRepo = eventRepo,
+                                onGroupRoom = onGroupRoom,
+                                unreadGroups = unreadGroups,
+                                notifiedGroups = notifiedGroups,
+                                onToggleNotify = { relayUrl, groupId, enabled ->
+                                    groupListViewModel.setGroupNotified(relayUrl, groupId, enabled)
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        ConcordCommunitiesScreen(
+                            viewModel = concordViewModel,
+                            onLegacyRooms = { showLegacyRooms = true }
+                        )
                     }
-                )
+                }
             }
         }
     }

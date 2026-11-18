@@ -654,6 +654,7 @@
     <!-- NIP-29 Chat Rooms -->
     <string name="tab_direct_messages">Messaggi diretti</string>
     <string name="tab_chat_rooms">Stanze di chat</string>
+    <string name="tab_communities">Community</string>
     <string name="title_join_chat_room">Unisciti alla stanza di chat</string>
     <string name="title_create_group">Crea stanza di chat</string>
     <string name="label_relay_url">URL del relay</string>
