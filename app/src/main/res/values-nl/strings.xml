@@ -919,4 +919,14 @@
     <string name="marketplace_translation_same_language">Deze tekst is al in de geselecteerde taal.</string>
     <string name="marketplace_published_at">Gepubliceerd op %1$s</string>
     <string name="marketplace_boost">Advertentie delen</string>
+    <string name="marketplace_comment_reply">Reageren</string>
+    <string name="marketplace_comment_like">Vind deze reactie leuk</string>
+    <string name="marketplace_comment_unlike">Like van reactie verwijderen</string>
+    <string name="marketplace_comment_replying_to">Antwoord aan %1$s</string>
+    <string name="marketplace_comment_cancel_reply">Antwoord annuleren</string>
+    <string name="marketplace_comment_publish_failed">De reactie kon niet worden geplaatst. Probeer het opnieuw.</string>
+    <string name="marketplace_image_previous">Vorige afbeelding</string>
+    <string name="marketplace_image_next">Volgende afbeelding</string>
+    <string name="marketplace_image_counter">%1$d van %2$d</string>
+    <string name="compose_resize_text_area">Tekstveld vergroten of verkleinen</string>
 </resources>
