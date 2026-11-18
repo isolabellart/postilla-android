@@ -201,13 +201,15 @@ fun UserProfileScreen(
     onAddEmojiSet: ((String, String) -> Unit)? = null,
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
-    onOpenStorefront: (() -> Unit)? = null
+    onOpenStorefront: (() -> Unit)? = null,
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 ) {
     val resolvedEmojisState = rememberUpdatedState(resolvedEmojis)
     val unicodeEmojisState = rememberUpdatedState(unicodeEmojis)
-    val invoiceNoteActions = remember(onPayInvoice, onGroupRoom, onLiveStreamClick, fetchGroupPreview, onAddEmojiSet, onOpenEmojiLibrary) {
-        if (onPayInvoice != null || onGroupRoom != null || fetchGroupPreview != null || onAddEmojiSet != null || onLiveStreamClick != null || onOpenEmojiLibrary != null) {
+    val invoiceNoteActions = remember(onPayInvoice, onGroupRoom, onLiveStreamClick, fetchGroupPreview, onAddEmojiSet, onOpenEmojiLibrary, onMarketplaceListingClick) {
+        if (onPayInvoice != null || onGroupRoom != null || fetchGroupPreview != null || onAddEmojiSet != null || onLiveStreamClick != null || onOpenEmojiLibrary != null || onMarketplaceListingClick != null) {
             com.darkwisp.app.ui.component.NoteActions(
+            onMarketplaceListingClick = onMarketplaceListingClick,
             onPayInvoice = onPayInvoice,
             onGroupRoom = onGroupRoom,
             onLiveStreamClick = onLiveStreamClick,

@@ -194,6 +194,7 @@ fun NotificationsScreen(
     onAddEmojiSet: ((String, String) -> Unit)? = null,
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 ) {
     val notifications by viewModel.filteredFlatNotifications.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -242,7 +243,8 @@ fun NotificationsScreen(
 
     val postCardParams = remember(
         eventRepo, userPubkey, profileVersion, reactionVersion, zapVersion,
-        replyCountVersion, repostVersion, followListSize, resolvedEmojis, unicodeEmojis, pollVoteVersion
+        replyCountVersion, repostVersion, followListSize, resolvedEmojis, unicodeEmojis, pollVoteVersion,
+        onMarketplaceListingClick
     ) {
         NotifPostCardParams(
             eventRepo = eventRepo,
@@ -256,6 +258,7 @@ fun NotificationsScreen(
             resolvedEmojis = resolvedEmojis,
             unicodeEmojis = unicodeEmojis,
             onOpenEmojiLibrary = onOpenEmojiLibrary,
+            onMarketplaceListingClick = onMarketplaceListingClick,
             isFollowing = { viewModel.isFollowing(it) },
             onNoteClick = onNoteClick,
             onProfileClick = onProfileClick,
@@ -1640,8 +1643,9 @@ private fun ReferencedNotePostCard(
             onQuotedNoteClick = params.onNoteClick,
             noteActions = run {
                 val p = params
-                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null) {
+                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null || p.onMarketplaceListingClick != null) {
                     com.darkwisp.app.ui.component.NoteActions(
+                        onMarketplaceListingClick = p.onMarketplaceListingClick,
                         onPayInvoice = p.onPayInvoice,
                         onGroupRoom = p.onGroupRoom,
                         fetchGroupPreview = p.fetchGroupPreview,
@@ -1730,8 +1734,9 @@ private fun ReferencedNotePostCard(
             onZapPollVote = { idx -> params.onZapPollVote(event.id, idx) },
             noteActions = run {
                 val p = params
-                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null) {
+                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null || p.onMarketplaceListingClick != null) {
                     com.darkwisp.app.ui.component.NoteActions(
+                        onMarketplaceListingClick = p.onMarketplaceListingClick,
                         onPayInvoice = p.onPayInvoice,
                         onGroupRoom = p.onGroupRoom,
                         fetchGroupPreview = p.fetchGroupPreview,
@@ -1791,7 +1796,8 @@ private data class NotifPostCardParams(
     val fetchGroupPreview: (suspend (String, String) -> com.darkwisp.app.repo.GroupPreview?)? = null,
     val onAddEmojiSet: ((String, String) -> Unit)? = null,
     val onRemoveEmojiSet: ((String, String) -> Unit)? = null,
-    val isEmojiSetAdded: ((String, String) -> Boolean)? = null
+    val isEmojiSetAdded: ((String, String) -> Boolean)? = null,
+    val onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 )
 
 // ── Inline Sent Reply ──────────────────────────────────────────────────

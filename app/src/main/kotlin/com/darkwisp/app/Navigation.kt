@@ -1841,6 +1841,7 @@ fun WispNavHost(
                     navController.navigate("group_room/$encodedRelay/${android.net.Uri.encode(groupId)}")
                 },
                 onOpenStorefront = { navController.navigate("marketplace/seller/$pubkey") },
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                     val route = buildString {
                         append("live_stream/$hostPubkey/${android.net.Uri.encode(dTag)}")
@@ -4118,6 +4119,7 @@ fun WispNavHost(
                 onOpenEmojiLibrary = { showNotifEmojiLibrary = true },
                 zapError = feedViewModel.zapError,
                 translationRepo = feedViewModel.translationRepo,
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                 onUploadMedia = { uris, onUrl ->
                     notifReplyScope.launch {
