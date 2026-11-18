@@ -105,7 +105,7 @@ jobs:
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced.staging" ]]
           [[ "$VERSION_NAME" == "1.0.33" ]]
-          [[ "$VERSION_CODE" == "32" ]]
+          [[ "$VERSION_CODE" == "33" ]]
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
