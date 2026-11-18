@@ -45,13 +45,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify Postilla v1.0.31 staging base
+      - name: Verify Postilla v1.0.33 staging base
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED_BASE="da628548f52d786a90b6836636c6747ee7ed33a5"
+          EXPECTED_BASE="97136305d62b211b66a21844f742332f2fbbed3e"
           git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
-          echo "Verified that this staging branch descends from the validated Postilla v1.0.31 staging base."
+          echo "Verified that this staging branch descends from the validated Postilla v1.0.33 staging base."
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
