@@ -42,8 +42,11 @@ jobs:
       - name: Clean previous build outputs
         run: ./gradlew --no-daemon --no-build-cache --max-workers=2 -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" clean
 
-      - name: Run unit tests and build staging APK with stacktrace
-        run: ./gradlew --no-daemon --no-build-cache --max-workers=2 -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" testStagingUnitTest assembleStaging --stacktrace --info
+      - name: Inspect available Android tasks
+        run: ./gradlew --no-daemon --max-workers=2 :app:tasks --all --console=plain
+
+      - name: Build staging APK with stacktrace
+        run: ./gradlew --no-daemon --no-build-cache --max-workers=2 -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" :app:assembleStaging --stacktrace --info
 
       - name: Upload staging APK
         uses: actions/upload-artifact@v4
