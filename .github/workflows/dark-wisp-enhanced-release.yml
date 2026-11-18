@@ -8,11 +8,6 @@ on:
         description: Optional release tag (defaults to the Gradle versionName)
         required: false
         type: string
-      prerelease:
-        description: Publish as a GitHub pre-release
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -29,10 +24,10 @@ jobs:
       - name: Block releases outside the established release branch
         shell: bash
         run: |
-          EXPECTED_RELEASE_BRANCH="release/dark-wisp-enhanced"
+          EXPECTED_RELEASE_BRANCH="release/postilla-v1.0.33"
           ACTUAL_REF="${GITHUB_REF#refs/heads/}"
           if [[ "$ACTUAL_REF" != "$EXPECTED_RELEASE_BRANCH" ]]; then
-            echo "::error::Postilla releases are disabled from this preparation branch. Only $EXPECTED_RELEASE_BRANCH may publish after explicit approval."
+            echo "::error::Postilla releases are only permitted from $EXPECTED_RELEASE_BRANCH."
             exit 1
           fi
 
@@ -61,7 +56,7 @@ jobs:
         if: steps.signing.outputs.ready != 'true'
         run: |
           echo "No APK was built or published."
-          echo "Configure the four Dark Wisp Enhanced signing secrets, then push a new commit to this branch."
+          echo "Configure the four Postilla signing secrets, then push a new commit to this branch."
 
       - name: Check release publishing permission
         if: steps.signing.outputs.ready == 'true'
@@ -98,7 +93,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
         run: |
-          KEYSTORE_PATH="$RUNNER_TEMP/postilla-release.jks"
+          KEYSTORE_PATH="$RUNNER_TEMP/dark-wisp-enhanced-release.jks"
           printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
           chmod 600 "$KEYSTORE_PATH"
           test -s "$KEYSTORE_PATH"
@@ -112,9 +107,9 @@ jobs:
       # Compile the staging test variant and release variant in separate Gradle
       # invocations. Running both Kotlin compilations in one task graph caused
       # the Kotlin daemon to exhaust its heap while compiling the Compose sources.
-      # The Postilla staging branch is validated separately before stable promotion.
-      # these tests on the exact application source. Re-run them on manual
-      # dispatches; a release push proceeds straight to the release build.
+      # The signed staging build #119 (run 43222425438) passed on the exact
+      # application source and was manually validated on device. Manual
+      # dispatches still re-run unit tests before compiling the production APK.
       - name: Run staging unit tests
         if: steps.signing.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
         shell: bash
@@ -145,11 +140,11 @@ jobs:
           VERSION_CODE="$("$APKANALYZER" manifest version-code "$APK")"
           echo "Package: $PACKAGE_ID"
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
-          [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced" ]]
-          EXPECTED_VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
-          EXPECTED_VERSION_CODE="$(grep -m1 "versionCode" app/build.gradle.kts | sed -E 's/.*= ([0-9]+).*/\1/')"
+          EXPECTED_VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          EXPECTED_VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$EXPECTED_VERSION_NAME"
           test -n "$EXPECTED_VERSION_CODE"
+          [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced" ]]
           [[ "$VERSION_NAME" == "$EXPECTED_VERSION_NAME" ]]
           [[ "$VERSION_CODE" == "$EXPECTED_VERSION_CODE" ]]
 
@@ -178,37 +173,35 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
-          PRERELEASE_INPUT: ${{ inputs.prerelease }}
         run: |
           VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$VERSION_NAME"
           TAG="$RELEASE_TAG_INPUT"
           [[ -n "$TAG" ]] || TAG="v$VERSION_NAME"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Release tag must use vMAJOR.MINOR.PATCH."
-            exit 1
-          fi
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Release $TAG already exists. Bump versionName and versionCode before publishing."
+          if [[ "$TAG" != "v$VERSION_NAME" ]]; then
+            echo "::error::This workflow is prepared for v$VERSION_NAME only; received $TAG."
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # A push to the designated Enhanced release branch publishes a
-          # normal GitHub Release. Manual dispatch can still opt into prerelease.
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          elif [[ "$PRERELEASE_INPUT" == "true" ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+          # This release path creates stable releases only; stable publication is mirrored to Zapstore.
+
+      - name: Prepare Zapstore-compatible APK filename
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          SOURCE="app/build/outputs/apk/release/app-release.apk"
+          TARGET="app/build/outputs/apk/release/Postilla-${RELEASE_TAG}.apk"
+          cp "$SOURCE" "$TARGET"
+          test -s "$TARGET"
 
       - name: Upload signed APK as workflow artifact
         if: steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: postilla-${{ steps.release.outputs.tag }}
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/Postilla-${{ steps.release.outputs.tag }}.apk
           if-no-files-found: error
           retention-days: 90
 
@@ -217,31 +210,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
         shell: bash
         run: |
-          APK="app/build/outputs/apk/release/app-release.apk"
+          APK="app/build/outputs/apk/release/Postilla-${RELEASE_TAG}.apk"
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           NOTES="$RUNNER_TEMP/release-notes.md"
           cat > "$NOTES" <<'EOF'
           # Postilla @@VERSION_NAME@@
 
-          **An independent Android Nostr client built on the foundations of Dark Wisp.**
+          **A clearer, smoother experience for everyday Nostr conversations.**
 
-          Postilla is an independently maintained downstream project based on the original Dark Wisp Android client. It is not an official upstream release. It brings social feeds, NIP-17 private messaging, translation, Lightning and a NIP-99 marketplace into one native Android app.
+          This update refines the way you write, browse and interact in Postilla.
 
-          ## Highlights
-          - Drawer placement can be chosen on the left or right, with online-user and connected-relay indicators.
-          - DeepL translation integrated into the app.
-          - Improved Conversations feed and event handling, including NIP-22 and NIP-09 safeguards.
-          - Enhanced NIP-99 Marketplace experience, with seller profile/avatar, listing detail recovery and copyable naddr.
-          - The mini-wallet entry, including **Set up wallet**, is available in the drawer.
+          ## What's new
+          - A more comfortable note composer, with clearer text and improved spacing while writing.
+          - More consistent identification of Postilla when publishing notes, reposts, replies and quick notification responses.
+          - A tidier Marketplace presentation, with clearer seller details, easier horizontal browsing and more readable listing summaries and prices.
+          - More consistent social interactions across the feed, likes, replies, notifications and reposts.
+          - General stability and usability improvements.
 
-          ## Separate installation and wallet safety
-          Postilla keeps the established Android application ID: `com.isolabellart.darkwispenhanced`. Existing Dark Wisp Enhanced installations can receive Postilla updates without changing package or losing local app data. Postilla remains a separate app from upstream Dark Wisp. Keep recovery material offline and never share it.
-
-          Future Enhanced updates use the same permanent APK signing certificate:
-          \`86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841\`.
+          Postilla keeps the existing Android app identity, so compatible installations can update without changing package identity. The app remains independently maintained and separate from upstream Dark Wisp.
 
           Package: com.isolabellart.darkwispenhanced
           Version: @@VERSION_NAME@@ (@@VERSION_CODE@@)
@@ -252,33 +240,30 @@ jobs:
 
           # Postilla @@VERSION_NAME@@ (Italiano)
 
-          **Un client Nostr Android indipendente, sviluppato sulle basi del progetto Dark Wisp.**
+          **Un'esperienza più chiara e fluida per le conversazioni Nostr di ogni giorno.**
 
-          Postilla è un progetto downstream indipendente basato sul client Android Dark Wisp originale. Non è una release ufficiale upstream. Riunisce feed social, messaggistica privata NIP-17, traduzione, Lightning e marketplace NIP-99 in un'unica app Android nativa.
+          Questo aggiornamento affina il modo in cui scrivi, esplori e interagisci con Postilla.
 
-          ## Novità principali
-          - Drawer spostabile a sinistra o a destra, con indicatori di utenti online e relay connessi.
-          - Traduzione DeepL integrata.
-          - Feed Conversations e gestione degli eventi migliorati, con protezioni NIP-22 e NIP-09.
-          - Marketplace NIP-99 arricchito: profilo e avatar del venditore, recupero del dettaglio e copia di naddr.
-          - Mini-wallet nel drawer, compresa la voce **Set up wallet**.
+          ## Novità
+          - Composizione delle note più confortevole, con testo più leggibile e spaziature migliorate durante la scrittura.
+          - Identificazione di Postilla più coerente nella pubblicazione di note, repost, risposte e risposte rapide alle notifiche.
+          - Presentazione del Marketplace più ordinata, con informazioni del venditore più chiare, navigazione orizzontale più semplice e riepiloghi e prezzi più leggibili.
+          - Interazioni social più coerenti nel feed, tra like, risposte, notifiche e repost.
+          - Migliorie generali di stabilità e usabilità.
 
-          ## Installazione separata e sicurezza del wallet
-          Postilla conserva l'identificativo Android esistente: `com.isolabellart.darkwispenhanced`. Le installazioni Dark Wisp Enhanced potranno ricevere gli aggiornamenti Postilla senza cambiare package e senza perdere i dati locali. Postilla resta un'app separata da Dark Wisp upstream. Conserva offline il backup della frase di recupero e non condividerlo mai.
-
-          Le future versioni Enhanced manterranno lo stesso certificato di firma permanente.
+          Postilla conserva l'identità Android esistente: le installazioni compatibili potranno aggiornarsi senza cambiare package. L'app continua a essere sviluppata in modo indipendente e resta separata da Dark Wisp upstream.
 
           Package: com.isolabellart.darkwispenhanced
           Versione: @@VERSION_NAME@@ (@@VERSION_CODE@@)
           APK firmato: Postilla-@@RELEASE_TAG@@.apk
           SHA-256: @@APK_SHA256@@
           EOF
-          VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
-          VERSION_CODE="$(grep -m1 "versionCode" app/build.gradle.kts | sed -E 's/.*= ([0-9]+).*/\1/')"
+          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
           sed -i "s|@@VERSION_NAME@@|$VERSION_NAME|g; s|@@VERSION_CODE@@|$VERSION_CODE|g; s|@@RELEASE_TAG@@|$RELEASE_TAG|g; s|@@APK_SHA256@@|$APK_SHA256|g" "$NOTES"
-          args=()
-          [[ "$IS_PRERELEASE" == "true" ]] && args+=(--prerelease)
           gh release create "$RELEASE_TAG" "$APK#Postilla-${RELEASE_TAG}.apk" \
             --title "Postilla ${RELEASE_TAG}" \
             --target "$GITHUB_SHA" \
-            --notes-file "$NOTES" "${args[@]}"
+            --notes-file "$NOTES"
