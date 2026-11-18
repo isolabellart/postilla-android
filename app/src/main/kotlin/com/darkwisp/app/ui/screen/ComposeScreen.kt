@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
@@ -167,8 +169,11 @@ fun ComposeScreen(
     initialContent: String? = null
 ) {
     val content by viewModel.content.collectAsState()
+    var composerMinHeight by remember { mutableStateOf(160.dp) }
+    val resizeFieldDescription = stringResource(R.string.compose_resize_text_area)
+    val density = LocalDensity.current
     LaunchedEffect(initialContent) {
-        initialContent?.takeIf(String::isNotBlank)?.let(viewModel::appendContent)
+        initialContent?.takeIf(String::isNotBlank)?.let(viewModel::setInitialContent)
     }
     val publishing by viewModel.publishing.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -721,7 +726,7 @@ fun ComposeScreen(
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp)
+                            .heightIn(min = composerMinHeight, max = 420.dp)
                             .contentReceiver(object : ReceiveContentListener {
                                 override fun onReceive(
                                     transferableContent: TransferableContent
@@ -758,6 +763,27 @@ fun ComposeScreen(
                             )
                         }
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(18.dp)
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val delta = with(density) { dragAmount.toDp() }
+                                    composerMinHeight = (composerMinHeight + delta).coerceIn(140.dp, 420.dp)
+                                }
+                            }
+                            .semantics { contentDescription = resizeFieldDescription },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier.width(44.dp).height(4.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        ) {}
+                    }
 
                     // Attach row with preview toggle
                     Spacer(Modifier.height(4.dp))
@@ -1192,7 +1218,7 @@ fun ComposeScreen(
 
                     // Live preview
                     AnimatedVisibility(
-                        visible = !imeVisible && (content.text.isNotBlank() || (pollEnabled && pollOptions.any { it.isNotBlank() })) && eventRepo != null
+                        visible = (content.text.isNotBlank() || (pollEnabled && pollOptions.any { it.isNotBlank() })) && eventRepo != null
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
