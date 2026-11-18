@@ -39,7 +39,7 @@ class MarketplaceCommentThreadsTest {
             createdAt = 2L
         )
         val unsigned = NostrEvent.createUnsigned(
-            pubkey = pubkey,
+            pubkeyHex = pubkey,
             createdAt = mined.createdAt,
             kind = 1111,
             tags = mined.tags,

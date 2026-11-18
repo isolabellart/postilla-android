@@ -40,7 +40,7 @@ class NostrClientTagTest {
     @Test
     fun remoteSignerCannotReturnAnEventWithAChangedLegacyClientTag() {
         val requested = NostrEvent.createUnsigned(
-            pubkey = "11".repeat(32),
+            pubkeyHex = "11".repeat(32),
             createdAt = 1L,
             kind = 1111,
             tags = NostrClientTag.apply(emptyList(), enabled = true),
@@ -62,7 +62,7 @@ class NostrClientTagTest {
             enabled = true
         )
         val unsigned = NostrEvent.createUnsigned(
-            pubkey = "11".repeat(32),
+            pubkeyHex = "11".repeat(32),
             createdAt = 1L,
             kind = 1111,
             tags = tags,
