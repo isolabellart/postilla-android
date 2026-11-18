@@ -13,7 +13,11 @@ import com.darkwisp.app.R
 import com.darkwisp.app.nostr.Nip99
 
 @Composable
-fun MarketplaceAvailabilityBadge(availability: Nip99.Availability, modifier: Modifier = Modifier) {
+fun MarketplaceAvailabilityBadge(
+    availability: Nip99.Availability,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
     val (label, containerColor, contentColor) = when (availability.state) {
         Nip99.AvailabilityState.AVAILABLE -> Triple(
             stringResource(R.string.marketplace_availability_available_count, availability.stock ?: 0),
@@ -33,14 +37,25 @@ fun MarketplaceAvailabilityBadge(availability: Nip99.Availability, modifier: Mod
     }
 
     Surface(modifier = modifier, color = containerColor, contentColor = contentColor, shape = RoundedCornerShape(6.dp)) {
-        Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+        Text(
+            label,
+            modifier = Modifier.padding(
+                horizontal = if (compact) 6.dp else 9.dp,
+                vertical = if (compact) 3.dp else 4.dp
+            ),
+            style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
+        )
     }
 }
 
 
 /** Visibility marker shared by seller previews and the editor preview. */
 @Composable
-fun MarketplaceVisibilityBadge(visibility: String, modifier: Modifier = Modifier) {
+fun MarketplaceVisibilityBadge(
+    visibility: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
     val (label, containerColor, contentColor) = when (visibility) {
         "hidden" -> Triple(stringResource(R.string.marketplace_hidden),
             MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
@@ -50,17 +65,35 @@ fun MarketplaceVisibilityBadge(visibility: String, modifier: Modifier = Modifier
             MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
     }
     Surface(modifier = modifier, color = containerColor, contentColor = contentColor, shape = RoundedCornerShape(6.dp)) {
-        Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+        Text(
+            label,
+            modifier = Modifier.padding(
+                horizontal = if (compact) 6.dp else 9.dp,
+                vertical = if (compact) 3.dp else 4.dp
+            ),
+            style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
+        )
     }
 }
 
 /** Digital / physical item marker. */
 @Composable
-fun MarketplaceFormatBadge(format: String, modifier: Modifier = Modifier) {
+fun MarketplaceFormatBadge(
+    format: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
     val label = if (format == "physical") stringResource(R.string.marketplace_physical)
         else stringResource(R.string.marketplace_digital)
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceVariant,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant, shape = RoundedCornerShape(6.dp)) {
-        Text(label, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+        Text(
+            label,
+            modifier = Modifier.padding(
+                horizontal = if (compact) 6.dp else 9.dp,
+                vertical = if (compact) 3.dp else 4.dp
+            ),
+            style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
+        )
     }
 }

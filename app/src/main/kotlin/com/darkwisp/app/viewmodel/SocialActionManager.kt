@@ -266,10 +266,10 @@ class SocialActionManager(
                     return@launch
                 } else {
                     val hint = outboxRouter.getRelayHint(event.pubkey)
-                    val tags = Nip18.buildRepostTags(event, hint).toMutableList()
-                    if (interfacePrefs.isClientTagEnabled()) {
-                        tags.add(NostrClientTag.tag)
-                    }
+                    val tags = NostrClientTag.apply(
+                        Nip18.buildRepostTags(event, hint),
+                        interfacePrefs.isClientTagEnabled()
+                    )
                     val repostEvent = s.signEvent(kind = 6, content = event.toJson(), tags = tags)
                     val msg = ClientMessage.event(repostEvent)
                     outboxRouter.publishToInbox(msg, event.pubkey)
@@ -447,9 +447,7 @@ class SocialActionManager(
                     Nip25.buildReactionTags(event)
                 }
 
-                if (interfacePrefs.isClientTagEnabled()) {
-                    tags = tags + listOf(NostrClientTag.tag)
-                }
+                tags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
 
                 val createdAt: Long
                 if (powPrefs.isReactionPowEnabled()) {
@@ -716,10 +714,11 @@ class SocialActionManager(
         scope.launch {
             try {
                 val tags = Nip88.buildResponseTags(pollEventId, optionIds).toMutableList()
-                if (interfacePrefs.isClientTagEnabled()) {
-                    tags.add(NostrClientTag.tag)
-                }
-                val event = s.signEvent(kind = Nip88.KIND_POLL_RESPONSE, content = "", tags = tags)
+                val event = s.signEvent(
+                    kind = Nip88.KIND_POLL_RESPONSE,
+                    content = "",
+                    tags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+                )
                 val msg = ClientMessage.event(event)
                 // Send to our write relays
                 relayPool.sendToWriteRelays(msg)

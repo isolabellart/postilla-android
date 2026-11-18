@@ -759,7 +759,16 @@ fun ComposeScreen(
                                 singleLine = false,
                                 visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
                                 interactionSource = interactionSource,
-                                label = { Text(stringResource(R.string.compose_placeholder)) }
+                                label = { Text(stringResource(R.string.compose_placeholder)) },
+                                // Reserve enough top space for the floating label and its
+                                // outline notch; the custom BasicTextField decorator otherwise
+                                // clips the label when the user starts typing.
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    start = 16.dp,
+                                    top = 24.dp,
+                                    end = 16.dp,
+                                    bottom = 16.dp
+                                )
                             )
                         }
                     )

@@ -55,6 +55,27 @@ class SignerRejectedException(message: String) : Exception(message)
 class SignerCancelledException(message: String) : Exception(message)
 
 /**
+ * A NIP-55 signer must sign the exact unsigned event supplied by Postilla.
+ * Some signers may return a modified event; accepting it would allow a legacy
+ * client tag (or any other tag/content mutation) to be published unnoticed.
+ */
+internal fun validateRemoteSignedEvent(unsigned: NostrEvent, signed: NostrEvent): NostrEvent {
+    val matchesRequest = signed.id == unsigned.id &&
+        signed.pubkey == unsigned.pubkey &&
+        signed.created_at == unsigned.created_at &&
+        signed.kind == unsigned.kind &&
+        signed.tags == unsigned.tags &&
+        signed.content == unsigned.content
+
+    if (!matchesRequest || !signed.verifySignature()) {
+        throw SignerRejectedException(
+            "External signer returned a modified or invalid event. No event was published."
+        )
+    }
+    return signed
+}
+
+/**
  * Delegates all signing/encryption to an external signer app via NIP-55.
  * Tries the ContentResolver (silent mode) first. If the signer returns no cursor
  * (permissions not granted / "always ask" mode), falls back to intent-based signing
@@ -110,14 +131,14 @@ class RemoteSigner(
             if (eventIdx >= 0) {
                 val signedJson = it.getString(eventIdx)
                 if (!signedJson.isNullOrBlank()) {
-                    return@withContext NostrEvent.fromJson(signedJson)
+                    return@withContext validateRemoteSignedEvent(unsigned, NostrEvent.fromJson(signedJson))
                 }
             }
 
             val sig = it.getString(it.getColumnIndex("signature"))
                 ?: it.getString(it.getColumnIndex("result"))
                 ?: return@withContext null
-            return@withContext unsigned.withSignature(sig)
+            return@withContext validateRemoteSignedEvent(unsigned, unsigned.withSignature(sig))
         }
     }
 
@@ -159,9 +180,9 @@ class RemoteSigner(
         return when (val result = SignerIntentBridge.requestSign(intent)) {
             is SignResult.Success -> {
                 if (!result.event.isNullOrBlank()) {
-                    NostrEvent.fromJson(result.event)
+                    validateRemoteSignedEvent(unsigned, NostrEvent.fromJson(result.event))
                 } else {
-                    unsigned.withSignature(result.result)
+                    validateRemoteSignedEvent(unsigned, unsigned.withSignature(result.result))
                 }
             }
             is SignResult.Rejected -> throw SignerRejectedException("Signer rejected SIGN_EVENT kind=${unsigned.kind}")

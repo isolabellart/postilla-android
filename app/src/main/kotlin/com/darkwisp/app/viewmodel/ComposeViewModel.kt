@@ -712,8 +712,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (replyTo != null && _privateReply.value) {
             for (hashtag in _hashtags.value) tags.add(listOf("t", hashtag))
             tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
-            if (interfacePrefs.isClientTagEnabled()) tags.add(NostrClientTag.tag)
-            return publishPrivateReply(content, replyTo, tags, signer, relayPool, powPrefs)
+            val privateReplyTags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+            return publishPrivateReply(content, replyTo, privateReplyTags, signer, relayPool, powPrefs)
         }
 
         val finalContent = if (quoteTo != null) {
@@ -822,9 +822,11 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         // Add emoji tags for any :shortcode: references in the content
         tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
 
-        if (interfacePrefs.isClientTagEnabled()) {
-            tags.add(NostrClientTag.tag)
-        }
+        // Normalize at the final event boundary: a legacy or duplicated client tag
+        // must never survive into a newly signed public post or reply.
+        val canonicalTags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+        tags.clear()
+        tags.addAll(canonicalTags)
 
         // Scheduled post — sign with future created_at and send to scheduler relays
         if (_scheduleEnabled.value && _scheduleTimestamp.value != null) {

@@ -824,20 +824,30 @@ internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRep
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2
                 )
+                val visibility = Nip99.visibility(event)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MarketplaceVisibilityBadge(visibility, compact = true)
+                    MarketplaceFormatBadge(Nip99.productFormat(event), compact = true)
+                    if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
+                        MarketplaceAvailabilityBadge(availability, compact = true)
+                    }
+                }
                 Nip99.summary(event).takeIf { it.isNotBlank() }?.let { summary ->
-                    Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 Nip99.price(event)?.let { price ->
                     Text(Nip99.priceLabel(event).orEmpty(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
-                }
-                val visibility = Nip99.visibility(event)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    MarketplaceVisibilityBadge(visibility)
-                    MarketplaceFormatBadge(Nip99.productFormat(event))
-                }
-                if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
-                    MarketplaceAvailabilityBadge(availability)
                 }
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {

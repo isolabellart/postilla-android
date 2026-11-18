@@ -1,7 +1,9 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.nostr.Nip13
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.viewmodel.thread.ThreadItem
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -22,6 +24,32 @@ class MarketplaceCommentThreadsTest {
         val tags = buildMarketplaceCommentTags(listing, null, includeClientTag = true)
         assertTrue(tags.contains(listOf("client", "Postilla")))
         assertTrue(tags.any { it.firstOrNull() == "A" })
+    }
+
+    @Test
+    fun minedMarketplaceCommentRetainsExactlyOnePostillaClientTag() = runBlocking {
+        val pubkey = "11".repeat(32)
+        val tags = buildMarketplaceCommentTags(listing, null, includeClientTag = true)
+        val mined = Nip13.mine(
+            pubkeyHex = pubkey,
+            kind = 1111,
+            content = "Marketplace comment",
+            tags = tags,
+            targetDifficulty = 0,
+            createdAt = 2L
+        )
+        val unsigned = NostrEvent.createUnsigned(
+            pubkey = pubkey,
+            createdAt = mined.createdAt,
+            kind = 1111,
+            tags = mined.tags,
+            content = "Marketplace comment"
+        )
+
+        assertEquals(
+            listOf(listOf("client", "Postilla")),
+            unsigned.tags.filter { it.firstOrNull() == "client" }
+        )
     }
 
     @Test

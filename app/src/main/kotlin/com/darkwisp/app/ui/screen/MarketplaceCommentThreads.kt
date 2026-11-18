@@ -14,8 +14,7 @@ internal fun buildMarketplaceCommentTags(
 ): List<List<String>> {
     val tags = (parentComment?.let { Nip22.buildAddressableCommentReplyTags(listing, it) }
         ?: Nip22.buildAddressableRootCommentTags(listing)).toMutableList()
-    if (includeClientTag) tags.add(NostrClientTag.tag)
-    return tags
+    return NostrClientTag.apply(tags, includeClientTag)
 }
 
 /** Listing reactions use the listing address; discussion reactions use the comment event ID. */
