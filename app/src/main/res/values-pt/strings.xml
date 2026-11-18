@@ -919,4 +919,14 @@
     <string name="marketplace_translation_same_language">Este texto já está no idioma selecionado.</string>
     <string name="marketplace_published_at">Publicado em %1$s</string>
     <string name="marketplace_boost">Compartilhar anúncio</string>
+    <string name="marketplace_comment_reply">Responder</string>
+    <string name="marketplace_comment_like">Curtir comentário</string>
+    <string name="marketplace_comment_unlike">Remover curtida do comentário</string>
+    <string name="marketplace_comment_replying_to">Respondendo a %1$s</string>
+    <string name="marketplace_comment_cancel_reply">Cancelar resposta</string>
+    <string name="marketplace_comment_publish_failed">Não foi possível publicar o comentário. Tente novamente.</string>
+    <string name="marketplace_image_previous">Imagem anterior</string>
+    <string name="marketplace_image_next">Próxima imagem</string>
+    <string name="marketplace_image_counter">%1$d de %2$d</string>
+    <string name="compose_resize_text_area">Redimensionar campo de texto</string>
 </resources>
