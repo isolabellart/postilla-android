@@ -887,9 +887,10 @@ fun MarketplaceDetailScreen(
     val translationVersion by translationRepository?.version?.collectAsState()
         ?: remember { mutableIntStateOf(0) }
     val titleToTranslate = Nip99.title(event).takeIf(String::isNotBlank)
-    val titleTranslationKey = "marketplace:${event.id}:title"
-    val summaryTranslationKey = "marketplace:${event.id}:summary"
-    val descriptionTranslationKey = "marketplace:${event.id}:description"
+    val translationCacheNamespace = translationRepository?.getCacheNamespace() ?: "unavailable"
+    val titleTranslationKey = "marketplace:$translationCacheNamespace:${event.id}:title"
+    val summaryTranslationKey = "marketplace:$translationCacheNamespace:${event.id}:summary"
+    val descriptionTranslationKey = "marketplace:$translationCacheNamespace:${event.id}:description"
     val titleTranslationState = remember(translationVersion, titleTranslationKey) {
         translationRepository?.getState(titleTranslationKey) ?: TranslationState()
     }

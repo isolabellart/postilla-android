@@ -58,6 +58,10 @@ class TranslationRepository(context: Context) {
     fun getState(eventId: String): TranslationState =
         states[eventId] ?: TranslationState()
 
+    /** Separates cached results by the active engine and resolved target language. */
+    fun getCacheNamespace(): String =
+        "${interfacePrefs.getTranslationEngine().key}:${interfacePrefs.getResolvedTranslationTargetLanguage()}"
+
     fun translate(eventId: String, content: String) =
         translateInternal(eventId, content, forceDeepL = false)
 
