@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -871,7 +872,8 @@ fun MarketplaceDetailScreen(
     onBookmarkSetChanged: (NostrEvent) -> Unit = {},
     bookmarkSetRepository: BookmarkSetRepository,
     translationRepository: TranslationRepository? = null,
-    onBoostListing: (String) -> Unit = {}
+    onBoostListing: (String) -> Unit = {},
+    onReactComment: (NostrEvent) -> Unit = {}
 ) {
     val profileVersion by eventRepository.profileVersionFor(event.pubkey).collectAsState(initial = 0)
     val sellerProfile = remember(eventRepository, event.pubkey, profileVersion) {
@@ -900,9 +902,25 @@ fun MarketplaceDetailScreen(
     val descriptionTranslationState = remember(translationVersion, descriptionTranslationKey) {
         translationRepository?.getState(descriptionTranslationKey) ?: TranslationState()
     }
-    var showOriginalTitle by remember(event.id) { mutableStateOf(false) }
-    var showOriginalSummary by remember(event.id) { mutableStateOf(false) }
-    var showOriginalDescription by remember(event.id) { mutableStateOf(false) }
+    var showOriginalListingContent by remember(event.id) { mutableStateOf(false) }
+    val listingTranslationStates = listOfNotNull(
+        titleToTranslate?.let { titleTranslationState },
+        summary.takeIf(String::isNotBlank)?.let { summaryTranslationState },
+        description.takeIf(String::isNotBlank)?.let { descriptionTranslationState }
+    )
+    val listingTranslationLoading = listingTranslationStates.any { state ->
+        state.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+            state.status == TranslationStatus.DOWNLOADING_MODEL ||
+            state.status == TranslationStatus.TRANSLATING
+    }
+    val listingHasTranslation = listingTranslationStates.any {
+        it.status == TranslationStatus.DONE && it.translatedText.isNotBlank()
+    }
+    val listingTranslationsComplete = listingTranslationStates.isNotEmpty() &&
+        listingTranslationStates.all {
+            it.status == TranslationStatus.DONE || it.status == TranslationStatus.SAME_LANGUAGE
+        }
+    val listingTranslationFailed = listingTranslationStates.any { it.status == TranslationStatus.ERROR }
     val formattedPublishedAt = remember(event.id) {
         Nip99.publishedAtTimestamp(event)?.let(::formatMarketplacePublishedDate)
     }
@@ -917,6 +935,7 @@ fun MarketplaceDetailScreen(
     var commentText by remember(event.id) { mutableStateOf("") }
     var commentSending by remember(event.id) { mutableStateOf(false) }
     var commentError by remember(event.id) { mutableStateOf<String?>(null) }
+    var replyingToComment by remember(event.id) { mutableStateOf<NostrEvent?>(null) }
     val commentAddress = remember(event.pubkey, event.id) { Nip22.addressableRootTag(event) }
     val listingAddress = remember(event.pubkey, Nip99.dTag(event)) { Nip99.addressTag(event) }
     val reactionVersion by eventRepository.reactionVersion.collectAsState(initial = 0)
@@ -1359,29 +1378,20 @@ fun MarketplaceDetailScreen(
                     }
                 }
                 if (images.isNotEmpty()) {
-                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(images) { image ->
-                            ZoomableMarketplaceImage(
-                                imageUrl = image,
-                                contentDescription = title,
-                                modifier = Modifier.width(280.dp).height(280.dp).clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                    }
-                }
-                if (translationRepository != null && titleToTranslate != null) {
-                    MarketplaceTranslatableText(
-                        originalText = titleToTranslate,
-                        state = titleTranslationState,
-                        showOriginal = showOriginalTitle,
-                        textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        onTranslate = { translationRepository.translate(titleTranslationKey, titleToTranslate) },
-                        onToggleOriginal = { showOriginalTitle = !showOriginalTitle }
+                    MarketplaceImageGallery(
+                        images = images,
+                        contentDescription = title
                     )
-                } else {
-                    Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 }
+                Text(
+                    if (
+                        !showOriginalListingContent &&
+                        titleTranslationState.status == TranslationStatus.DONE &&
+                        titleTranslationState.translatedText.isNotBlank()
+                    ) titleTranslationState.translatedText else title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
                 formattedPublishedAt?.let { date ->
                     Text(
                         stringResource(R.string.marketplace_published_at, date),
@@ -1399,43 +1409,101 @@ fun MarketplaceDetailScreen(
                     MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
                 }
                 val visibility = Nip99.visibility(event)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     MarketplaceVisibilityBadge(visibility)
                     MarketplaceFormatBadge(Nip99.productFormat(event))
-                }
-                if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
-                    MarketplaceAvailabilityBadge(availability)
+                    if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
+                        MarketplaceAvailabilityBadge(availability)
+                    }
                 }
                 if (summary.isNotBlank()) {
-                    if (translationRepository != null) {
-                        MarketplaceTranslatableText(
-                            originalText = summary,
-                            state = summaryTranslationState,
-                            showOriginal = showOriginalSummary,
-                            textStyle = MaterialTheme.typography.titleMedium,
-                            onTranslate = { translationRepository.translate(summaryTranslationKey, summary) },
-                            onToggleOriginal = { showOriginalSummary = !showOriginalSummary }
-                        )
-                    } else {
-                        Text(summary, style = MaterialTheme.typography.titleMedium)
-                    }
+                    Text(
+                        if (
+                            !showOriginalListingContent &&
+                            summaryTranslationState.status == TranslationStatus.DONE &&
+                            summaryTranslationState.translatedText.isNotBlank()
+                        ) summaryTranslationState.translatedText else summary,
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
                 val location = Nip99.location(event)
                 if (location.isNotBlank()) {
                     Text(stringResource(R.string.marketplace_location_value, location), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (description.isNotBlank()) {
-                    if (translationRepository != null) {
-                        MarketplaceTranslatableText(
-                            originalText = description,
-                            state = descriptionTranslationState,
-                            showOriginal = showOriginalDescription,
-                            textStyle = MaterialTheme.typography.bodyLarge,
-                            onTranslate = { translationRepository.translate(descriptionTranslationKey, description) },
-                            onToggleOriginal = { showOriginalDescription = !showOriginalDescription }
-                        )
-                    } else {
-                        Text(description, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (
+                            !showOriginalListingContent &&
+                            descriptionTranslationState.status == TranslationStatus.DONE &&
+                            descriptionTranslationState.translatedText.isNotBlank()
+                        ) descriptionTranslationState.translatedText else description,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+                if (translationRepository != null && listingTranslationStates.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (listingTranslationFailed) {
+                            Text(
+                                stringResource(R.string.marketplace_translation_failed),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else if (listingTranslationsComplete && !listingHasTranslation) {
+                            Text(
+                                stringResource(R.string.marketplace_translation_same_language),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (!listingTranslationsComplete || listingHasTranslation) {
+                            IconButton(
+                                onClick = {
+                                    if (listingTranslationsComplete && listingHasTranslation) {
+                                        showOriginalListingContent = !showOriginalListingContent
+                                    } else {
+                                        if (titleToTranslate != null &&
+                                            titleTranslationState.status != TranslationStatus.DONE &&
+                                            titleTranslationState.status != TranslationStatus.SAME_LANGUAGE
+                                        ) translationRepository.translate(titleTranslationKey, titleToTranslate)
+                                        if (summary.isNotBlank() &&
+                                            summaryTranslationState.status != TranslationStatus.DONE &&
+                                            summaryTranslationState.status != TranslationStatus.SAME_LANGUAGE
+                                        ) translationRepository.translate(summaryTranslationKey, summary)
+                                        if (description.isNotBlank() &&
+                                            descriptionTranslationState.status != TranslationStatus.DONE &&
+                                            descriptionTranslationState.status != TranslationStatus.SAME_LANGUAGE
+                                        ) translationRepository.translate(descriptionTranslationKey, description)
+                                    }
+                                },
+                                enabled = !listingTranslationLoading
+                            ) {
+                                if (listingTranslationLoading) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.Translate,
+                                        contentDescription = stringResource(
+                                            if (listingTranslationsComplete && listingHasTranslation) {
+                                                if (showOriginalListingContent) R.string.marketplace_show_translation
+                                                else R.string.marketplace_show_original
+                                            } else R.string.marketplace_translate
+                                        ),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 if (isOwnListing) {
@@ -1577,16 +1645,67 @@ fun MarketplaceDetailScreen(
                         }
                     }
                     Text(stringResource(R.string.marketplace_comment_count, comments.size), style = MaterialTheme.typography.titleMedium)
-                    if (comments.isEmpty()) Text(stringResource(R.string.marketplace_comment_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else comments.sortedBy { it.created_at }.takeLast(40).forEach { comment ->
-                        MarketplaceCommentRow(
-                            comment = comment,
-                            eventRepository = eventRepository,
-                            onProfileClick = onOpenProfile
-                        )
+                    val visibleComments = comments.sortedBy { it.created_at }.takeLast(40)
+                    val visibleCommentIds = visibleComments.mapTo(mutableSetOf()) { it.id }
+                    if (visibleComments.isEmpty()) {
+                        Text(stringResource(R.string.marketplace_comment_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        visibleComments.forEach { comment ->
+                            var depth = 0
+                            var parentId = Nip22.getParentCommentId(comment)
+                            val visitedParents = mutableSetOf<String>()
+                            while (parentId != null && parentId in visibleCommentIds && visitedParents.add(parentId)) {
+                                depth++
+                                val parent = visibleComments.firstOrNull { it.id == parentId } ?: break
+                                parentId = Nip22.getParentCommentId(parent)
+                            }
+                            MarketplaceCommentRow(
+                                comment = comment,
+                                eventRepository = eventRepository,
+                                userPubkey = userPubkey,
+                                signerAvailable = signer != null,
+                                translationRepository = translationRepository,
+                                depth = depth,
+                                onProfileClick = onOpenProfile,
+                                onReply = { replyingToComment = comment },
+                                onReact = { onReactComment(comment) }
+                            )
+                        }
                     }
-                    OutlinedTextField(value = commentText, onValueChange = { commentText = it }, modifier = Modifier.fillMaxWidth(),
-                        minLines = 2, label = { Text(stringResource(R.string.marketplace_comment_hint)) }, enabled = signer != null && !commentSending)
+                    replyingToComment?.let { parent ->
+                        val parentName = eventRepository.getProfileData(parent.pubkey)?.displayString
+                            ?: parent.pubkey.take(8) + "…"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                stringResource(R.string.marketplace_comment_replying_to, parentName),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                stringResource(R.string.marketplace_comment_cancel_reply),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { replyingToComment = null }.padding(8.dp)
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = commentText,
+                        onValueChange = { commentText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        label = {
+                            Text(
+                                if (replyingToComment == null) stringResource(R.string.marketplace_comment_hint)
+                                else stringResource(R.string.marketplace_comment_reply)
+                            )
+                        },
+                        enabled = signer != null && !commentSending
+                    )
                     if (commentError != null) Text(commentError.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     Button(onClick = {
                         val activeSigner = signer ?: return@Button
@@ -1596,15 +1715,18 @@ fun MarketplaceDetailScreen(
                             commentSending = true
                             commentError = null
                             try {
-                                val comment = activeSigner.signEvent(Nip22.KIND_COMMENT, body, Nip22.buildAddressableRootCommentTags(event))
-                                // Add the signed comment to the local persistent repository before
-                                // waiting for a relay ACK, so the discussion never flickers away.
+                                val tags = replyingToComment?.let { parent ->
+                                    Nip22.buildAddressableCommentReplyTags(event, parent)
+                                } ?: Nip22.buildAddressableRootCommentTags(event)
+                                val comment = activeSigner.signEvent(Nip22.KIND_COMMENT, body, tags)
                                 eventRepository.addEvent(comment)
                                 if (comments.none { it.id == comment.id }) { comments.add(comment); comments.sortBy { it.created_at } }
                                 commentText = ""
+                                replyingToComment = null
                                 publishMarketplaceEvent(relayPool, comment, context)
                             } catch (e: Exception) {
-                                commentError = e.localizedMessage ?: e.message ?: "Unable to publish comment"
+                                commentError = e.localizedMessage ?: e.message
+                                    ?: context.getString(R.string.marketplace_comment_publish_failed)
                             } finally { commentSending = false }
                         }
                     }, enabled = signer != null && commentText.isNotBlank() && !commentSending, modifier = Modifier.fillMaxWidth()) {
@@ -1648,17 +1770,39 @@ fun MarketplaceDetailScreen(
 private fun MarketplaceCommentRow(
     comment: NostrEvent,
     eventRepository: EventRepository,
-    onProfileClick: (String) -> Unit
+    userPubkey: String?,
+    signerAvailable: Boolean,
+    translationRepository: TranslationRepository?,
+    depth: Int,
+    onProfileClick: (String) -> Unit,
+    onReply: () -> Unit,
+    onReact: () -> Unit
 ) {
     val profileVersion by eventRepository.profileVersionFor(comment.pubkey).collectAsState(initial = 0)
     val profile = remember(eventRepository, comment.pubkey, profileVersion) {
         eventRepository.getProfileData(comment.pubkey)
     }
     LaunchedEffect(comment.pubkey) { eventRepository.requestProfileIfMissing(comment.pubkey) }
+    val reactionVersion by eventRepository.reactionVersion.collectAsState(initial = 0)
+    val reactionCount = remember(comment.id, reactionVersion) { eventRepository.getReactionCount(comment.id) }
+    val hasReacted = userPubkey?.let { eventRepository.hasUserReacted(comment.id, it) } ?: false
+    val translationVersion by translationRepository?.version?.collectAsState()
+        ?: remember { mutableIntStateOf(0) }
+    val translationKey = "marketplace-comment:${translationRepository?.getCacheNamespace() ?: "unavailable"}:${comment.id}"
+    val translationState = remember(translationVersion, translationKey) {
+        translationRepository?.getState(translationKey) ?: TranslationState()
+    }
+    var showOriginal by remember(comment.id) { mutableStateOf(false) }
+    val hasTranslation = translationState.status == TranslationStatus.DONE &&
+        translationState.translatedText.isNotBlank()
+    val translating = translationState.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+        translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
+        translationState.status == TranslationStatus.TRANSLATING
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(start = (depth * 18).dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onProfileClick(comment.pubkey) }
             .padding(10.dp),
@@ -1672,7 +1816,68 @@ private fun MarketplaceCommentRow(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold
             )
-            Text(comment.content, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                if (hasTranslation && !showOriginal) translationState.translatedText else comment.content,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    stringResource(R.string.marketplace_comment_reply),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable(onClick = onReply).padding(end = 6.dp)
+                )
+                IconButton(onClick = onReact, enabled = signerAvailable, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        if (hasReacted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = stringResource(
+                            if (hasReacted) R.string.marketplace_comment_unlike else R.string.marketplace_comment_like
+                        ),
+                        tint = if (hasReacted) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                if (reactionCount > 0) Text(reactionCount.toString(), style = MaterialTheme.typography.labelSmall)
+                if (translationRepository != null) {
+                    IconButton(
+                        onClick = {
+                            if (hasTranslation) showOriginal = !showOriginal
+                            else translationRepository.translate(translationKey, comment.content)
+                        },
+                        enabled = !translating,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (translating) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Outlined.Translate,
+                                contentDescription = stringResource(
+                                    if (hasTranslation) {
+                                        if (showOriginal) R.string.marketplace_show_translation else R.string.marketplace_show_original
+                                    } else R.string.marketplace_translate
+                                ),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            if (translationState.status == TranslationStatus.ERROR) {
+                Text(
+                    stringResource(R.string.marketplace_translation_failed),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }
@@ -1777,52 +1982,122 @@ private fun ZoomableMarketplaceImage(
 }
 
 @Composable
-private fun MarketplaceTranslatableText(
-    originalText: String,
-    state: TranslationState,
-    showOriginal: Boolean,
-    textStyle: TextStyle,
-    onTranslate: () -> Unit,
-    onToggleOriginal: () -> Unit
+private fun MarketplaceImageGallery(
+    images: List<String>,
+    contentDescription: String
 ) {
-    val isLoading = state.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
-        state.status == TranslationStatus.DOWNLOADING_MODEL ||
-        state.status == TranslationStatus.TRANSLATING
-    val hasTranslation = state.status == TranslationStatus.DONE && state.translatedText.isNotBlank()
-    Text(
-        text = if (hasTranslation && !showOriginal) state.translatedText else originalText,
-        style = textStyle
-    )
-    when {
-        hasTranslation -> OutlinedButton(onClick = onToggleOriginal) {
-            Text(
-                stringResource(
-                    if (showOriginal) R.string.marketplace_show_translation
-                    else R.string.marketplace_show_original
-                )
+    if (images.isEmpty()) return
+    var zoomedIndex by remember(images) { mutableIntStateOf(-1) }
+
+    if (images.size == 1) {
+        Box(Modifier.fillMaxWidth().height(280.dp), contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = images.first(),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize().clickable { zoomedIndex = 0 },
+                contentScale = ContentScale.Fit
             )
         }
-        state.status == TranslationStatus.SAME_LANGUAGE -> Text(
-            stringResource(R.string.marketplace_translation_same_language),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        state.status == TranslationStatus.ERROR -> Text(
-            stringResource(R.string.marketplace_translation_failed),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error
-        )
+    } else {
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(images.size) { index ->
+                AsyncImage(
+                    model = images[index],
+                    contentDescription = contentDescription,
+                    modifier = Modifier.width(280.dp).height(280.dp)
+                        .clip(RoundedCornerShape(8.dp)).clickable { zoomedIndex = index },
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
     }
-    if (!hasTranslation && state.status != TranslationStatus.SAME_LANGUAGE) {
-        OutlinedButton(onClick = onTranslate, enabled = !isLoading) {
-            Text(
-                stringResource(
-                    if (isLoading) R.string.marketplace_translation_loading
-                    else R.string.marketplace_translate
+
+    if (zoomedIndex >= 0) {
+        var activeImageIndex by remember(images, zoomedIndex) { mutableIntStateOf(zoomedIndex) }
+        var zoom by remember(activeImageIndex) { mutableStateOf(1f) }
+        var pan by remember(activeImageIndex) { mutableStateOf(Offset.Zero) }
+        var swipeDistance by remember(activeImageIndex) { mutableStateOf(0f) }
+
+        Dialog(onDismissRequest = { zoomedIndex = -1 }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                AsyncImage(
+                    model = images[activeImageIndex],
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize()
+                        .pointerInput(activeImageIndex) {
+                            detectTransformGestures { _, panChange, zoomChange, _ ->
+                                val nextZoom = (zoom * zoomChange).coerceIn(1f, 6f)
+                                if (zoom <= 1.001f && nextZoom <= 1.001f) {
+                                    swipeDistance += panChange.x
+                                    if (swipeDistance < -100f && activeImageIndex < images.lastIndex) {
+                                        activeImageIndex++
+                                        swipeDistance = 0f
+                                    } else if (swipeDistance > 100f && activeImageIndex > 0) {
+                                        activeImageIndex--
+                                        swipeDistance = 0f
+                                    }
+                                } else {
+                                    zoom = nextZoom
+                                    pan = if (nextZoom <= 1.001f) Offset.Zero else pan + panChange
+                                }
+                            }
+                        }
+                        .graphicsLayer {
+                            scaleX = zoom
+                            scaleY = zoom
+                            val maxX = (size.width * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            val maxY = (size.height * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            translationX = pan.x.coerceIn(-maxX, maxX)
+                            translationY = pan.y.coerceIn(-maxY, maxY)
+                        },
+                    contentScale = ContentScale.Fit
                 )
-            )
+                if (images.size > 1) {
+                    if (activeImageIndex > 0) {
+                        IconButton(
+                            onClick = { activeImageIndex-- },
+                            modifier = Modifier.align(Alignment.CenterStart).padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.marketplace_image_previous),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    if (activeImageIndex < images.lastIndex) {
+                        IconButton(
+                            onClick = { activeImageIndex++ },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.marketplace_image_next),
+                                tint = Color.White,
+                                modifier = Modifier.graphicsLayer { scaleX = -1f }
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.marketplace_image_counter, activeImageIndex + 1, images.size),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                IconButton(
+                    onClick = { zoomedIndex = -1 },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_back), tint = Color.White)
+                }
+            }
         }
-        if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }
 }
 
