@@ -90,6 +90,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import java.util.concurrent.ConcurrentHashMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -118,6 +121,8 @@ import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip13
+import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.ClientMessage
@@ -127,6 +132,14 @@ import com.darkwisp.app.ui.component.ZapDialog
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.ContactRepository
+import com.darkwisp.app.repo.InterfacePreferences
+import com.darkwisp.app.repo.PowPreferences
+import com.darkwisp.app.repo.SafetyPreferences
+import com.darkwisp.app.repo.SpamAuthorCache
+import com.darkwisp.app.repo.shouldHideSpamAuthor
+import com.darkwisp.app.ml.NSpamClassifier
+import com.darkwisp.app.ml.NoteInput
 import com.darkwisp.app.repo.TranslationRepository
 import com.darkwisp.app.repo.TranslationState
 import com.darkwisp.app.repo.TranslationStatus
@@ -137,6 +150,11 @@ import com.darkwisp.app.repo.BookmarkSetRepository
 import com.darkwisp.app.viewmodel.MarketplaceNaddrLookupState
 import com.darkwisp.app.viewmodel.MarketplaceScope
 import com.darkwisp.app.viewmodel.MarketplaceViewModel
+import com.darkwisp.app.ui.component.CollapsedRepliesRow
+import com.darkwisp.app.ui.component.SpamToggle
+import com.darkwisp.app.ui.component.threadConnector
+import com.darkwisp.app.ui.component.threadIndentDp
+import com.darkwisp.app.viewmodel.thread.ThreadItem
 
 private const val MARKETPLACE_WATCHLIST_DTAG = "dark-wisp-marketplace-watchlist"
 
@@ -871,6 +889,12 @@ fun MarketplaceDetailScreen(
     onOpenProfile: (String) -> Unit = {},
     onBookmarkSetChanged: (NostrEvent) -> Unit = {},
     bookmarkSetRepository: BookmarkSetRepository,
+    spamClassifier: NSpamClassifier?,
+    spamAuthorCache: SpamAuthorCache,
+    safetyPrefs: SafetyPreferences,
+    contactRepo: ContactRepository,
+    powPrefs: PowPreferences,
+    interfacePrefs: InterfacePreferences,
     translationRepository: TranslationRepository? = null,
     onBoostListing: (String) -> Unit = {},
     onReactComment: (NostrEvent) -> Unit = {}
@@ -936,9 +960,14 @@ fun MarketplaceDetailScreen(
     var commentSending by remember(event.id) { mutableStateOf(false) }
     var commentError by remember(event.id) { mutableStateOf<String?>(null) }
     var replyingToComment by remember(event.id) { mutableStateOf<NostrEvent?>(null) }
+    var spamAuthorPubkeys by remember(event.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var spamExpanded by remember(event.id) { mutableStateOf(false) }
+    var expandedCommentIds by remember(event.id) { mutableStateOf<Set<String>>(emptySet()) }
     val commentAddress = remember(event.pubkey, event.id) { Nip22.addressableRootTag(event) }
     val listingAddress = remember(event.pubkey, Nip99.dTag(event)) { Nip99.addressTag(event) }
     val reactionVersion by eventRepository.reactionVersion.collectAsState(initial = 0)
+    val spamFilterEnabled by safetyPrefs.spamFilterEnabled.collectAsState()
+    val commentIds = comments.map { it.id }
     val reactionCount = remember(listingAddress, reactionVersion) { eventRepository.getReactionCount(listingAddress) }
     val zapVersion by eventRepository.zapVersion.collectAsState(initial = 0)
     val zapSats = remember(event.id, zapVersion) { eventRepository.getZapSats(event.id) }
@@ -1022,11 +1051,41 @@ fun MarketplaceDetailScreen(
         }
     }
 
+    LaunchedEffect(event.id, commentIds, spamFilterEnabled, spamClassifier, userPubkey) {
+        if (!spamFilterEnabled || spamClassifier == null) {
+            spamAuthorPubkeys = emptySet()
+            return@LaunchedEffect
+        }
+        val authors = comments.map { it.pubkey }.distinct()
+        val detected = withContext(Dispatchers.Default) {
+            authors.filter { author ->
+                val notes = eventRepository.getCachedEventsByAuthor(author, 1, 10)
+                val noteCount = notes.size
+                val cachedScore = spamAuthorCache.get(author, noteCount)
+                val score = cachedScore ?: if (notes.isNotEmpty()) {
+                    spamClassifier.score(notes.map { note ->
+                        NoteInput(note.content, note.tags, note.created_at)
+                    })?.also { spamAuthorCache.put(author, it, noteCount) }
+                } else null
+                shouldHideSpamAuthor(
+                    pubkey = author,
+                    currentUserPubkey = userPubkey,
+                    isFollowing = contactRepo.isFollowing(author),
+                    isSafelisted = safetyPrefs.isSpamSafelisted(author),
+                    spamFilterEnabled = spamFilterEnabled,
+                    score = score
+                )
+            }.toSet()
+        }
+        spamAuthorPubkeys = detected
+    }
+
     LaunchedEffect(event.id, listingAddress) {
         val subId = "marketplace-reactions-${event.id.take(12)}"
         val subscriptions = mutableListOf(subId)
         val pendingDeletionIds = Channel<String>(Channel.UNLIMITED)
         val knownReactionIds = mutableSetOf<String>()
+        val knownCommentIds = ConcurrentHashMap.newKeySet<String>()
         val marketplaceReadRelays = (MarketplaceRelays.READ + MarketplaceRelays.WRITE).distinct()
         val targets = (
             relayPool.getReadRelayUrls() +
@@ -1034,9 +1093,6 @@ fun MarketplaceDetailScreen(
                 RelayConfig.DEFAULT_INDEXER_RELAYS
             ).distinct()
 
-        // Relay history and live reactions are fetched first. Each newly discovered
-        // kind-7 ID is then used to query its NIP-09 deletion on the same relay set.
-        // Batch IDs to keep the number of temporary subscriptions bounded.
         val deletionFetchJob = launch {
             var batchIndex = 0
             for (firstId in pendingDeletionIds) {
@@ -1046,7 +1102,6 @@ fun MarketplaceDetailScreen(
                     val nextId = pendingDeletionIds.tryReceive().getOrNull() ?: break
                     batch.add(nextId)
                 }
-
                 val deletionSubId = "marketplace-reactions-deletions-${event.id.take(8)}-${++batchIndex}"
                 subscriptions.add(deletionSubId)
                 val deletionRequest = ClientMessage.req(
@@ -1055,9 +1110,7 @@ fun MarketplaceDetailScreen(
                 )
                 targets.forEach { relay ->
                     relayPool.sendToRelayOrEphemeral(
-                        relay,
-                        deletionRequest,
-                        skipBadCheck = true,
+                        relay, deletionRequest, skipBadCheck = true,
                         autoReconnect = relay in marketplaceReadRelays
                     )
                 }
@@ -1075,35 +1128,41 @@ fun MarketplaceDetailScreen(
                     val targetsListing = reaction.tags.any {
                         it.size >= 2 && it[0] == "a" && it[1] == listingAddress
                     }
-                    if (reaction.kind == 7 && (targetsRevision || targetsListing)) {
+                    val targetsComment = reaction.tags.any {
+                        it.size >= 2 && it[0] == "e" && it[1] in knownCommentIds
+                    }
+                    if (reaction.kind == 7 && (targetsRevision || targetsListing || targetsComment)) {
                         eventRepository.addEvent(reaction)
                         eventRepository.requestProfileIfMissing(reaction.pubkey)
-                        if (knownReactionIds.add(reaction.id)) {
-                            pendingDeletionIds.trySend(reaction.id)
-                        }
+                        if (knownReactionIds.add(reaction.id)) pendingDeletionIds.trySend(reaction.id)
                     }
                 }
         }
 
-        val request = ClientMessage.req(
-            subId,
-            listOf(
-                Filter(kinds = listOf(7), eTags = listOf(event.id), limit = 500),
-                Filter(kinds = listOf(7), aTags = listOf(listingAddress), limit = 1000)
-            )
-        )
-        targets.forEach { relay ->
-            relayPool.sendToRelayOrEphemeral(
-                relay,
-                request,
-                skipBadCheck = true,
-                autoReconnect = relay in marketplaceReadRelays
-            )
+        val requestJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            snapshotFlow { comments.map { it.id }.distinct() }
+                .distinctUntilChanged()
+                .collect { ids ->
+                    knownCommentIds.clear()
+                    knownCommentIds.addAll(ids)
+                    val request = ClientMessage.req(
+                        subId,
+                        buildMarketplaceCommentReactionFilters(event.id, listingAddress, ids)
+                    )
+                    targets.forEach { relay ->
+                        relayPool.sendToRelayOrEphemeral(
+                            relay, request, skipBadCheck = true,
+                            autoReconnect = relay in marketplaceReadRelays
+                        )
+                    }
+                }
         }
+
         try {
             awaitCancellation()
         } finally {
             pendingDeletionIds.close()
+            requestJob.cancel()
             collector.cancel()
             deletionFetchJob.cancel()
             subscriptions.forEach { relayPool.closeOnAllRelays(it) }
@@ -1646,30 +1705,46 @@ fun MarketplaceDetailScreen(
                     }
                     Text(stringResource(R.string.marketplace_comment_count, comments.size), style = MaterialTheme.typography.titleMedium)
                     val visibleComments = comments.sortedBy { it.created_at }.takeLast(40)
-                    val visibleCommentIds = visibleComments.mapTo(mutableSetOf()) { it.id }
-                    if (visibleComments.isEmpty()) {
+                    val spamComments = if (spamFilterEnabled) {
+                        visibleComments.filter { it.pubkey in spamAuthorPubkeys }
+                    } else emptyList()
+                    if (spamComments.isNotEmpty()) {
+                        SpamToggle(
+                            count = spamComments.size,
+                            expanded = spamExpanded,
+                            onToggle = { spamExpanded = !spamExpanded }
+                        )
+                    }
+                    val commentsToRender = if (spamExpanded) visibleComments
+                        else visibleComments.filterNot { it.pubkey in spamAuthorPubkeys }
+                    if (comments.isEmpty()) {
                         Text(stringResource(R.string.marketplace_comment_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        visibleComments.forEach { comment ->
-                            var depth = 0
-                            var parentId = Nip22.getParentCommentId(comment)
-                            val visitedParents = mutableSetOf<String>()
-                            while (parentId != null && parentId in visibleCommentIds && visitedParents.add(parentId)) {
-                                depth++
-                                val parent = visibleComments.firstOrNull { it.id == parentId } ?: break
-                                parentId = Nip22.getParentCommentId(parent)
+                    } else if (commentsToRender.isNotEmpty()) {
+                        val threadItems = buildMarketplaceCommentThread(
+                            listingEventId = event.id,
+                            comments = commentsToRender,
+                            expandedIds = expandedCommentIds
+                        )
+                        threadItems.forEach { item ->
+                            when (item) {
+                                is ThreadItem.Post -> MarketplaceCommentRow(
+                                    comment = item.event,
+                                    eventRepository = eventRepository,
+                                    userPubkey = userPubkey,
+                                    signerAvailable = signer != null,
+                                    translationRepository = translationRepository,
+                                    depth = item.depth,
+                                    connectorStartsMidAir = item.connectorStartsMidAir,
+                                    onProfileClick = onOpenProfile,
+                                    onReply = { replyingToComment = item.event },
+                                    onReact = { onReactComment(item.event) }
+                                )
+                                is ThreadItem.CollapsedReplies -> CollapsedRepliesRow(
+                                    item = item,
+                                    onExpand = { expandedCommentIds = expandedCommentIds + item.anchor.id }
+                                )
+                                is ThreadItem.ShowMoreReplies -> Unit
                             }
-                            MarketplaceCommentRow(
-                                comment = comment,
-                                eventRepository = eventRepository,
-                                userPubkey = userPubkey,
-                                signerAvailable = signer != null,
-                                translationRepository = translationRepository,
-                                depth = depth,
-                                onProfileClick = onOpenProfile,
-                                onReply = { replyingToComment = comment },
-                                onReact = { onReactComment(comment) }
-                            )
                         }
                     }
                     replyingToComment?.let { parent ->
@@ -1715,15 +1790,41 @@ fun MarketplaceDetailScreen(
                             commentSending = true
                             commentError = null
                             try {
-                                val tags = replyingToComment?.let { parent ->
-                                    Nip22.buildAddressableCommentReplyTags(event, parent)
-                                } ?: Nip22.buildAddressableRootCommentTags(event)
-                                val comment = activeSigner.signEvent(Nip22.KIND_COMMENT, body, tags)
+                                val tags = buildMarketplaceCommentTags(
+                                    listing = event,
+                                    parentComment = replyingToComment,
+                                    includeClientTag = interfacePrefs.isClientTagEnabled()
+                                )
+                                val comment = if (powPrefs.isNotePowEnabled()) {
+                                    val createdAt = System.currentTimeMillis() / 1000
+                                    val mined = withContext(Dispatchers.Default) {
+                                        Nip13.mine(
+                                            pubkeyHex = activeSigner.pubkeyHex,
+                                            kind = Nip22.KIND_COMMENT,
+                                            content = body,
+                                            tags = tags,
+                                            targetDifficulty = powPrefs.getNoteDifficulty(),
+                                            createdAt = createdAt
+                                        )
+                                    }
+                                    activeSigner.signEvent(
+                                        kind = Nip22.KIND_COMMENT,
+                                        content = body,
+                                        tags = mined.tags,
+                                        createdAt = mined.createdAt
+                                    )
+                                } else {
+                                    activeSigner.signEvent(Nip22.KIND_COMMENT, body, tags)
+                                }
+                                // Relay confirmation precedes local insertion to avoid ghost comments.
+                                publishMarketplaceEvent(relayPool, comment, context)
                                 eventRepository.addEvent(comment)
-                                if (comments.none { it.id == comment.id }) { comments.add(comment); comments.sortBy { it.created_at } }
+                                if (comments.none { it.id == comment.id }) {
+                                    comments.add(comment)
+                                    comments.sortBy { it.created_at }
+                                }
                                 commentText = ""
                                 replyingToComment = null
-                                publishMarketplaceEvent(relayPool, comment, context)
                             } catch (e: Exception) {
                                 commentError = e.localizedMessage ?: e.message
                                     ?: context.getString(R.string.marketplace_comment_publish_failed)
@@ -1774,6 +1875,7 @@ private fun MarketplaceCommentRow(
     signerAvailable: Boolean,
     translationRepository: TranslationRepository?,
     depth: Int,
+    connectorStartsMidAir: Boolean,
     onProfileClick: (String) -> Unit,
     onReply: () -> Unit,
     onReact: () -> Unit
@@ -1799,10 +1901,22 @@ private fun MarketplaceCommentRow(
         translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
         translationState.status == TranslationStatus.TRANSLATING
 
+    val indent = threadIndentDp(depth)
+    val lineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .threadConnector(
+                show = depth > 0,
+                indent = indent,
+                lineColor = lineColor,
+                dashedTop = connectorStartsMidAir
+            )
+    ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = (depth * 18).dp)
+            .padding(start = indent)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onProfileClick(comment.pubkey) }
             .padding(10.dp),
@@ -1879,7 +1993,7 @@ private fun MarketplaceCommentRow(
                 )
             }
         }
-    }
+    }    }
 }
 
 @Composable

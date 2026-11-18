@@ -1,13 +1,13 @@
-name: Postilla staging validation 1.0.30
+name: Postilla staging validation 1.0.31
 
 on:
   push:
     branches:
-      - staging/postilla-preview-1.0.30-client-tag-fix-20261118
+      - staging/postilla-preview-1.0.31-client-tag-fix-20261118
   workflow_dispatch:
 
 concurrency:
-  group: postilla-preview-1.0.30-${{ github.ref }}
+  group: postilla-preview-1.0.31-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -45,13 +45,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify validated Postilla v1.0.29 base
+      - name: Verify Postilla v1.0.30 staging base
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED_BASE="02348b871a1060f434721a58dc3512caa3e51800"
+          EXPECTED_BASE="f95bb0739d8e59c6c4673c94a4e221b9b77fd8d3"
           git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
-          echo "Verified that this staging branch descends from the validated Postilla v1.0.29 staging base."
+          echo "Verified that this staging branch descends from the validated Postilla v1.0.30 staging base."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -104,7 +104,7 @@ jobs:
           echo "Package: $PACKAGE_ID"
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced.staging" ]]
-          [[ "$VERSION_NAME" == "1.0.30" ]]
+          [[ "$VERSION_NAME" == "1.0.31" ]]
           [[ "$VERSION_CODE" == "30" ]]
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
@@ -120,13 +120,13 @@ jobs:
             exit 1
           fi
 
-          cp "$APK" "Postilla-Preview-v1.0.30.apk"
-          sha256sum "Postilla-Preview-v1.0.30.apk" | tee "$RUNNER_TEMP/postilla-preview-1.0.30-sha256.txt"
+          cp "$APK" "Postilla-Preview-v1.0.31.apk"
+          sha256sum "Postilla-Preview-v1.0.31.apk" | tee "$RUNNER_TEMP/postilla-preview-1.0.31-sha256.txt"
 
       - name: Upload signed staging APK
         uses: actions/upload-artifact@v4
         with:
-          name: postilla-preview-1.0.30
-          path: Postilla-Preview-v1.0.30.apk
+          name: postilla-preview-1.0.31
+          path: Postilla-Preview-v1.0.31.apk
           if-no-files-found: error
           retention-days: 90

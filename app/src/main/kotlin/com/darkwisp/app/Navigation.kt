@@ -1186,6 +1186,7 @@ fun WispNavHost(
                 }
             } else {
                 val listing = event!!
+                val marketplaceSpamClassifier by feedViewModel.nspamClassifierState.collectAsState()
                 MarketplaceDetailScreen(
                     event = listing,
                     userPubkey = feedViewModel.getUserPubkey(),
@@ -1221,6 +1222,12 @@ fun WispNavHost(
                     profileLookup = { feedViewModel.profileRepo.get(it) },
                     fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
                     translationRepository = feedViewModel.translationRepo,
+                    spamClassifier = marketplaceSpamClassifier,
+                    spamAuthorCache = feedViewModel.spamAuthorCache,
+                    safetyPrefs = feedViewModel.safetyPrefs,
+                    contactRepo = feedViewModel.contactRepo,
+                    powPrefs = feedViewModel.powPrefs,
+                    interfacePrefs = feedViewModel.interfacePrefs,
                     onReactComment = { comment -> feedViewModel.sendReaction(comment) },
                     onBoostListing = { listingReference ->
                         replyTarget = null
@@ -1337,6 +1344,7 @@ fun WispNavHost(
                     androidx.compose.material3.CircularProgressIndicator()
                 }
             } else {
+                val marketplaceSpamClassifier by feedViewModel.nspamClassifierState.collectAsState()
                 MarketplaceDetailScreen(
                     event = event!!,
                     userPubkey = feedViewModel.getUserPubkey(),
@@ -1372,6 +1380,12 @@ fun WispNavHost(
                     profileLookup = { feedViewModel.profileRepo.get(it) },
                     fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
                     translationRepository = feedViewModel.translationRepo,
+                    spamClassifier = marketplaceSpamClassifier,
+                    spamAuthorCache = feedViewModel.spamAuthorCache,
+                    safetyPrefs = feedViewModel.safetyPrefs,
+                    contactRepo = feedViewModel.contactRepo,
+                    powPrefs = feedViewModel.powPrefs,
+                    interfacePrefs = feedViewModel.interfacePrefs,
                     onReactComment = { comment -> feedViewModel.sendReaction(comment) },
                     onBoostListing = { listingReference ->
                         replyTarget = null

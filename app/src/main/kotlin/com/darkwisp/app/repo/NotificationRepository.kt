@@ -888,7 +888,12 @@ class NotificationRepository(
         if (safetyPrefs?.isSpamSafelisted(event.pubkey) == true) return
         // Only replies are spam-scored (see mergeReply); skip quotes/mentions
         if (event.tags.any { it.size >= 2 && it[0] == "q" }) return
-        if (Nip10.getReplyTargetWithHint(event) == null) return
+        val isReply = if (event.kind == Nip22.KIND_COMMENT) {
+            Nip22.getAddressableRootTag(event) != null
+        } else {
+            Nip10.getReplyTargetWithHint(event) != null
+        }
+        if (!isReply) return
         val classifier = spamClassifier ?: return
         val cache = spamAuthorCache ?: return
         val repo = eventRepo ?: return

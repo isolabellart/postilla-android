@@ -285,6 +285,8 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     var nspamClassifier: com.darkwisp.app.ml.NSpamClassifier? = null
         private set
+    private val _nspamClassifierState = MutableStateFlow<com.darkwisp.app.ml.NSpamClassifier?>(null)
+    val nspamClassifierState: StateFlow<com.darkwisp.app.ml.NSpamClassifier?> = _nspamClassifierState
 
     init {
         eventRepo.safetyPrefs = safetyPrefs
@@ -301,6 +303,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
                 Log.e("FeedVM", "Failed to load nspam weights", e)
                 null
             }
+            _nspamClassifierState.value = nspamClassifier
             notifRepo.spamClassifier = nspamClassifier
         }
     }

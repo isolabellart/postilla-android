@@ -21,6 +21,7 @@ import com.darkwisp.app.repo.RelayHintStore
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.repo.SafetyPreferences
 import com.darkwisp.app.repo.SpamAuthorCache
+import com.darkwisp.app.repo.shouldHideSpamAuthor
 import com.darkwisp.app.viewmodel.thread.ThreadFlattener
 import com.darkwisp.app.viewmodel.thread.ThreadItem
 import kotlinx.coroutines.Dispatchers
@@ -476,20 +477,28 @@ class ThreadViewModel : ViewModel() {
             if (muteRepo?.isBlocked(event.pubkey) == true) continue
             if (Nip10.isStandaloneQuote(event)) continue
 
+            val noteCount = eventRepoRef?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
+            val cached = spamAuthorCache?.get(event.pubkey, noteCount)
+            if (shouldHideSpamAuthor(
+                    pubkey = event.pubkey,
+                    currentUserPubkey = currentUserPubkey,
+                    isFollowing = contactRepo?.isFollowing(event.pubkey) == true,
+                    isSafelisted = safetyPrefs?.isSpamSafelisted(event.pubkey) == true,
+                    spamFilterEnabled = spamEnabled,
+                    score = cached
+                )
+            ) {
+                spamEvents.add(event)
+                continue
+            }
             if (spamEnabled && spamClassifier != null &&
                 event.pubkey != currentUserPubkey &&
                 contactRepo?.isFollowing(event.pubkey) != true &&
-                safetyPrefs?.isSpamSafelisted(event.pubkey) != true
+                safetyPrefs?.isSpamSafelisted(event.pubkey) != true &&
+                cached == null &&
+                event.pubkey !in spamScoringPubkeys
             ) {
-                val noteCount = eventRepoRef?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
-                val cached = spamAuthorCache?.get(event.pubkey, noteCount)
-                if (cached != null && cached >= 0.7f) {
-                    spamEvents.add(event)
-                    continue
-                }
-                if (cached == null && event.pubkey !in spamScoringPubkeys) {
-                    pubkeysToScore.add(event.pubkey)
-                }
+                pubkeysToScore.add(event.pubkey)
             }
 
             var parentId = Nip10.getReplyTarget(event) ?: rootId
