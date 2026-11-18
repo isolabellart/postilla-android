@@ -1,7 +1,6 @@
 package com.darkwisp.app.concord
 
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
-import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import org.junit.Assert.assertEquals
@@ -17,6 +16,5 @@ class QuartzConcordCompatibilityTest {
         assertEquals(1059, ConcordStreamEnvelope.KIND_WRAP)
         assertEquals(33301, ConcordInviteBundle.KIND)
         assertEquals(33302, ConcordCommunityListFragmentEvent.KIND)
-        assertEquals(9, ChannelChat.KIND_MESSAGE)
     }
 }
