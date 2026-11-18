@@ -908,15 +908,19 @@ class NotificationRepository(
     }
 
     private fun mergeReply(event: NostrEvent, replyTarget: String, replyTargetHint: String?): Boolean {
-        if (safetyPrefs?.spamFilterEnabled?.value == true &&
-            contactRepo?.isFollowing(event.pubkey) != true &&
-            safetyPrefs?.isSpamSafelisted(event.pubkey) != true
-        ) {
-            // Score was computed off-lock in warmSpamScore; only consult the cache here
-            val noteCount = eventRepo?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
-            val cached = spamAuthorCache?.get(event.pubkey, noteCount)
-            if (cached != null && cached >= 0.7f) return false
-        }
+        // Score was computed off-lock in warmSpamScore; use the same decision rule as
+        // the feed thread and Marketplace comment views.
+        val noteCount = eventRepo?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
+        val cached = spamAuthorCache?.get(event.pubkey, noteCount)
+        if (shouldHideSpamAuthor(
+                pubkey = event.pubkey,
+                currentUserPubkey = currentPubkeyHex,
+                isFollowing = contactRepo?.isFollowing(event.pubkey) == true,
+                isSafelisted = safetyPrefs?.isSpamSafelisted(event.pubkey) == true,
+                spamFilterEnabled = safetyPrefs?.spamFilterEnabled?.value == true,
+                score = cached
+            )
+        ) return false
         val key = "reply:${event.id}"
         val hints = listOfNotNull(replyTargetHint)
         groupMap[key] = NotificationGroup.ReplyNotification(

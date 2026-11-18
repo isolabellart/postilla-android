@@ -1993,7 +1993,8 @@ private fun MarketplaceCommentRow(
                 )
             }
         }
-    }    }
+    }
+    }
 }
 
 @Composable

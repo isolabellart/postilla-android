@@ -3,7 +3,7 @@ name: Postilla staging validation 1.0.31
 on:
   push:
     branches:
-      - staging/postilla-preview-1.0.31-client-tag-fix-20261118
+      - staging/postilla-preview-1.0.31-marketplace-comments-20261118
   workflow_dispatch:
 
 concurrency:
@@ -105,7 +105,7 @@ jobs:
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced.staging" ]]
           [[ "$VERSION_NAME" == "1.0.31" ]]
-          [[ "$VERSION_CODE" == "30" ]]
+          [[ "$VERSION_CODE" == "31" ]]
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
