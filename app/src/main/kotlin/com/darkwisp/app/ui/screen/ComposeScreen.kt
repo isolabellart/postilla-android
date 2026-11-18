@@ -726,6 +726,7 @@ fun ComposeScreen(
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(top = 12.dp)
                             .heightIn(min = composerMinHeight, max = 420.dp)
                             .contentReceiver(object : ReceiveContentListener {
                                 override fun onReceive(
