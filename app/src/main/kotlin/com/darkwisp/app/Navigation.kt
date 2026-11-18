@@ -1925,6 +1925,7 @@ fun WispNavHost(
                 eventRepo = feedViewModel.eventRepo,
                 muteRepo = feedViewModel.muteRepo,
                 contactRepo = feedViewModel.contactRepo,
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onProfileClick = { pubkey ->
                     navController.navigate("profile/$pubkey")
                 },
