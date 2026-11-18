@@ -109,6 +109,34 @@ class Nip22Test {
     }
 
     @Test
+    fun addressableCommentRepliesKeepTheListingRootAndPointToTheParentComment() {
+        val root = NostrEvent(
+            id = "listing-event-id",
+            pubkey = rootAuthor,
+            created_at = 1789745380L,
+            kind = Nip99.KIND_LISTING,
+            tags = listOf(listOf("d", "vintage-chair")),
+            content = "A chair",
+            sig = "test-sig"
+        )
+        val parent = event(Nip22.KIND_COMMENT, emptyList()).copy(
+            id = topCommentId,
+            pubkey = topCommentAuthor
+        )
+        val tags = Nip22.buildAddressableCommentReplyTags(root, parent)
+        val address = "30402:$rootAuthor:vintage-chair"
+
+        assertTrue(tags.contains(listOf("A", address)))
+        assertTrue(tags.contains(listOf("K", "30402")))
+        assertTrue(tags.contains(listOf("P", rootAuthor)))
+        assertTrue(tags.contains(listOf("e", topCommentId, "", topCommentAuthor)))
+        assertTrue(tags.contains(listOf("k", "1111")))
+        assertTrue(tags.contains(listOf("p", topCommentAuthor)))
+        assertFalse(tags.any { it.firstOrNull() == "a" })
+        assertEquals(topCommentId, Nip22.getParentCommentId(event(Nip22.KIND_COMMENT, tags)))
+    }
+
+    @Test
     fun filterSerializesUppercaseAForAddressableComments() {
         val address = "30402:$rootAuthor:vintage-chair"
         val json = Filter(
