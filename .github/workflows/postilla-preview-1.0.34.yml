@@ -77,6 +77,14 @@ jobs:
             echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
+      - name: Inspect AGP 9 staging and test task names
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 :app:tasks --all | tee "$RUNNER_TEMP/postilla-gradle-tasks.txt"
+          echo "---- Relevant staging/test tasks ----"
+          grep -Ei 'staging|test.*unit|unit.*test|assemble' "$RUNNER_TEMP/postilla-gradle-tasks.txt" || true
+
       - name: Run staging unit tests
         run: |
           ./gradlew --no-daemon --no-build-cache --max-workers=2 \
