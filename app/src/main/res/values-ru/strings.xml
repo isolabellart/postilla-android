@@ -880,4 +880,14 @@
     <string name="marketplace_translation_same_language">Этот текст уже на выбранном языке.</string>
     <string name="marketplace_published_at">Опубликовано %1$s</string>
     <string name="marketplace_boost">Поделиться объявлением</string>
+    <string name="marketplace_comment_reply">Ответить</string>
+    <string name="marketplace_comment_like">Нравится комментарий</string>
+    <string name="marketplace_comment_unlike">Убрать отметку «Нравится» у комментария</string>
+    <string name="marketplace_comment_replying_to">Ответ для %1$s</string>
+    <string name="marketplace_comment_cancel_reply">Отменить ответ</string>
+    <string name="marketplace_comment_publish_failed">Не удалось опубликовать комментарий. Попробуйте ещё раз.</string>
+    <string name="marketplace_image_previous">Предыдущее изображение</string>
+    <string name="marketplace_image_next">Следующее изображение</string>
+    <string name="marketplace_image_counter">%1$d из %2$d</string>
+    <string name="compose_resize_text_area">Изменить размер поля текста</string>
 </resources>
