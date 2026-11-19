@@ -9,6 +9,8 @@ import com.darkwisp.app.relay.SubscriptionManager
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityFactory
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
 import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
 import com.vitorpamplona.quartz.concord.cord02Community.HeldRoot
@@ -29,8 +31,10 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteBundleStatus
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteChannel
+import com.vitorpamplona.quartz.concord.cord05Invites.InviteRelayDictionary
 import com.vitorpamplona.quartz.concord.crypto.ConcordKeyDerivation
 import com.vitorpamplona.quartz.concord.crypto.ControlPlaneKeys
+import com.vitorpamplona.quartz.concord.crypto.GroupKey
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.nip01Core.core.Event as QuartzEvent
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
@@ -39,12 +43,15 @@ import com.vitorpamplona.quartz.nip01Core.signers.NostrSigner as QuartzSigner
 import com.vitorpamplona.quartz.nip57Zaps.PrivateZapEvent
 import com.vitorpamplona.quartz.nip57Zaps.ZapRequestEvent
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 data class ConcordChannelSummary(
     val id: String,
@@ -86,7 +93,8 @@ class ConcordRepository(
         const val OFFICIAL_POSTILLA_INVITE =
             "https://v3.coinos.io/invite/naddr1qvzqqqyzz5pzpgqw540hvar6acgeuyrfnll60n6qrg9me4h90yucs3u2eh8tqmqrqqqqhhcy6s#BAADABJtZXNzYWdlcy5jb2lub3MuaW8AD3JlbGF5LmNvaW5vcy5pbwAQcmVsYXkucHJpbWFsLm5ldJqwIkTDMxKJDWju8TxtQzg"
 
-        private const val USER_COMMUNITY_LIST_KIND = 13302
+        private const val LEGACY_USER_COMMUNITY_LIST_KIND = 13302
+        private const val USER_COMMUNITY_LIST_FRAGMENT_KIND = 33302
         private const val CONTROL_WRAP_KIND = 1059
     }
 
@@ -97,12 +105,121 @@ class ConcordRepository(
         val editions: List<ControlEdition>,
     )
 
+    private data class ConcordCommunityListDocument(
+        val entries: List<ConcordCommunityListEntry>,
+        val residue: com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue,
+        val fragments: ConcordListFragmentSet,
+        val relays: List<String>,
+    )
+
     private val snapshots = HashMap<String, CommunitySnapshot>()
+    private val streamAuthLock = Any()
+    private val streamAuthKeysByRelay = ConcurrentHashMap<String, ConcurrentHashMap<String, GroupKey>>()
+    @Volatile private var streamAuthAccount: String? = null
+
+    init {
+        relayPool.setConcordStreamAuthSigner(::signConcordStreamAuthEvents)
+    }
+
+    private fun ensureStreamAuthAccount(signer: PostillaSigner) {
+        synchronized(streamAuthLock) {
+            if (streamAuthAccount != signer.pubkeyHex) {
+                streamAuthKeysByRelay.clear()
+                relayPool.clearConcordAuthTargets()
+                streamAuthAccount = signer.pubkeyHex
+            }
+        }
+    }
+
+    private fun registerConcordStreamKeys(
+        signer: PostillaSigner,
+        relays: List<String>,
+        keys: Iterable<GroupKey>,
+    ) {
+        ensureStreamAuthAccount(signer)
+        val targets = relays
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+            .distinct()
+        if (targets.isEmpty()) return
+
+        val uniqueKeys = keys.distinctBy { it.publicKeyHex }
+        for (url in targets) {
+            val relayKeys = streamAuthKeysByRelay.computeIfAbsent(url) { ConcurrentHashMap() }
+            uniqueKeys.forEach { relayKeys[it.publicKeyHex] = it }
+        }
+        relayPool.registerConcordAuthTargets(targets)
+    }
+
+    private fun registerCommunityStreamKeys(
+        signer: PostillaSigner,
+        entry: ConcordCommunityListEntry,
+        additionalKeys: Iterable<GroupKey> = emptyList(),
+    ) {
+        val communityId = entry.id.hexToByteArray()
+        val keys = ArrayList<GroupKey>()
+        val currentRoot = entry.root.hexToByteArray()
+        val currentControl = ControlPlaneKeys.of(
+            communityRoot = currentRoot,
+            communityId = communityId,
+            epoch = entry.rootEpoch,
+            controlPk = entry.controlPk,
+            controlRoot = entry.controlRoot,
+        )
+        currentControl.signer?.let(keys::add)
+        keys += ConcordKeyDerivation.guestbookPlaneKey(currentRoot, communityId, entry.rootEpoch)
+        keys += ConcordKeyDerivation.dissolvedPlaneKey(communityId)
+        if (entry.rootEpoch < Long.MAX_VALUE) {
+            keys += ConcordKeyDerivation.baseRekeyAddress(currentRoot, communityId, entry.rootEpoch + 1)
+        }
+
+        entry.heldRoots.forEach { held ->
+            val heldRoot = held.key.hexToByteArray()
+            val heldControl = ControlPlaneKeys.of(
+                communityRoot = heldRoot,
+                communityId = communityId,
+                epoch = held.epoch,
+                controlPk = held.controlPk,
+                controlRoot = held.controlRoot,
+            )
+            heldControl.signer?.let(keys::add)
+            keys += ConcordKeyDerivation.guestbookPlaneKey(heldRoot, communityId, held.epoch)
+            if (held.epoch < entry.rootEpoch) {
+                keys += ConcordKeyDerivation.baseRekeyAddress(heldRoot, communityId, entry.rootEpoch)
+            }
+            if (held.epoch < Long.MAX_VALUE) {
+                keys += ConcordKeyDerivation.baseRekeyAddress(heldRoot, communityId, held.epoch + 1)
+            }
+        }
+
+        keys += additionalKeys
+        registerConcordStreamKeys(signer, entry.relays, keys)
+    }
+
+    private suspend fun signConcordStreamAuthEvents(
+        relayUrl: String,
+        challenge: String,
+    ): List<NostrEvent> {
+        val keys = streamAuthKeysByRelay[relayUrl]?.values?.toList().orEmpty()
+        return keys.mapNotNull { key ->
+            runCatching {
+                NostrEvent.create(
+                    privkey = key.secretKey,
+                    pubkey = key.publicKey,
+                    kind = 22242,
+                    content = "",
+                    tags = listOf(
+                        listOf("relay", relayUrl),
+                        listOf("challenge", challenge),
+                    ),
+                )
+            }.getOrNull()
+        }
+    }
 
     suspend fun ensureOfficialPostillaCommunity(signer: PostillaSigner): ConcordCommunitySummary {
         val parsed = ConcordInviteLink.parseUrl(OFFICIAL_POSTILLA_INVITE)
             ?: throw IllegalStateException("The official Postilla Concord invite is malformed.")
-        val bundle = resolveInvite(OFFICIAL_POSTILLA_INVITE)
+        val bundle = resolveInvite(OFFICIAL_POSTILLA_INVITE, signer)
         val existing = loadUserCommunityList(signer).entries.firstOrNull {
             it.id.equals(bundle.communityId, ignoreCase = true)
         }
@@ -141,7 +258,7 @@ class ConcordRepository(
     suspend fun joinInvite(inviteUrl: String, signer: PostillaSigner): ConcordCommunitySummary {
         val parsed = ConcordInviteLink.parseUrl(inviteUrl.trim())
             ?: throw IllegalArgumentException("This is not a valid Concord invitation link.")
-        val invite = resolveInvite(inviteUrl.trim())
+        val invite = resolveInvite(inviteUrl.trim(), signer)
         val list = loadUserCommunityList(signer)
         val existing = list.entries.firstOrNull { it.id.equals(invite.communityId, ignoreCase = true) }
         if (existing == null || existing.rootEpoch < invite.rootEpoch) {
@@ -153,18 +270,26 @@ class ConcordRepository(
         return loadCommunity(updated, signer)
     }
 
-    private suspend fun resolveInvite(inviteUrl: String): CommunityInvite {
+    private suspend fun resolveInvite(inviteUrl: String, signer: PostillaSigner): CommunityInvite {
         val parsed = ConcordInviteLink.parseUrl(inviteUrl)
             ?: throw IllegalArgumentException("Invalid Concord invitation URL.")
-        val relays = parsed.fragment.relays.distinct().take(3)
-        if (relays.isEmpty()) throw IllegalArgumentException("The invitation has no bootstrap relays.")
-        val events = query(
+        val relays = (
+            parsed.fragment.relays +
+                InviteRelayDictionary.STOCK +
+                relayPool.getRelayUrls()
+            )
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+            .distinct()
+            .take(28)
+        if (relays.isEmpty()) throw IllegalArgumentException("The invitation has no reachable bootstrap relays.")
+        val events = queryAcrossRelays(
             relays,
             Filter(
                 kinds = listOf(parsed.kind),
                 authors = listOf(parsed.linkSignerPubKey),
-                dTags = listOf(""),
-                limit = 12,
+                // Do not pin #d to an empty value: some interoperable clients/relays return
+                // the current addressable bundle more reliably by author + kind alone.
+                limit = 1000,
             ),
         ).mapNotNull { runCatching { QuartzEvent.fromJson(it.toJson()) }.getOrNull() }
         return when (val status = ConcordInviteBundle.classify(
@@ -217,16 +342,17 @@ class ConcordRepository(
             controlPk = invite.controlPk?.lowercase(),
             heldRoots = heldRoots,
             privateChannels = privateChannels,
-            relays = invite.relays.distinct().take(5),
+            relays = (invite.relays + parsed.fragment.relays).distinct().take(8),
             name = invite.name,
             addedAt = System.currentTimeMillis() / 1000,
             inviteRef = inviteUrl.substringBefore('#'),
         )
         val entries = currentDocument.entries.filterNot { it.id.equals(entry.id, ignoreCase = true) } + entry
-        publishUserCommunityList(signer, entries, currentDocument.residue)
+        publishUserCommunityList(signer, entries, currentDocument.residue, currentDocument.fragments, currentDocument.relays)
 
         val root = invite.communityRoot.hexToByteArray()
         val id = invite.communityId.hexToByteArray()
+        registerCommunityStreamKeys(signer, entry)
         val guestbook = ConcordKeyDerivation.guestbookPlaneKey(root, id, invite.rootEpoch)
         val quartzSigner = PostillaQuartzSigner(signer)
         val joinRumor = Guestbook.join(
@@ -242,60 +368,104 @@ class ConcordRepository(
         publishToCommunityRelays(entry.relays, joinWrap)
     }
 
-    private data class ConcordCommunityListDocument(
-        val entries: List<ConcordCommunityListEntry>,
-        val residue: com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue,
-    )
-
     private suspend fun loadUserCommunityList(signer: PostillaSigner): ConcordCommunityListDocument {
-        val relays = relayPool.getRelayUrls().distinct().take(20)
+        ensureStreamAuthAccount(signer)
+        // Reference clients keep the fragmented private list on Concord's stock relays;
+        // some accounts also publish it to their own NIP-65/outbox relays.
+        val relays = (InviteRelayDictionary.STOCK + relayPool.getRelayUrls())
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+            .distinct()
+            .take(28)
         if (relays.isEmpty()) {
             return ConcordCommunityListDocument(
                 emptyList(),
                 com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue.EMPTY,
+                ConcordListFragmentSet.EMPTY,
+                emptyList(),
             )
         }
-        val events = query(
+
+        val events = queryAcrossRelays(
             relays,
             Filter(
-                kinds = listOf(USER_COMMUNITY_LIST_KIND),
+                kinds = listOf(USER_COMMUNITY_LIST_FRAGMENT_KIND, LEGACY_USER_COMMUNITY_LIST_KIND),
                 authors = listOf(signer.pubkeyHex),
-                limit = 20,
+                limit = 1000,
             ),
         ).sortedByDescending { it.created_at }
-        val latest = events.firstOrNull()
-            ?: return ConcordCommunityListDocument(
-                emptyList(),
-                com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue.EMPTY,
-            )
-        val plaintext = signer.nip44Decrypt(latest.content, signer.pubkeyHex)
-        val decoded = ConcordCommunityList.decodeDocument(plaintext)
-        return ConcordCommunityListDocument(decoded.entries, decoded.residue)
+
+        val quartzEvents = events.mapNotNull { nostr ->
+            runCatching { QuartzEvent.fromJson(nostr.toJson()) }.getOrNull()
+        }
+        val fragments = quartzEvents
+            .filter { it.kind == USER_COMMUNITY_LIST_FRAGMENT_KIND }
+            .mapNotNull { event ->
+                runCatching {
+                    ConcordCommunityListFragmentEvent(
+                        id = event.id,
+                        pubKey = event.pubKey,
+                        createdAt = event.createdAt,
+                        tags = event.tags,
+                        content = event.content,
+                        sig = event.sig,
+                    )
+                }.getOrNull()
+            }
+        val fragmentSet = ConcordListFragmentSet.resolve(fragments, signer.pubkeyHex) { fragment ->
+            runCatching { signer.nip44Decrypt(fragment.content, signer.pubkeyHex) }.getOrNull()
+        }
+
+        val legacy = events.firstOrNull { it.kind == LEGACY_USER_COMMUNITY_LIST_KIND }
+        val legacyPlaintext = legacy?.let {
+            runCatching { signer.nip44Decrypt(it.content, signer.pubkeyHex) }.getOrNull()
+        }
+        // The old 13302 event is a rescue source only. New writes always use kind 33302 fragments.
+        val merged = ConcordCommunityList.readWithLegacy(fragmentSet, legacyPlaintext)
+        val decoded = ConcordCommunityList.decodeDocument(merged)
+        return ConcordCommunityListDocument(decoded.entries, decoded.residue, fragmentSet, relays)
     }
 
     private suspend fun publishUserCommunityList(
         signer: PostillaSigner,
         entries: List<ConcordCommunityListEntry>,
         residue: com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue,
+        fragments: ConcordListFragmentSet,
+        relays: List<String>,
     ) {
+        val newDocument = ConcordCommunityList.encodeInternal(entries, residue)
+        val writes = fragments.planWrites(newDocument, System.currentTimeMillis() / 1000)
+        if (writes.isEmpty()) return
+
         val quartzSigner = PostillaQuartzSigner(signer)
-        val event = ConcordCommunityList.build(
-            signer = quartzSigner,
-            entries = entries,
-            createdAt = System.currentTimeMillis() / 1000,
-            residue = residue,
-        )
-        val nostrEvent = NostrEvent.fromJson(event.toJson())
-        val message = ClientMessage.event(nostrEvent)
-        val sent = relayPool.sendToWriteRelays(message)
-        if (sent == 0) {
-            val urls = relayPool.getRelayUrls().distinct().take(20)
-            val fallbackSent = urls.count {
-                relayPool.sendToRelayOrEphemeral(
-                    it, message, skipBadCheck = true, write = true, autoReconnect = true,
-                )
+        val targets = (relays + InviteRelayDictionary.STOCK + relayPool.getRelayUrls())
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+            .distinct()
+            .take(28)
+        if (targets.isEmpty()) throw IllegalStateException("No relay is available to publish the joined-Community list.")
+
+        for (write in writes) {
+            val event = ConcordCommunityListFragmentEvent.create(
+                signer = quartzSigner,
+                index = write.index,
+                plaintext = write.plaintext,
+                createdAt = write.createdAt,
+            )
+            val nostrEvent = NostrEvent.fromJson(event.toJson())
+            val message = ClientMessage.event(nostrEvent)
+            val outcome = relayPool.publishWithConfirmation(nostrEvent.id) {
+                targets.count { url ->
+                    relayPool.sendToRelayOrEphemeral(
+                        url,
+                        message,
+                        skipBadCheck = true,
+                        write = true,
+                        autoReconnect = true,
+                    )
+                }
             }
-            if (fallbackSent == 0) throw IllegalStateException("No writable relay accepted the joined-Community list.")
+            if (!outcome.confirmed) {
+                throw IllegalStateException("No Concord relay confirmed the joined-Community list fragment ${write.index}.")
+            }
         }
     }
 
@@ -312,8 +482,9 @@ class ConcordRepository(
             controlPk = entry.controlPk,
             controlRoot = entry.controlRoot,
         )
-        val relays = entry.relays.distinct().take(5)
-        val wraps = query(
+        registerCommunityStreamKeys(signer, entry)
+        val relays = entry.relays.distinct().take(8)
+        val wraps = queryAcrossRelays(
             relays,
             Filter(kinds = listOf(CONTROL_WRAP_KIND), authors = listOf(keys.address), limit = 500),
         )
@@ -324,6 +495,18 @@ class ConcordRepository(
             }.getOrNull()
         }
         val state = ConcordCommunityState.fold(editions, communityId, entry.owner)
+        val channelStreamKeys = state.channels.values.mapNotNull { channel ->
+            val channelBytes = channel.channelIdHex.hexToByteArray()
+            val held = ConcordChannelKeyring.heldKey(entry, channel.channelIdHex)
+            if (channel.definition.private) {
+                held?.let {
+                    ConcordChannelKeys.privateChannel(it.key.hexToByteArray(), channelBytes, it.epoch)
+                }
+            } else {
+                ConcordChannelKeys.publicChannel(root, channelBytes, entry.rootEpoch)
+            }
+        }
+        registerCommunityStreamKeys(signer, entry, channelStreamKeys)
         val channels = state.channels.values
             .sortedBy { it.definition.name.lowercase() }
             .map { channel ->
@@ -544,9 +727,9 @@ class ConcordRepository(
                 snapshot.entry.rootEpoch,
             )
         }
-        val wraps = query(
+        val wraps = queryAcrossRelays(
             snapshot.entry.relays,
-            Filter(kinds = listOf(CONTROL_WRAP_KIND), authors = listOf(key.publicKeyHex), limit = 100),
+            Filter(kinds = listOf(CONTROL_WRAP_KIND), authors = listOf(key.publicKeyHex), limit = 1000),
         )
         return wraps.mapNotNull { nostr ->
             val opened = runCatching {
@@ -626,18 +809,43 @@ class ConcordRepository(
                 }
         }
         val request = ClientMessage.req(subscriptionId, filter)
+        // A NIP-42 challenge may close the first REQ before the stream-key AUTH is
+        // completed. Re-issue the same subscription once the derived AUTH is sent.
+        val authRetry = launch(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.authCompleted
+                .filter { it in targets }
+                .collect { url ->
+                    relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true)
+                }
+        }
         val sentTargets = targets.filter { url ->
             relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true)
         }
         if (sentTargets.isNotEmpty()) {
-            withTimeoutOrNull(12_000) {
-                subscriptions.awaitEoseCount(subscriptionId, sentTargets.size, timeoutMs = 12_000)
+            withTimeoutOrNull(18_000) {
+                subscriptions.awaitEoseCount(subscriptionId, sentTargets.size, timeoutMs = 18_000)
             }
         }
+        authRetry.cancelAndJoin()
         val close = ClientMessage.close(subscriptionId)
         targets.forEach { relayPool.sendToRelayOrEphemeral(it, close, skipBadCheck = true) }
         collector.cancelAndJoin()
         received.values.toList()
+    }
+
+    private suspend fun queryAcrossRelays(
+        relays: List<String>,
+        filter: Filter,
+    ): List<NostrEvent> = coroutineScope {
+        val batches = relays
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+            .distinct()
+            .chunked(5)
+        if (batches.isEmpty()) return@coroutineScope emptyList()
+        batches.map { batch -> async { query(batch, filter) } }
+            .awaitAll()
+            .flatten()
+            .distinctBy { it.id }
     }
 }
 
