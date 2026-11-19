@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: postilla-official-release-v1.0.39
@@ -378,3 +379,20 @@ jobs:
             echo "- The published event will start the Zapstore workflow."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Postilla v1.0.39 is published as a stable GitHub Release."
+
+      - name: Explicitly dispatch Zapstore publication and catalog verification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          # Do not rely solely on release.published: events created by some
+          # automation tokens may not start downstream workflows. GitHub
+          # explicitly permits workflow_dispatch with GITHUB_TOKEN.
+          gh workflow run zapstore-publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" \
+            -f "release_tag=$RELEASE_TAG"
+          echo "Zapstore workflow_dispatch requested for $RELEASE_TAG on $DEFAULT_BRANCH."
