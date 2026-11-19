@@ -234,15 +234,15 @@ class ConcordRepository(
         val parsed = ConcordInviteLink.parseUrl(OFFICIAL_POSTILLA_INVITE)
             ?: throw IllegalStateException("The official Postilla Concord invite is malformed.")
         val bundle = resolveInvite(OFFICIAL_POSTILLA_INVITE, signer)
-        val existing = loadUserCommunityList(signer).entries.firstOrNull {
+        val current = loadUserCommunityList(signer)
+        val existing = current.entries.firstOrNull {
             it.id.equals(bundle.communityId, ignoreCase = true)
         }
-        if (existing == null || existing.rootEpoch < bundle.rootEpoch) {
-            joinResolvedInvite(OFFICIAL_POSTILLA_INVITE, parsed, bundle, signer)
+        val entry = if (existing == null || existing.rootEpoch < bundle.rootEpoch) {
+            joinResolvedInvite(OFFICIAL_POSTILLA_INVITE, parsed, bundle, signer, current)
+        } else {
+            existing
         }
-        val entry = loadUserCommunityList(signer).entries.firstOrNull {
-            it.id.equals(bundle.communityId, ignoreCase = true)
-        } ?: throw IllegalStateException("Postilla invite was resolved, but the joined-community list was not updated.")
         return loadCommunity(entry, signer)
     }
 
@@ -275,13 +275,12 @@ class ConcordRepository(
         val invite = resolveInvite(inviteUrl.trim(), signer)
         val list = loadUserCommunityList(signer)
         val existing = list.entries.firstOrNull { it.id.equals(invite.communityId, ignoreCase = true) }
-        if (existing == null || existing.rootEpoch < invite.rootEpoch) {
+        val joined = if (existing == null || existing.rootEpoch < invite.rootEpoch) {
             joinResolvedInvite(inviteUrl.trim(), parsed, invite, signer, list)
+        } else {
+            existing
         }
-        val updated = loadUserCommunityList(signer).entries.firstOrNull {
-            it.id.equals(invite.communityId, ignoreCase = true)
-        } ?: throw IllegalStateException("The invitation was opened, but Postilla could not save the membership.")
-        return loadCommunity(updated, signer)
+        return loadCommunity(joined, signer)
     }
 
     private suspend fun resolveInvite(inviteUrl: String, signer: PostillaSigner): CommunityInvite {
@@ -325,7 +324,7 @@ class ConcordRepository(
         invite: CommunityInvite,
         signer: PostillaSigner,
         current: ConcordCommunityListDocument? = null,
-    ) {
+    ): ConcordCommunityListEntry {
         val currentDocument = current ?: loadUserCommunityList(signer)
         if (!ConcordInviteBundle.validate(invite)) {
             throw IllegalStateException("Concord rejected the invitation's self-certifying community identity.")
@@ -387,6 +386,7 @@ class ConcordRepository(
             encrypted = true,
         )
         publishToCommunityRelays(entry.relays, joinWrap)
+        return entry
     }
 
     private suspend fun loadUserCommunityList(signer: PostillaSigner): ConcordCommunityListDocument {
