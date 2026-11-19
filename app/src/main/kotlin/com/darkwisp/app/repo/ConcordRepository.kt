@@ -284,6 +284,7 @@ class ConcordRepository(
     }
 
     private suspend fun resolveInvite(inviteUrl: String, signer: PostillaSigner): CommunityInvite {
+        ensureStreamAuthAccount(signer)
         val parsed = ConcordInviteLink.parseUrl(inviteUrl)
             ?: throw IllegalArgumentException("Invalid Concord invitation URL.")
         val relays = (
@@ -825,7 +826,7 @@ class ConcordRepository(
 
     private suspend fun publishToCommunityRelays(relays: List<String>, event: QuartzEvent) {
         val message = ClientMessage.event(NostrEvent.fromJson(event.toJson()))
-        val targets = relays.distinct().take(5)
+        val targets = relays.distinct().take(8)
         var sent = 0
         for (url in targets) {
             if (relayPool.sendToRelayOrEphemeral(
@@ -888,7 +889,7 @@ class ConcordRepository(
     private suspend fun queryAcrossRelays(
         relays: List<String>,
         filter: Filter,
-    ): List<NostrEvent> = queryAcrossRelaysDetailed(relays, filter, timeoutMs = 18_000).events
+    ): List<NostrEvent> = queryAcrossRelaysDetailed(relays, filter, timeoutMs = 30_000).events
 
     private suspend fun queryAcrossRelaysDetailed(
         relays: List<String>,
