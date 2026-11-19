@@ -290,16 +290,38 @@ jobs:
           sed -i "s|@@APK_SHA256@@|$APK_SHA256|g" "$NOTES"
           test -s "$NOTES"
 
-      - name: Create GitHub Release as a draft and attach verified APK
+      - name: Create or safely reuse the GitHub Release draft
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          EXPECTED_APK_SHA256: ${{ steps.apk.outputs.sha256 }}
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" "Postilla-v1.0.39.apk#Postilla-v1.0.39.apk" \
-            --draft --title "Postilla v1.0.39" \
-            --target "$GITHUB_SHA" \
-            --notes-file "$RUNNER_TEMP/postilla-v1.0.39-release-notes.md"
+          # Draft releases without a Git tag have an untagged-* browser URL.
+          # The Releases collection still exposes their intended tag_name,
+          # so locate the exact draft by tag and verify its existing APK.
+          EXISTING_DRAFT_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '.[] | select(.tag_name == "v1.0.39" and .draft == true and .prerelease == false) | .id' | head -n 1)"
+
+          if [[ -n "$EXISTING_DRAFT_ID" ]]; then
+            RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_DRAFT_ID")"
+            ASSET_DATA="$(jq -c --arg name "Postilla-v1.0.39.apk" '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+            [[ -n "$ASSET_DATA" ]] || {
+              echo "::error::An existing v1.0.39 draft has no uploaded production APK."
+              exit 1
+            }
+            EXISTING_DIGEST="$(jq -r '.digest // empty' <<< "$ASSET_DATA")"
+            if [[ "$EXISTING_DIGEST" != "sha256:$EXPECTED_APK_SHA256" ]]; then
+              echo "::error::An existing v1.0.39 draft contains a different APK digest; refusing to replace it."
+              exit 1
+            fi
+            echo "Reusing exact verified v1.0.39 draft ID $EXISTING_DRAFT_ID with matching APK digest."
+          else
+            gh release create "$RELEASE_TAG" "Postilla-v1.0.39.apk#Postilla-v1.0.39.apk" \
+              --draft --title "Postilla v1.0.39" \
+              --target "$GITHUB_SHA" \
+              --notes-file "$RUNNER_TEMP/postilla-v1.0.39-release-notes.md"
+          fi
 
       - name: Verify draft asset, then publish stable GitHub Release
         shell: bash
@@ -308,8 +330,15 @@ jobs:
           EXPECTED_APK_SHA256: ${{ steps.apk.outputs.sha256 }}
         run: |
           set -euo pipefail
-          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
-          RELEASE_ID="$(jq -r '.id' <<< "$RELEASE_DATA")"
+          # A draft is intentionally looked up by tag_name in the Releases
+          # collection: GitHub can expose an untagged-* URL until publication.
+          RELEASE_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '.[] | select(.tag_name == "v1.0.39" and .draft == true and .prerelease == false) | .id' | head -n 1)"
+          [[ -n "$RELEASE_ID" ]] || {
+            echo "::error::Could not find the v1.0.39 draft release."
+            exit 1
+          }
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
           [[ "$(jq -r '.tag_name' <<< "$RELEASE_DATA")" == "$RELEASE_TAG" ]]
           [[ "$(jq -r '.draft' <<< "$RELEASE_DATA")" == "true" ]]
           [[ "$(jq -r '.prerelease' <<< "$RELEASE_DATA")" == "false" ]]
@@ -322,7 +351,7 @@ jobs:
           ASSET_SIZE="$(jq -r '.size' <<< "$ASSET_DATA")"
           ASSET_DIGEST="$(jq -r '.digest // empty' <<< "$ASSET_DATA")"
           (( ASSET_SIZE > 0 ))
-          if [[ -n "$ASSET_DIGEST" && "$ASSET_DIGEST" != "sha256:$EXPECTED_APK_SHA256" ]]; then
+          if [[ "$ASSET_DIGEST" != "sha256:$EXPECTED_APK_SHA256" ]]; then
             echo "::error::GitHub's uploaded APK digest does not match the verified production build."
             exit 1
           fi
@@ -331,10 +360,12 @@ jobs:
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             -F draft=false -F prerelease=false -f make_latest=true >/dev/null
 
-          FINAL_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          FINAL_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
           [[ "$(jq -r '.draft' <<< "$FINAL_DATA")" == "false" ]]
           [[ "$(jq -r '.prerelease' <<< "$FINAL_DATA")" == "false" ]]
           [[ "$(jq -r '.tag_name' <<< "$FINAL_DATA")" == "$RELEASE_TAG" ]]
+          RELEASE_URL="$(jq -r '.html_url' <<< "$FINAL_DATA")"
+          echo "Published stable GitHub Release: $RELEASE_URL"
 
           {
             echo "## GitHub Release published"
@@ -343,6 +374,7 @@ jobs:
             echo "- APK: Postilla-v1.0.39.apk"
             echo "- APK SHA-256: $EXPECTED_APK_SHA256"
             echo "- Signing certificate SHA-256: $EXPECTED_CERT_SHA256"
+            echo "- URL: $RELEASE_URL"
             echo "- The published event will start the Zapstore workflow."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Postilla v1.0.39 is published as a stable GitHub Release."
