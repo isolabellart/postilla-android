@@ -12,6 +12,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntr
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
 import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
 import com.vitorpamplona.quartz.concord.cord02Community.HeldRoot
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeyring
@@ -79,6 +80,7 @@ data class ConcordCreatedCommunity(
 class ConcordRepository(
     private val relayPool: RelayPool,
     private val subscriptions: SubscriptionManager,
+    private val blossomRepository: BlossomRepository,
 ) {
     companion object {
         const val OFFICIAL_POSTILLA_INVITE =
@@ -359,6 +361,10 @@ class ConcordRepository(
         description: String?,
         relays: List<String>,
         messageExpirationSecs: Long?,
+        iconBytes: ByteArray? = null,
+        iconMimeType: String = "image/jpeg",
+        bannerBytes: ByteArray? = null,
+        bannerMimeType: String = "image/jpeg",
     ): ConcordCommunitySummary {
         val snapshot = synchronized(snapshots) { snapshots[communityId] }
             ?: throw IllegalStateException("Community state is not loaded. Refresh and try again.")
@@ -375,10 +381,18 @@ class ConcordRepository(
             .maxByOrNull { it.version }
         val nextVersion = (previous?.version ?: 0L) + 1L
         val currentMetadata = snapshot.state.metadata ?: MetadataEntity(name = snapshot.entry.name)
+        val nextIcon: ImagePointer? = iconBytes?.let {
+            blossomRepository.uploadConcordImage(it, iconMimeType, signer)
+        } ?: currentMetadata.icon
+        val nextBanner: ImagePointer? = bannerBytes?.let {
+            blossomRepository.uploadConcordImage(it, bannerMimeType, signer)
+        } ?: currentMetadata.banner
         val nextMetadata = currentMetadata.copy(
             name = name.trim(),
             description = description?.trim()?.takeIf { it.isNotEmpty() },
             relays = relays.map { it.trim() }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct().take(5),
+            icon = nextIcon,
+            banner = nextBanner,
         ).withMessageExpiration(messageExpirationSecs)
 
         val content = ConcordJson.encodePreserving(
