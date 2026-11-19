@@ -319,7 +319,7 @@ class ConcordRepository(
         val editions = wraps.mapNotNull { nostr ->
             runCatching {
                 val opened = ConcordStreamEnvelope.openOrNull(QuartzEvent.fromJson(nostr.toJson()), keys)
-                opened?.let(ControlEdition::fromOpened)
+                opened?.let { ControlEdition.fromOpened(it) }
             }.getOrNull()
         }
         val state = ConcordCommunityState.fold(editions, communityId, entry.owner)
@@ -419,7 +419,26 @@ class ConcordRepository(
             encrypted = false,
         )
         publishToCommunityRelays(snapshot.entry.relays, wrap)
-        return loadCommunity(snapshot.entry.copy(name = name.trim(), relays = nextMetadata.relays), signer)
+        return loadCommunity(
+            ConcordCommunityListEntry(
+                id = snapshot.entry.id,
+                owner = snapshot.entry.owner,
+                ownerSalt = snapshot.entry.ownerSalt,
+                root = snapshot.entry.root,
+                rootEpoch = snapshot.entry.rootEpoch,
+                controlPk = snapshot.entry.controlPk,
+                controlRoot = snapshot.entry.controlRoot,
+                heldRoots = snapshot.entry.heldRoots,
+                privateChannels = snapshot.entry.privateChannels,
+                relays = nextMetadata.relays,
+                name = name.trim(),
+                addedAt = snapshot.entry.addedAt,
+                inviteRef = snapshot.entry.inviteRef,
+                excludedAtEpoch = snapshot.entry.excludedAtEpoch,
+                residue = snapshot.entry.residue,
+            ),
+            signer,
+        )
     }
 
     suspend fun createCommunity(
@@ -596,7 +615,7 @@ class ConcordRepository(
     private suspend fun query(relays: List<String>, filter: Filter): List<NostrEvent> = coroutineScope {
         val targets = relays.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct().take(5)
         if (targets.isEmpty()) return@coroutineScope emptyList()
-        val subscriptionId = "postilla-concord-\${UUID.randomUUID()}"
+        val subscriptionId = "postilla-concord-" + UUID.randomUUID()
         val received = LinkedHashMap<String, NostrEvent>()
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
             relayPool.relayEvents
