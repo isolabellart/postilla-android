@@ -79,6 +79,7 @@ import com.darkwisp.app.ui.screen.ThreadScreen
 import com.darkwisp.app.ui.screen.NotificationsScreen
 import com.darkwisp.app.ui.screen.SafetyScreen
 import com.darkwisp.app.ui.screen.UserProfileScreen
+import com.darkwisp.app.ui.screen.ConcordCommunitiesScreen
 import com.darkwisp.app.ui.screen.ConsoleScreen
 import com.darkwisp.app.ui.screen.RelayHealthScreen
 import com.darkwisp.app.ui.screen.CustomEmojiScreen
@@ -127,6 +128,7 @@ import com.darkwisp.app.viewmodel.UserProfileViewModel
 import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.viewmodel.NotificationFilter
 import com.darkwisp.app.viewmodel.NotificationsViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunitiesViewModel
 import com.darkwisp.app.viewmodel.ConsoleViewModel
 import com.darkwisp.app.viewmodel.RelayHealthViewModel
 import com.darkwisp.app.viewmodel.DraftsViewModel
@@ -147,6 +149,7 @@ object Routes {
     const val AUTH = "auth"
     const val FEED = "feed"
     const val MARKETPLACE = "marketplace"
+    const val COMMUNITIES = "communities"
     const val MARKETPLACE_SELLER = "marketplace/seller/{pubkey}"
     const val MARKETPLACE_DETAIL = "marketplace/detail/{eventId}"
     const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}?relays={relays}&eventId={eventId}&kind={kind}"
@@ -257,6 +260,7 @@ fun WispNavHost(
     val profileViewModel: ProfileViewModel = viewModel()
     val dmListViewModel: DmListViewModel = viewModel()
     val groupListViewModel: com.darkwisp.app.viewmodel.GroupListViewModel = viewModel()
+    val concordCommunitiesViewModel: ConcordCommunitiesViewModel = viewModel()
     val blossomServersViewModel: BlossomServersViewModel = viewModel()
     val appContext = LocalContext.current.applicationContext
     val walletViewModel: WalletViewModel = viewModel(
@@ -287,6 +291,14 @@ fun WispNavHost(
     val splashViewModel: SplashViewModel = viewModel()
 
     relayViewModel.relayPool = feedViewModel.relayPool
+
+    LaunchedEffect(Unit) {
+        concordCommunitiesViewModel.bind(
+            relayPool = feedViewModel.relayPool,
+            subscriptions = feedViewModel.subManager,
+            blossomRepository = feedViewModel.blossomRepo,
+        )
+    }
 
     // On process death during anon mode, the ephemeral keypair is gone.
     // Clear the stale anon session flag so the app starts normally.
@@ -1707,6 +1719,14 @@ fun WispNavHost(
             WalletScreen(
                 viewModel = walletViewModel,
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.COMMUNITIES) {
+            ConcordCommunitiesScreen(
+                viewModel = concordCommunitiesViewModel,
+                signer = activeSigner,
+                onBack = { navController.popBackStack() },
             )
         }
 
