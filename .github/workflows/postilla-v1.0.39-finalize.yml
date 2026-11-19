@@ -1,0 +1,243 @@
+name: Finalize Postilla v1.0.39 from verified production APK
+
+on:
+  push:
+    branches:
+      - "ops/postilla-v1.0.39-finalize-apk-20261119"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: postilla-v1.0.39-finalize-release
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Verify artifact, replace draft APK and publish GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: v1.0.39
+      RELEASE_ID_EXPECTED: "451789284"
+      VERIFIED_RUN_ID: "44593468121"
+      VERIFIED_ARTIFACT_ID: "14566505525"
+      VERIFIED_SOURCE_SHA: "51c528416c56f6335f98905208fccc95b4ab2baa"
+      EXPECTED_APK_SHA256: "d0e90f492d27d122fc305576a158389bc2ae07d51224f68ebc3f33be07c9a2fd"
+      OLD_DRAFT_APK_SHA256: "4e6ff902c70aaf36510f5d0ad7b781a97ea645a5c50d058358c72c87d6d118fd"
+      EXPECTED_CERT_SHA256: "86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841"
+
+    steps:
+      - name: Check out release workflow source
+        uses: actions/checkout@v4
+        with:
+          ref: release/postilla-v1.0.39
+          persist-credentials: false
+
+      - name: Verify the source run and uploaded production artifact
+        shell: bash
+        env:
+          GH_TOKEN: \${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN_DATA="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN_ID")"
+          [[ "$(jq -r '.head_sha' <<< "$RUN_DATA")" == "$VERIFIED_SOURCE_SHA" ]]
+          [[ "$(jq -r '.head_branch' <<< "$RUN_DATA")" == "release/postilla-v1.0.39" ]]
+          [[ "$(jq -r '.status' <<< "$RUN_DATA")" == "completed" ]]
+
+          ARTIFACT_DATA="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN_ID/artifacts")"
+          MATCHING_ARTIFACT="$(jq -c --argjson id "$VERIFIED_ARTIFACT_ID" \
+            '.artifacts[] | select(.id == $id and .name == "postilla-v1.0.39-production-apk" and .expired == false)' \
+            <<< "$ARTIFACT_DATA")"
+          [[ -n "$MATCHING_ARTIFACT" ]] || {
+            echo "::error::The exact verified production artifact is unavailable or expired."
+            exit 1
+          }
+          echo "Verified source run $VERIFIED_RUN_ID and artifact $VERIFIED_ARTIFACT_ID."
+
+      - name: Download the exact production APK from the verified run
+        uses: actions/download-artifact@v4
+        with:
+          name: postilla-v1.0.39-production-apk
+          path: release-apk
+          repository: \${{ github.repository }}
+          run-id: 44593468121
+          github-token: \${{ github.token }}
+
+      - name: Re-verify production APK hash, package, version and permanent certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release-apk/Postilla-v1.0.39.apk"
+          test -s "$APK"
+
+          ACTUAL_APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          [[ "$ACTUAL_APK_SHA256" == "$EXPECTED_APK_SHA256" ]] || {
+            echo "::error::Downloaded production APK hash does not match the successful verification run."
+            exit 1
+          }
+
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKANALYZER"
+          test -x "$APKSIGNER"
+
+          PACKAGE_ID="$("$APKANALYZER" manifest application-id "$APK")"
+          VERSION_NAME="$("$APKANALYZER" manifest version-name "$APK")"
+          VERSION_CODE="$("$APKANALYZER" manifest version-code "$APK")"
+          [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced" ]]
+          [[ "$VERSION_NAME" == "1.0.39" ]]
+          [[ "$VERSION_CODE" == "39" ]]
+
+          SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1)"
+          ACTUAL_CERT_SHA256="$(
+            printf '%s\n' "$SIGNATURE_OUTPUT" \
+              | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
+              | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ACTUAL_CERT_SHA256" == "$EXPECTED_CERT_SHA256" ]] || {
+            echo "::error::Downloaded production APK has the wrong permanent signing certificate."
+            exit 1
+          }
+
+          {
+            echo "## Production APK independently re-verified"
+            echo "- Package: $PACKAGE_ID"
+            echo "- Version: $VERSION_NAME ($VERSION_CODE)"
+            echo "- APK SHA-256: $ACTUAL_APK_SHA256"
+            echo "- Certificate SHA-256: $ACTUAL_CERT_SHA256"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the exact unpublished GitHub draft
+        id: draft
+        shell: bash
+        env:
+          GH_TOKEN: \${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID_EXPECTED")"
+          [[ "$(jq -r '.tag_name' <<< "$RELEASE_DATA")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.id' <<< "$RELEASE_DATA")" == "$RELEASE_ID_EXPECTED" ]]
+          [[ "$(jq -r '.draft' <<< "$RELEASE_DATA")" == "true" ]]
+          [[ "$(jq -r '.prerelease' <<< "$RELEASE_DATA")" == "false" ]]
+
+          OLD_ASSET="$(jq -c --arg name "Postilla-v1.0.39.apk" \
+            '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+          [[ -n "$OLD_ASSET" ]] || {
+            echo "::error::Expected APK asset is missing from the unpublished draft."
+            exit 1
+          }
+          OLD_ASSET_ID="$(jq -r '.id' <<< "$OLD_ASSET")"
+          OLD_ASSET_DIGEST="$(jq -r '.digest // empty' <<< "$OLD_ASSET")"
+          if [[ "$OLD_ASSET_DIGEST" != "sha256:$OLD_DRAFT_APK_SHA256" ]]; then
+            echo "::error::The draft no longer contains the exact previously recorded APK. Refusing unexpected replacement."
+            exit 1
+          fi
+          echo "old_asset_id=$OLD_ASSET_ID" >> "$GITHUB_OUTPUT"
+          echo "Draft $RELEASE_ID_EXPECTED and its original asset are identified."
+
+      - name: Upload the re-verified APK under a temporary asset name
+        id: upload
+        shell: bash
+        env:
+          GH_TOKEN: \${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          TEMP_NAME="Postilla-v1.0.39-verified-upload.apk"
+
+          # Reuse a matching temporary upload if a previous attempt stopped after upload.
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID_EXPECTED")"
+          TEMP_ASSET="$(jq -c --arg name "$TEMP_NAME" \
+            '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+
+          if [[ -n "$TEMP_ASSET" ]]; then
+            TEMP_DIGEST="$(jq -r '.digest // empty' <<< "$TEMP_ASSET")"
+            [[ "$TEMP_DIGEST" == "sha256:$EXPECTED_APK_SHA256" ]] || {
+              echo "::error::A temporary asset exists with an unexpected digest."
+              exit 1
+            }
+            TEMP_ASSET_ID="$(jq -r '.id' <<< "$TEMP_ASSET")"
+          else
+            UPLOAD_JSON="$(
+              curl --fail-with-body --silent --show-error \
+                -X POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@release-apk/Postilla-v1.0.39.apk" \
+                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID_EXPECTED/assets?name=$TEMP_NAME"
+            )"
+            TEMP_ASSET_ID="$(jq -r '.id' <<< "$UPLOAD_JSON")"
+            TEMP_DIGEST="$(jq -r '.digest // empty' <<< "$UPLOAD_JSON")"
+            [[ "$TEMP_ASSET_ID" =~ ^[0-9]+$ ]]
+            [[ "$TEMP_DIGEST" == "sha256:$EXPECTED_APK_SHA256" ]] || {
+              echo "::error::GitHub's temporary upload digest does not match the verified production APK."
+              exit 1
+            }
+          fi
+
+          echo "temporary_asset_id=$TEMP_ASSET_ID" >> "$GITHUB_OUTPUT"
+          echo "New production APK uploaded and digest verified before removing the previous draft asset."
+
+      - name: Replace the old draft asset and publish the stable release
+        shell: bash
+        env:
+          GH_TOKEN: \${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          OLD_ASSET_ID: \${{ steps.draft.outputs.old_asset_id }}
+          TEMP_ASSET_ID: \${{ steps.upload.outputs.temporary_asset_id }}
+        run: |
+          set -euo pipefail
+          # Remove only the old asset from this still-unpublished draft.
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$OLD_ASSET_ID" >/dev/null
+
+          # Rename the already uploaded and verified temporary asset to the exact Zapstore filename.
+          RENAMED="$(gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/assets/$TEMP_ASSET_ID" \
+            -f name="Postilla-v1.0.39.apk" \
+            -f label="Postilla-v1.0.39.apk")"
+          [[ "$(jq -r '.name' <<< "$RENAMED")" == "Postilla-v1.0.39.apk" ]]
+          [[ "$(jq -r '.digest' <<< "$RENAMED")" == "sha256:$EXPECTED_APK_SHA256" ]]
+
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID_EXPECTED")"
+          FINAL_ASSET="$(jq -c --arg name "Postilla-v1.0.39.apk" \
+            '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+          [[ -n "$FINAL_ASSET" ]]
+          [[ "$(jq -r '.digest' <<< "$FINAL_ASSET")" == "sha256:$EXPECTED_APK_SHA256" ]]
+          [[ "$(jq -r '.size' <<< "$FINAL_ASSET")" -gt 0 ]]
+
+          BODY="$(jq -r '.body' <<< "$RELEASE_DATA")"
+          BODY="\${BODY//$OLD_DRAFT_APK_SHA256/$EXPECTED_APK_SHA256}"
+
+          # Publish with the repository PAT, not GITHUB_TOKEN, so the stable
+          # release.published event starts the separate Zapstore workflow.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID_EXPECTED" \
+            -F target_commitish="$VERIFIED_SOURCE_SHA" \
+            -F draft=false \
+            -F prerelease=false \
+            -f make_latest=true \
+            -f body="$BODY" >/dev/null
+
+          FINAL_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID_EXPECTED")"
+          [[ "$(jq -r '.tag_name' <<< "$FINAL_DATA")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.draft' <<< "$FINAL_DATA")" == "false" ]]
+          [[ "$(jq -r '.prerelease' <<< "$FINAL_DATA")" == "false" ]]
+          [[ "$(jq -r '.target_commitish' <<< "$FINAL_DATA")" == "$VERIFIED_SOURCE_SHA" ]]
+
+          FINAL_ASSET="$(jq -c --arg name "Postilla-v1.0.39.apk" \
+            '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$FINAL_DATA")"
+          [[ -n "$FINAL_ASSET" ]]
+          [[ "$(jq -r '.digest' <<< "$FINAL_ASSET")" == "sha256:$EXPECTED_APK_SHA256" ]]
+
+          RELEASE_URL="$(jq -r '.html_url' <<< "$FINAL_DATA")"
+          {
+            echo "## Postilla v1.0.39 published on GitHub"
+            echo "- Release: $RELEASE_URL"
+            echo "- Source: $VERIFIED_SOURCE_SHA"
+            echo "- APK: Postilla-v1.0.39.apk"
+            echo "- APK SHA-256: $EXPECTED_APK_SHA256"
+            echo "- Permanent certificate SHA-256: $EXPECTED_CERT_SHA256"
+            echo "- The stable release event has been emitted for Zapstore."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Postilla v1.0.39 published successfully: $RELEASE_URL"
