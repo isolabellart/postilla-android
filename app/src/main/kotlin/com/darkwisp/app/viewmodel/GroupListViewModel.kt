@@ -43,6 +43,7 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     private var myPubkey: String? = null
     @Volatile private var defaultCommunitySigner: NostrSigner? = null
     private val defaultCommunityJoinRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var defaultCommunityListPublishedPubkey: String? = null
 
     /** Groups that currently have an open relay connection and active subscriptions. */
@@ -96,6 +97,7 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         myPubkey = null
         defaultCommunitySigner = null
         defaultCommunityJoinRequests.clear()
+        defaultCommunityInviteWarnings.clear()
         defaultCommunityListPublishedPubkey = null
     }
     val unreadGroups: StateFlow<Set<String>>
@@ -163,9 +165,16 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         val requestKey = "$account|$relayUrl|${metadata.groupId}"
 
         if (metadata.isClosed) {
-            if (defaultCommunityJoinRequests.add(requestKey)) {
-                _joinErrors.tryEmit(JoinError(relayUrl, metadata.groupId,
-                    "Il gruppo è chiuso e il link configurato non contiene un codice d'invito (?code=)."))
+            if (defaultCommunityInviteWarnings.add(requestKey)) {
+                accountScope.launch(Dispatchers.Default) {
+                    kotlinx.coroutines.delay(1_000)
+                    if (myPubkey != account || groupRepo !== repo || relayPool !== pool) return@launch
+                    val members = repo.getRoom(relayUrl, metadata.groupId)?.members ?: emptyList()
+                    if (account !in members) {
+                        _joinErrors.tryEmit(JoinError(relayUrl, metadata.groupId,
+                            "Il gruppo è chiuso e il link configurato non contiene un codice d'invito (?code=)."))
+                    }
+                }
             }
             return
         }
@@ -376,7 +385,8 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                         if (relayUrl.lowercase().trimEnd('/') == Nip29.DEFAULT_COMMUNITY_RELAY &&
                             metadata.groupId == Nip29.DEFAULT_COMMUNITY_GROUP_ID) {
                             maybeAutoJoinDefaultCommunity(metadata)
-                        }                    }
+                        }
+                    }
                     Nip29.KIND_GROUP_ADMINS -> {
                         Log.d("GroupListVM", "[raw 39001 admins] relay=$relayUrl ${event.toJson()}")
                         val groupId = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
@@ -493,8 +503,8 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         collectResultJob.cancel()
 
         when {
-            // No OK came back in 10s — some relays silently accept. Be optimistic and admit,
-            // then let subsequent REQs surface reality (no messages = they never got in).
+            // Preserve the previous optimistic behavior for manual joins only. The automatic
+            // default-community flow passes commitOnTimeout=false and requires an explicit OK.
             result == null -> {
                 collectAuthJob.cancel()
                 if (commitOnTimeout) {
