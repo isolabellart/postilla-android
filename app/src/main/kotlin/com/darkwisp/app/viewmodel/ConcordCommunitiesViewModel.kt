@@ -53,7 +53,7 @@ class ConcordCommunitiesViewModel : ViewModel() {
             try {
                 // First visit to Communities automatically redeems the official Postilla invite.
                 runCatching { repo.ensureOfficialPostillaCommunity(signer) }
-                    .onFailure { _state.value = _state.value.copy(info = "Community Postilla: \${it.message ?: "accesso non completato"}") }
+                    .onFailure { _state.value = _state.value.copy(info = "Community Postilla: " + (it.message ?: "accesso non completato")) }
                 val joined = repo.loadJoinedCommunities(signer)
                 _state.value = _state.value.copy(
                     loading = false,
@@ -83,7 +83,7 @@ class ConcordCommunitiesViewModel : ViewModel() {
                 _state.value = _state.value.copy(
                     working = false,
                     communities = updated,
-                    info = "Sei entrato in \${joined.name}.",
+                    info = "Sei entrato in " + joined.name + ".",
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
