@@ -7,6 +7,10 @@ import com.darkwisp.app.nostr.EncryptedMedia
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
