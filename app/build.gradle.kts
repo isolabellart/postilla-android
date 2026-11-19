@@ -26,8 +26,8 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "1.0.33"
+        versionCode = 38
+        versionName = "1.0.38"
         resValue("string", "app_name", "Postilla")
 
         ndk {
@@ -144,7 +144,14 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.objectbox.android)
     implementation(libs.objectbox.kotlin)
-    implementation(libs.breez.sdk.spark)
+    // Spark uses the mnemonic flow; Postilla does not use Breez passkey authentication.
+    // Exclude the optional Credential Manager bridge that pulls Google Play Services FIDO.
+    implementation(libs.breez.sdk.spark) {
+        exclude(
+            group = "androidx.credentials",
+            module = "credentials-play-services-auth"
+        )
+    }
     implementation(libs.kmp.tor.runtime)
     implementation(libs.kmp.tor.runtime.service.ui)
     implementation(libs.kmp.tor.resource.exec)

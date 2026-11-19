@@ -982,39 +982,48 @@ private fun WalletConnectionContent(
 
     Spacer(Modifier.height(24.dp))
 
-    // Paste / Scan card — top half displays the pasted string (or
-    // stays empty while the user hasn't pasted anything); bottom row
-    // splits a Paste button and a Scan QR button with a vertical
-    // divider. Matches iOS 1:1 — no separate text field, no trailing
-    // icon, no Recommended-wallets stack.
+    // Editable NWC URI field: a saved connection can be replaced without
+    // disconnecting/reinstalling the wallet or relying on the clipboard alone.
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column {
-            Box(
+            OutlinedTextField(
+                value = connectionString,
+                onValueChange = { value ->
+                    if (!NsecPasteGuard.blockIfNsec(connectionString, value)) {
+                        onConnectionStringChange(value)
+                    }
+                },
+                enabled = !isConnecting,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
-                    .padding(14.dp)
-            ) {
-                if (connectionString.isBlank()) {
+                    .padding(12.dp)
+                    .heightIn(min = 124.dp, max = 180.dp),
+                textStyle = MaterialTheme.typography.bodySmall,
+                placeholder = {
                     Text(
                         "nostr+walletconnect://…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                     )
-                } else {
-                    Text(
-                        connectionString,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+                },
+                trailingIcon = {
+                    if (connectionString.isNotBlank()) {
+                        IconButton(
+                            onClick = { onConnectionStringChange("") },
+                            enabled = !isConnecting,
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.btn_cancel))
+                        }
+                    }
+                },
+                minLines = 3,
+                maxLines = 5,
+                singleLine = false,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
             Row(
                 modifier = Modifier
