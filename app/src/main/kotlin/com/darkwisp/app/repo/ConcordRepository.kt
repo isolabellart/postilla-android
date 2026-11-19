@@ -185,8 +185,9 @@ class ConcordRepository(
         parsed: com.vitorpamplona.quartz.concord.cord05Invites.ParsedInviteLink,
         invite: CommunityInvite,
         signer: PostillaSigner,
-        current: ConcordCommunityListDocument = loadUserCommunityList(signer),
+        current: ConcordCommunityListDocument? = null,
     ) {
+        val currentDocument = current ?: loadUserCommunityList(signer)
         if (!ConcordInviteBundle.validate(invite)) {
             throw IllegalStateException("Concord rejected the invitation's self-certifying community identity.")
         }
@@ -221,8 +222,8 @@ class ConcordRepository(
             addedAt = System.currentTimeMillis() / 1000,
             inviteRef = inviteUrl.substringBefore('#'),
         )
-        val entries = current.entries.filterNot { it.id.equals(entry.id, ignoreCase = true) } + entry
-        publishUserCommunityList(signer, entries, current.residue)
+        val entries = currentDocument.entries.filterNot { it.id.equals(entry.id, ignoreCase = true) } + entry
+        publishUserCommunityList(signer, entries, currentDocument.residue)
 
         val root = invite.communityRoot.hexToByteArray()
         val id = invite.communityId.hexToByteArray()
