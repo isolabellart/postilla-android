@@ -83,7 +83,38 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         prefs?.getStringSet(PREF_APPROVED_AUTH_RELAYS, emptySet())?.let { set.addAll(it) }
     }
 
-    data class PendingAuthRequest(val relayUrl: String, val challenge: String)
+    data class PendingAuthRequest(
+        val relayUrl: String,
+        val challenge: String,
+        /** Whether the account's own Nostr identity may be sent in this AUTH response. */
+        val allowAccountAuth: Boolean = true,
+        /** Whether locally-derived Concord stream-key AUTH events should also be sent. */
+        val includeConcordStreamAuth: Boolean = false,
+    )
+
+    /** Relay-scoped Concord stream signer; it signs with derived stream keys, never the account key. */
+    private var concordStreamAuthSigner: (suspend (relayUrl: String, challenge: String) -> List<NostrEvent>)? = null
+    private val concordAuthTargets: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    fun setConcordStreamAuthSigner(
+        signer: (suspend (relayUrl: String, challenge: String) -> List<NostrEvent>)?,
+    ) {
+        synchronized(authLock) {
+            concordStreamAuthSigner = signer
+            if (signer == null) concordAuthTargets.clear()
+        }
+    }
+
+    /** Mark relays that host a joined Concord stream; only derived stream identities are auto-authenticated. */
+    fun registerConcordAuthTargets(urls: Collection<String>) {
+        urls.asSequence()
+            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+            .forEach { concordAuthTargets.add(it) }
+    }
+
+    fun clearConcordAuthTargets() {
+        concordAuthTargets.clear()
+    }
 
     private val _pendingAuthRequest = MutableStateFlow<PendingAuthRequest?>(null)
     /** Emitted when a tier-2 relay (DM delivery or joined chat relay) needs user approval to authenticate. */
@@ -91,13 +122,14 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
 
     /** Approve a pending AUTH request — signs and sends AUTH, persists approval. */
     fun approveAuth(request: PendingAuthRequest) {
-        synchronized(authLock) {
+        val approvedRequest = synchronized(authLock) {
             if (_pendingAuthRequest.value !== request || authSessions[request.relayUrl] !== request) return
             userApprovedAuthRelays.add(request.relayUrl)
             prefs?.edit()?.putStringSet(PREF_APPROVED_AUTH_RELAYS, userApprovedAuthRelays.toSet())?.apply()
             _pendingAuthRequest.value = null
+            request.copy(allowAccountAuth = true).also { authSessions[request.relayUrl] = it }
         }
-        scope.launch { sendAuth(request) }
+        scope.launch { sendAuth(approvedRequest) }
     }
 
     /** Deny a pending AUTH request. */
@@ -202,6 +234,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
             clearAuthSessions()
             dmDeliveryTargets.clear()
             groupRelayAuthTargets.clear()
+            concordAuthTargets.clear()
             userApprovedAuthRelays.clear()
             pinnedRelayUrls = emptySet()
         }
@@ -224,20 +257,39 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
     }
 
     private suspend fun sendAuth(request: PendingAuthRequest) {
-        val (signer, relay) = synchronized(authLock) {
+        val (accountSigner, streamSigner, relay) = synchronized(authLock) {
             if (authSessions[request.relayUrl] !== request) return
-            (authSigner ?: return) to (relayIndex[request.relayUrl] ?: return)
+            Triple(authSigner, concordStreamAuthSigner, relayIndex[request.relayUrl] ?: return)
         }
         try {
-            val event = signer(request.relayUrl, request.challenge)
-            synchronized(authLock) {
-                // A suspended external signer may return after account switch or disconnect.
-                if (authSigner !== signer || authSessions[request.relayUrl] !== request ||
-                    relayIndex[request.relayUrl] !== relay || !relay.isConnected) return
-                if (relay.send(ClientMessage.auth(event))) {
-                    authenticatedRelays.add(request.relayUrl)
-                    _authCompleted.tryEmit(request.relayUrl)
+            val events = mutableListOf<NostrEvent>()
+            if (request.allowAccountAuth) {
+                val signer = accountSigner ?: return
+                events += signer(request.relayUrl, request.challenge)
+            }
+            if (request.includeConcordStreamAuth) {
+                val signer = streamSigner
+                if (signer != null) {
+                    events += signer(request.relayUrl, request.challenge)
                 }
+            }
+            if (events.isEmpty()) return
+
+            var sentAny = false
+            for (event in events) {
+                val stillCurrent = synchronized(authLock) {
+                    authSessions[request.relayUrl] === request &&
+                        relayIndex[request.relayUrl] === relay &&
+                        relay.isConnected &&
+                        (!request.allowAccountAuth || authSigner === accountSigner) &&
+                        (!request.includeConcordStreamAuth || concordStreamAuthSigner === streamSigner)
+                }
+                if (!stillCurrent) return
+                if (relay.send(ClientMessage.auth(event))) sentAny = true
+            }
+            if (sentAny) {
+                authenticatedRelays.add(request.relayUrl)
+                _authCompleted.tryEmit(request.relayUrl)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -609,21 +661,35 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
             relay.authChallenges.collect { challenge ->
                 val url = relay.config.url
                 val request = synchronized(authLock) {
-                    if (authSigner == null || relayIndex[url] !== relay || !relay.isConnected) return@collect
+                    if (relayIndex[url] !== relay || !relay.isConnected) return@collect
                     clearRelayAuthSession(url)
+
                     val trusted = url in pinnedRelayUrls || dmRelays.any { it.config.url == url }
                     val needsApproval = url in dmDeliveryTargets || url in groupRelayAuthTargets
-                    if (trusted && !relay.config.auth) return@collect
-                    if (!trusted && !needsApproval) return@collect
-                    val request = PendingAuthRequest(url, challenge)
+                    val userApproved = url in userApprovedAuthRelays
+                    val hasAccountSigner = authSigner != null
+                    val allowAccountAuth = hasAccountSigner && (
+                        (trusted && relay.config.auth) || (!trusted && needsApproval && userApproved)
+                    )
+                    val askForAccountAuth = hasAccountSigner && !trusted && needsApproval && !userApproved
+                    val allowStreamAuth = url in concordAuthTargets && concordStreamAuthSigner != null
+
+                    // A Concord relay can require authentication as a derived stream key. That
+                    // identity is independent from the user's Nostr identity and never triggers
+                    // implicit account AUTH on an otherwise untrusted relay.
+                    if (!allowAccountAuth && !askForAccountAuth && !allowStreamAuth) return@collect
+
+                    val request = PendingAuthRequest(
+                        relayUrl = url,
+                        challenge = challenge,
+                        allowAccountAuth = allowAccountAuth,
+                        includeConcordStreamAuth = allowStreamAuth,
+                    )
                     authSessions[url] = request
-                    if (!trusted && url !in userApprovedAuthRelays) {
-                        _pendingAuthRequest.value = request
-                        return@collect
-                    }
+                    if (askForAccountAuth) _pendingAuthRequest.value = request
                     request
                 }
-                sendAuth(request)
+                scope.launch { sendAuth(request) }
             }
         }
     }
