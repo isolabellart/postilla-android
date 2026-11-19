@@ -95,6 +95,9 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
     /** Relay-scoped Concord stream signer; it signs with derived stream keys, never the account key. */
     private var concordStreamAuthSigner: (suspend (relayUrl: String, challenge: String) -> List<NostrEvent>)? = null
     private val concordAuthTargets: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    // The last challenge is useful when a relay challenged on socket-connect before
+    // the app had discovered that this account belongs to a Concord community there.
+    private val lastAuthChallenges = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     fun setConcordStreamAuthSigner(
         signer: (suspend (relayUrl: String, challenge: String) -> List<NostrEvent>)?,
@@ -107,9 +110,36 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
 
     /** Mark relays that host a joined Concord stream; only derived stream identities are auto-authenticated. */
     fun registerConcordAuthTargets(urls: Collection<String>) {
-        urls.asSequence()
-            .filter { it.startsWith("wss://") || it.startsWith("ws://") }
-            .forEach { concordAuthTargets.add(it) }
+        val validUrls = urls.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
+        validUrls.forEach { concordAuthTargets.add(it) }
+
+        // If the socket already challenged before the community list was loaded,
+        // answer that still-current challenge now rather than waiting for reconnect.
+        for (url in validUrls) {
+            val challenge = lastAuthChallenges[url] ?: continue
+            val request = synchronized(authLock) {
+                val relay = relayIndex[url]?.takeIf { it.isConnected } ?: return@synchronized null
+                val current = authSessions[url]
+                if (current?.challenge == challenge && current.includeConcordStreamAuth) {
+                    null
+                } else {
+                    val next = if (current?.challenge == challenge) {
+                        current.copy(includeConcordStreamAuth = true)
+                    } else {
+                        if (_pendingAuthRequest.value?.relayUrl == url) _pendingAuthRequest.value = null
+                        PendingAuthRequest(
+                            relayUrl = url,
+                            challenge = challenge,
+                            allowAccountAuth = false,
+                            includeConcordStreamAuth = true,
+                        )
+                    }
+                    authSessions[url] = next
+                    next
+                }
+            }
+            if (request != null) scope.launch { sendAuth(request) }
+        }
     }
 
     fun clearConcordAuthTargets() {
@@ -660,6 +690,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         scope.launch(parentJob) {
             relay.authChallenges.collect { challenge ->
                 val url = relay.config.url
+                lastAuthChallenges[url] = challenge
                 val request = synchronized(authLock) {
                     if (relayIndex[url] !== relay || !relay.isConnected) return@collect
                     clearRelayAuthSession(url)
