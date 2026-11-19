@@ -992,7 +992,11 @@ private fun WalletConnectionContent(
         Column {
             OutlinedTextField(
                 value = connectionString,
-                onValueChange = onConnectionStringChange,
+                onValueChange = { value ->
+                    if (!NsecPasteGuard.blockIfNsec(connectionString, value)) {
+                        onConnectionStringChange(value)
+                    }
+                },
                 enabled = !isConnecting,
                 modifier = Modifier
                     .fillMaxWidth()
