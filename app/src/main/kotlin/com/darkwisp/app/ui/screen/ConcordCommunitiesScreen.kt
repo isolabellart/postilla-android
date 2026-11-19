@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
@@ -573,7 +572,7 @@ private fun EditConcordDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Modifica \${community.name}") },
+        title = { Text("Modifica " + community.name) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
