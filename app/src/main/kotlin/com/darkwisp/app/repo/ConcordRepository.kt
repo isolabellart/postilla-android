@@ -110,6 +110,19 @@ class ConcordRepository(
         val residue: com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue,
         val fragments: ConcordListFragmentSet,
         val relays: List<String>,
+        /** True only when every relay to which the list query was sent returned EOSE. */
+        val relaysConfirmed: Boolean,
+    )
+
+    private data class RelayQueryBatchResult(
+        val events: List<NostrEvent>,
+        val sentCount: Int,
+        val eoseCount: Int,
+    )
+
+    private data class QueryAcrossRelaysResult(
+        val events: List<NostrEvent>,
+        val complete: Boolean,
     )
 
     private val snapshots = HashMap<String, CommunitySnapshot>()
@@ -348,7 +361,14 @@ class ConcordRepository(
             inviteRef = inviteUrl.substringBefore('#'),
         )
         val entries = currentDocument.entries.filterNot { it.id.equals(entry.id, ignoreCase = true) } + entry
-        publishUserCommunityList(signer, entries, currentDocument.residue, currentDocument.fragments, currentDocument.relays)
+        publishUserCommunityList(
+            signer,
+            entries,
+            currentDocument.residue,
+            currentDocument.fragments,
+            currentDocument.relays,
+            currentDocument.relaysConfirmed,
+        )
 
         val root = invite.communityRoot.hexToByteArray()
         val id = invite.communityId.hexToByteArray()
@@ -382,17 +402,25 @@ class ConcordRepository(
                 com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue.EMPTY,
                 ConcordListFragmentSet.EMPTY,
                 emptyList(),
+                false,
             )
         }
 
-        val events = queryAcrossRelays(
+        val queryResult = queryAcrossRelaysDetailed(
             relays,
             Filter(
                 kinds = listOf(USER_COMMUNITY_LIST_FRAGMENT_KIND, LEGACY_USER_COMMUNITY_LIST_KIND),
                 authors = listOf(signer.pubkeyHex),
                 limit = 1000,
             ),
-        ).sortedByDescending { it.created_at }
+            timeoutMs = 30_000,
+        )
+        val events = queryResult.events.sortedByDescending { it.created_at }
+        if (events.isEmpty() && !queryResult.complete) {
+            throw IllegalStateException(
+                "Postilla could not confirm the Community-list relays. Check the connection and retry; no empty list was assumed."
+            )
+        }
 
         val quartzEvents = events.mapNotNull { nostr ->
             runCatching { QuartzEvent.fromJson(nostr.toJson()) }.getOrNull()
@@ -422,7 +450,7 @@ class ConcordRepository(
         // The old 13302 event is a rescue source only. New writes always use kind 33302 fragments.
         val merged = ConcordCommunityList.readWithLegacy(fragmentSet, legacyPlaintext)
         val decoded = ConcordCommunityList.decodeDocument(merged)
-        return ConcordCommunityListDocument(decoded.entries, decoded.residue, fragmentSet, relays)
+        return ConcordCommunityListDocument(decoded.entries, decoded.residue, fragmentSet, relays, queryResult.complete)
     }
 
     private suspend fun publishUserCommunityList(
@@ -431,7 +459,13 @@ class ConcordRepository(
         residue: com.vitorpamplona.quartz.concord.cord02Community.ConcordListResidue,
         fragments: ConcordListFragmentSet,
         relays: List<String>,
+        relaysConfirmed: Boolean,
     ) {
+        if (!relaysConfirmed) {
+            throw IllegalStateException(
+                "Postilla could not confirm every relay used to read the Community list. The write was stopped to avoid overwriting memberships stored elsewhere."
+            )
+        }
         val newDocument = ConcordCommunityList.encodeInternal(entries, residue)
         val writes = fragments.planWrites(newDocument, System.currentTimeMillis() / 1000)
         if (writes.isEmpty()) return
@@ -699,6 +733,7 @@ class ConcordRepository(
             residue = current.residue,
             fragments = current.fragments,
             relays = current.relays,
+            relaysConfirmed = current.relaysConfirmed,
         )
 
         registerCommunityStreamKeys(signer, entry)
@@ -803,9 +838,18 @@ class ConcordRepository(
         if (sent == 0) throw IllegalStateException("No Community relay accepted the event for publishing.")
     }
 
-    private suspend fun query(relays: List<String>, filter: Filter): List<NostrEvent> = coroutineScope {
+    private suspend fun query(
+        relays: List<String>,
+        filter: Filter,
+    ): List<NostrEvent> = queryBatch(relays, filter, timeoutMs = 18_000).events
+
+    private suspend fun queryBatch(
+        relays: List<String>,
+        filter: Filter,
+        timeoutMs: Long,
+    ): RelayQueryBatchResult = coroutineScope {
         val targets = relays.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct().take(5)
-        if (targets.isEmpty()) return@coroutineScope emptyList()
+        if (targets.isEmpty()) return@coroutineScope RelayQueryBatchResult(emptyList(), 0, 0)
         val subscriptionId = "postilla-concord-" + UUID.randomUUID()
         val received = LinkedHashMap<String, NostrEvent>()
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -828,31 +872,39 @@ class ConcordRepository(
         val sentTargets = targets.filter { url ->
             relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true)
         }
-        if (sentTargets.isNotEmpty()) {
-            withTimeoutOrNull(18_000) {
-                subscriptions.awaitEoseCount(subscriptionId, sentTargets.size, timeoutMs = 18_000)
-            }
+        val eoseCount = if (sentTargets.isNotEmpty()) {
+            withTimeoutOrNull(timeoutMs) {
+                subscriptions.awaitEoseCount(subscriptionId, sentTargets.size, timeoutMs = timeoutMs)
+            } ?: 0
+        } else {
+            0
         }
         authRetry.cancelAndJoin()
         val close = ClientMessage.close(subscriptionId)
         targets.forEach { relayPool.sendToRelayOrEphemeral(it, close, skipBadCheck = true) }
         collector.cancelAndJoin()
-        received.values.toList()
+        RelayQueryBatchResult(received.values.toList(), sentTargets.size, eoseCount)
     }
 
     private suspend fun queryAcrossRelays(
         relays: List<String>,
         filter: Filter,
-    ): List<NostrEvent> = coroutineScope {
+    ): List<NostrEvent> = queryAcrossRelaysDetailed(relays, filter, timeoutMs = 18_000).events
+
+    private suspend fun queryAcrossRelaysDetailed(
+        relays: List<String>,
+        filter: Filter,
+        timeoutMs: Long,
+    ): QueryAcrossRelaysResult = coroutineScope {
         val batches = relays
             .filter { it.startsWith("wss://") || it.startsWith("ws://") }
             .distinct()
             .chunked(5)
-        if (batches.isEmpty()) return@coroutineScope emptyList()
-        batches.map { batch -> async { query(batch, filter) } }
-            .awaitAll()
-            .flatten()
-            .distinctBy { it.id }
+        if (batches.isEmpty()) return@coroutineScope QueryAcrossRelaysResult(emptyList(), false)
+        val results = batches.map { batch -> async { queryBatch(batch, filter, timeoutMs) } }.awaitAll()
+        val events = results.flatMap { it.events }.distinctBy { it.id }
+        val complete = results.isNotEmpty() && results.all { it.sentCount > 0 && it.eoseCount >= it.sentCount }
+        QueryAcrossRelaysResult(events, complete)
     }
 }
 
