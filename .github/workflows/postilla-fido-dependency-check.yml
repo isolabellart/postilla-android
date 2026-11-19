@@ -56,10 +56,18 @@ jobs:
         run: |
           ./gradlew --no-daemon --no-build-cache --max-workers=2 \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-            :app:testDebugUnitTest --stacktrace
+            :app:testStagingUnitTest --stacktrace
 
       - name: Build staging APK
         run: |
           ./gradlew --no-daemon --no-build-cache --max-workers=2 \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
             :app:assembleStaging --stacktrace
+
+      - name: Upload staging APK for device testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: postilla-communities-concord-1.0.35-staging
+          path: app/build/outputs/apk/staging/*.apk
+          if-no-files-found: error
+          retention-days: 30
