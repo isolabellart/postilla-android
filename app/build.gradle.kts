@@ -156,7 +156,14 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.objectbox.android)
     implementation(libs.objectbox.kotlin)
-    implementation(libs.breez.sdk.spark)
+    // Postilla's Spark flow uses Seed.Mnemonic; it does not use Breez Passkey/FIDO APIs.
+    // Exclude only the optional Google Play Services bridge for Credential Manager.
+    implementation(libs.breez.sdk.spark) {
+        exclude(
+            group = "androidx.credentials",
+            module = "credentials-play-services-auth"
+        )
+    }
     implementation(libs.kmp.tor.runtime)
     implementation(libs.kmp.tor.runtime.service.ui)
     implementation(libs.kmp.tor.resource.exec)
