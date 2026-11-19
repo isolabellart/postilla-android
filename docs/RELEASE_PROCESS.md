@@ -24,6 +24,7 @@ Per una nuova versione:
 4. Aggiornare con attenzione: nome workflow, branch trigger, commit staging approvato, commit release precedente, versione, `versionCode`, nome APK e note di rilascio. Mantenere i controlli su package, firma permanente e tag già esistente.
 5. Il workflow deve eseguire test, build Release firmata, verifica package/versione/fingerprint, calcolo SHA-256 e upload dell'APK. Deve creare la release GitHub come draft, caricare l'APK esatta e pubblicare la release solo dopo aver verificato l'asset.
 6. Avviare il workflow dal branch release e attendere il completamento. Se fallisce prima della pubblicazione GitHub, correggere la causa sul branch release senza alterare staging o firma.
+7. Dopo aver verificato che la release GitHub è pubblica e che l'APK è corretta, il workflow deve invocare esplicitamente `gh workflow run zapstore-publish.yml --ref <branch-predefinito> -f release_tag=<tag>` usando `GITHUB_TOKEN` e il permesso `actions: write`. Non affidarsi al solo evento `release.published`.
 
 Nome asset obbligatorio: `Postilla-vX.Y.Z.apk`.
 
@@ -47,7 +48,7 @@ Il workflow permanente è:
 
 Deve rimanere sul branch predefinito del repository, attualmente `feature/postilla-commerce-on-rebrand`. GitHub carica i workflow associati all'evento release dal branch predefinito: aggiungerlo soltanto a un branch release o diagnostico non è sufficiente.
 
-Trigger ordinario: `release: published`. Quando il workflow Android rende pubblica la release GitHub, GitHub avvia automaticamente la pubblicazione Zapstore.
+Il workflow mantiene `release: published` come trigger di riserva per le release pubblicate fuori dalla procedura standard. La procedura Android standard invia anche un `workflow_dispatch` esplicito al termine della pubblicazione GitHub, passando il tag esatto. Questo evita di dipendere dal tipo di token usato per creare la release: GitHub può sopprimere i workflow avviati da eventi prodotti da `GITHUB_TOKEN`, mentre `workflow_dispatch` è espressamente consentito anche con quel token. Il workflow Android deve quindi avere `actions: write` e deve invocare il workflow Zapstore sul branch predefinito.
 
 Il workflow Zapstore:
 
