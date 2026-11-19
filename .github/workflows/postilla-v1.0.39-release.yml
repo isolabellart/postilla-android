@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: postilla-official-release-v1.0.39
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -106,7 +106,7 @@ jobs:
           [[ "$BUNKER_CLIENT_KEY" =~ ^[0-9a-fA-F]{64}$ ]]
 
           BUNKER_TARGET="${SIGN_WITH#bunker://}"
-          BUNKER_TARGET="${BUNKER_TARGET%%\\?*}"
+          BUNKER_TARGET="${BUNKER_TARGET%%\?*}"
           BUNKER_TARGET="${BUNKER_TARGET,,}"
           [[ "$BUNKER_TARGET" =~ ^[0-9a-f]{64}$ ]]
 
