@@ -6,6 +6,7 @@ import com.darkwisp.app.nostr.Blossom
 import com.darkwisp.app.nostr.EncryptedMedia
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -272,6 +273,59 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
         }
         throw Exception("Upload failed: ${response.code} ${response.message}")
     }
+
+
+    /**
+     * Concord CORD-02 images use AES-256-GCM with a 16-byte nonce and store the
+     * plaintext SHA-256 in ImagePointer. This is deliberately separate from
+     * EncryptedMedia.encryptFile(), whose 12-byte NIP-17 nonce is a different wire format.
+     */
+    suspend fun uploadConcordImage(
+        fileBytes: ByteArray,
+        mimeType: String,
+        signer: NostrSigner
+    ): ImagePointer = withContext(Dispatchers.IO) {
+        require(fileBytes.isNotEmpty()) { "Image is empty" }
+        require(fileBytes.size <= 15 * 1024 * 1024) { "Community image exceeds 15 MB" }
+
+        val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val nonce = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+        val ciphertext = cipher.doFinal(fileBytes)
+        val originalHash = Blossom.sha256Hex(fileBytes)
+        val encryptedHash = Blossom.sha256Hex(ciphertext)
+        val keyHex = key.toHexString()
+        val nonceHex = nonce.toHexString()
+        key.fill(0)
+
+        val authHeader = Blossom.createUploadAuth(signer, encryptedHash)
+        val body = ciphertext.toRequestBody("application/octet-stream".toMediaType())
+        val candidates = loadServers().map { url ->
+            if (url.trimEnd('/').equals("https://nostr.build", ignoreCase = true)) {
+                "https://blossom.band"
+            } else url
+        }.plus(Blossom.DEFAULT_SERVER).distinct()
+
+        var lastException: Exception? = null
+        for (server in candidates) {
+            try {
+                val url = uploadToServerRaw(server, body, authHeader)
+                return@withContext ImagePointer(
+                    url = url,
+                    key = keyHex,
+                    nonce = nonceHex,
+                    hash = originalHash,
+                )
+            } catch (e: Exception) {
+                lastException = e
+            }
+        }
+        throw lastException ?: Exception("Concord image upload failed: no Blossom server available")
+    }
+
+    private fun ByteArray.toHexString(): String =
+        joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
     companion object {
         private fun prefsName(pubkeyHex: String?): String =
