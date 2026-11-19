@@ -5,6 +5,7 @@
     <string name="nav_wallet">Wallet</string>
     <string name="nav_search">Search</string>
     <string name="nav_messages">Messages</string>
+    <string name="nav_communities">Communities</string>
     <string name="nav_notifications">Notifications</string>
 
     <!-- Drawer Menu -->
