@@ -11,7 +11,7 @@ Postilla continues the work of the original [Dark Wisp Android project](https://
 
 The rebrand deliberately preserves the existing Android application ID and signing certificate, so current Dark Wisp Enhanced installations can receive future Postilla updates without becoming a separate app.
 
-> **Transition status:** The Postilla rebrand is being prepared in an isolated branch. The current stable release remains **v1.0.10**, still published under the Dark Wisp Enhanced name. No Postilla release or Zapstore metadata update has been published yet. [View the current stable release](https://github.com/isolabellart/dark-wisp-android/releases/latest).
+> **Release status:** Postilla **v1.0.39** is the current stable release. The signed production APK is available from the [GitHub Release v1.0.39](https://github.com/isolabellart/postilla-android/releases/tag/v1.0.39).
 
 ---
 
@@ -250,7 +250,7 @@ Also: **Blossom** media servers (BUDs 01–03), **NWC** transport, and **bolt11*
 
 ### Installation
 
-Download the current stable APK from the [latest GitHub Release](https://github.com/isolabellart/dark-wisp-android/releases/latest). The latest published release is **v1.0.10**, still carrying the previous Dark Wisp Enhanced branding.
+Download the signed production APK from the [Postilla v1.0.39 GitHub Release](https://github.com/isolabellart/postilla-android/releases/tag/v1.0.39).
 
 Postilla keeps the established Android application ID `com.isolabellart.darkwispenhanced` and the permanent signing certificate. This is intentional: a future Postilla release will update existing installations rather than create a second app. The package remains separate from the original upstream Dark Wisp application, so its local data is not overwritten. Postilla targets Android 8.0 (API 26) or later and currently packages the `arm64-v8a` architecture.
 
