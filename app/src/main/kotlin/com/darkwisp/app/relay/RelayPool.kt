@@ -124,7 +124,9 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                     null
                 } else {
                     val next = if (current?.challenge == challenge) {
-                        current.copy(includeConcordStreamAuth = true)
+                        current.copy(includeConcordStreamAuth = true).also {
+                            if (_pendingAuthRequest.value === current) _pendingAuthRequest.value = it
+                        }
                     } else {
                         if (_pendingAuthRequest.value?.relayUrl == url) _pendingAuthRequest.value = null
                         PendingAuthRequest(
