@@ -44,6 +44,7 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile private var defaultCommunitySigner: NostrSigner? = null
     private val defaultCommunityJoinRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var defaultCommunityListPublishedPubkey: String? = null
 
     /** Groups that currently have an open relay connection and active subscriptions. */
@@ -97,6 +98,7 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         myPubkey = null
         defaultCommunitySigner = null
         defaultCommunityJoinRequests.clear()
+        defaultCommunityInviteWarnings.clear()
         defaultCommunityInviteWarnings.clear()
         defaultCommunityListPublishedPubkey = null
     }
@@ -163,6 +165,12 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         val relayUrl = Nip29.DEFAULT_COMMUNITY_RELAY
         val account = myPubkey?.takeIf { it.isNotBlank() } ?: return
         val requestKey = "$account|$relayUrl|${metadata.groupId}"
+
+        val currentMembers = repo.getRoom(relayUrl, metadata.groupId)?.members ?: emptyList()
+        if (account in currentMembers) {
+            defaultCommunityJoinRequests.add(requestKey)
+            return
+        }
 
         if (metadata.isClosed) {
             if (defaultCommunityInviteWarnings.add(requestKey)) {
