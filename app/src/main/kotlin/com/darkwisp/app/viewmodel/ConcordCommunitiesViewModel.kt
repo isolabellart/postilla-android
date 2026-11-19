@@ -7,6 +7,7 @@ import com.darkwisp.app.repo.ConcordChatMessage
 import com.darkwisp.app.repo.ConcordCommunitySummary
 import com.darkwisp.app.repo.ConcordCreatedCommunity
 import com.darkwisp.app.repo.ConcordRepository
+import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.ConcordChannelSummary
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.SubscriptionManager
@@ -32,9 +33,9 @@ class ConcordCommunitiesViewModel : ViewModel() {
     private val _state = MutableStateFlow(ConcordCommunitiesUiState())
     val state: StateFlow<ConcordCommunitiesUiState> = _state.asStateFlow()
 
-    fun bind(relayPool: RelayPool, subscriptions: SubscriptionManager) {
+    fun bind(relayPool: RelayPool, subscriptions: SubscriptionManager, blossomRepository: BlossomRepository) {
         if (repository == null) {
-            repository = ConcordRepository(relayPool, subscriptions)
+            repository = ConcordRepository(relayPool, subscriptions, blossomRepository)
         }
     }
 
@@ -131,6 +132,10 @@ class ConcordCommunitiesViewModel : ViewModel() {
         description: String,
         relays: List<String>,
         timerSeconds: Long?,
+        iconBytes: ByteArray? = null,
+        iconMimeType: String = "image/jpeg",
+        bannerBytes: ByteArray? = null,
+        bannerMimeType: String = "image/jpeg",
     ) {
         val repo = repository ?: return
         if (signer == null) {
@@ -147,6 +152,10 @@ class ConcordCommunitiesViewModel : ViewModel() {
                     description = description,
                     relays = relays,
                     messageExpirationSecs = timerSeconds,
+                    iconBytes = iconBytes,
+                    iconMimeType = iconMimeType,
+                    bannerBytes = bannerBytes,
+                    bannerMimeType = bannerMimeType,
                 )
                 _state.value = _state.value.copy(
                     working = false,
