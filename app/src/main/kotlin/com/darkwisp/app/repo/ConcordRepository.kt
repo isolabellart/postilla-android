@@ -693,8 +693,15 @@ class ConcordRepository(
             inviteRef = minted.url.substringBefore('#'),
         )
         val current = loadUserCommunityList(signer)
-        publishUserCommunityList(signer, current.entries.filterNot { it.id == entry.id } + entry, current.residue)
+        publishUserCommunityList(
+            signer = signer,
+            entries = current.entries.filterNot { it.id == entry.id } + entry,
+            residue = current.residue,
+            fragments = current.fragments,
+            relays = current.relays,
+        )
 
+        registerCommunityStreamKeys(signer, entry)
         val guestbook = ConcordKeyDerivation.guestbookPlaneKey(created.communityRoot, created.communityId, created.rootEpoch)
         val joinRumor = Guestbook.join(signer.pubkeyHex, now)
         val joinWrap = ConcordStreamEnvelope.wrap(joinRumor, guestbook, quartzSigner, encrypted = true)
