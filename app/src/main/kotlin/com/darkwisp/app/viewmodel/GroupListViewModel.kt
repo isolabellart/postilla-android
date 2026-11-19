@@ -44,7 +44,6 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile private var defaultCommunitySigner: NostrSigner? = null
     private val defaultCommunityJoinRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var defaultCommunityListPublishedPubkey: String? = null
 
     /** Groups that currently have an open relay connection and active subscriptions. */
@@ -98,7 +97,6 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         myPubkey = null
         defaultCommunitySigner = null
         defaultCommunityJoinRequests.clear()
-        defaultCommunityInviteWarnings.clear()
         defaultCommunityInviteWarnings.clear()
         defaultCommunityListPublishedPubkey = null
     }
