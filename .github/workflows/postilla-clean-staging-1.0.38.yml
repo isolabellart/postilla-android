@@ -148,12 +148,12 @@ jobs:
           fi
 
           cp "$APK" "Postilla-Preview-v1.0.38.apk"
-          sha256sum "Postilla-Preview-v1.0.33.apk" | tee "$RUNNER_TEMP/postilla-preview-1.0.38-sha256.txt"
+          sha256sum "Postilla-Preview-v1.0.38.apk" | tee "$RUNNER_TEMP/postilla-preview-1.0.38-sha256.txt"
 
       - name: Upload signed staging APK
         uses: actions/upload-artifact@v4
         with:
           name: postilla-clean-staging-1.0.38
-          path: Postilla-Preview-v1.0.33.apk
+          path: Postilla-Preview-v1.0.38.apk
           if-no-files-found: error
           retention-days: 90
