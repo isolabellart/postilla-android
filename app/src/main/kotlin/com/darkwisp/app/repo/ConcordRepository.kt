@@ -396,6 +396,7 @@ class ConcordRepository(
                 // the current addressable bundle more reliably by author + kind alone.
                 limit = 1000,
             ),
+            timeoutMs = 30_000,
         )
         val events = queryResult.events
             .mapNotNull { runCatching { QuartzEvent.fromJson(it.toJson()) }.getOrNull() }

@@ -92,7 +92,7 @@ class SubscriptionManager(private val relayPool: RelayPool) {
                     responded.size < expectedRelayUrls.size &&
                         relayPool.reconnectGeneration == generation
                 }
-                .collect()
+                .collect { /* distinct relay URL was recorded in takeWhile */ }
         }
         return responded
     }
