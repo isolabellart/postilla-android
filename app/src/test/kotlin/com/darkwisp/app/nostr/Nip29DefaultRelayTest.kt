@@ -5,7 +5,7 @@ import org.junit.Test
 
 class Nip29DefaultRelayTest {
     @Test
-    fun newGroupsUsePyramidRelayByDefault() {
-        assertEquals(listOf("wss://pyramid.fiatjaf.com"), Nip29.DEFAULT_GROUP_RELAYS)
+    fun newGroupsUsePostillaCommunityRelayByDefault() {
+        assertEquals(listOf("wss://groups.hzrd149.com"), Nip29.DEFAULT_GROUP_RELAYS)
     }
 }
