@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           EXPECTED_BASE="dcc3f8773f1822b096e91367b7f009894df9bcd4"
           git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
-          echo "Verified that this staging branch descends from the clean Postilla v1.0.33 base."
+          echo "Verified that this staging branch descends from the validated Postilla v1.0.38 base."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -135,7 +135,7 @@ jobs:
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced.staging" ]]
           [[ "$VERSION_NAME" == "1.0.39" ]]
-          [[ "$VERSION_CODE" == "38" ]]
+          [[ "$VERSION_CODE" == "39" ]]
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
