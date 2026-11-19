@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
@@ -47,7 +46,6 @@ enum class BottomTab(
     HOME(Routes.FEED, R.string.nav_home, Icons.Outlined.Home, Icons.Outlined.Home),
     WALLET(Routes.WALLET, R.string.nav_wallet, null, null, R.drawable.ic_wallet, R.drawable.ic_wallet_outlined),
     MARKETPLACE(Routes.MARKETPLACE, R.string.marketplace_title, Icons.Outlined.Storefront, Icons.Outlined.Storefront),
-    COMMUNITIES(Routes.COMMUNITIES, R.string.nav_communities, Icons.Outlined.Groups, Icons.Outlined.Groups),
     MESSAGES(Routes.DM_LIST, R.string.nav_messages, Icons.Outlined.Forum, Icons.Outlined.Forum),
     NOTIFICATIONS(Routes.NOTIFICATIONS, R.string.nav_notifications, Icons.Outlined.Notifications, Icons.Outlined.Notifications)
 }
@@ -93,7 +91,6 @@ fun WispBottomBar(
                 BottomTab.HOME -> hasUnreadHome
                 BottomTab.WALLET -> false
                 BottomTab.MARKETPLACE -> false
-                BottomTab.COMMUNITIES -> false
                 BottomTab.MESSAGES -> hasUnreadMessages
                 BottomTab.NOTIFICATIONS -> hasUnreadNotifications
             }

@@ -72,6 +72,7 @@ fun ConcordCommunitiesScreen(
     viewModel: ConcordCommunitiesViewModel,
     signer: NostrSigner?,
     onBack: () -> Unit,
+    embedded: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -91,32 +92,34 @@ fun ConcordCommunitiesScreen(
     Column(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = if (state.selectedChannel != null) viewModel::closeChannel else onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Indietro")
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    if (state.selectedChannel == null) "Community" else state.selectedChannel?.name.orEmpty(),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    if (state.selectedChannel == null) "Spazi Concord a cui partecipi" else "Canale Concord cifrato",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (state.selectedChannel == null) {
-                IconButton(onClick = { viewModel.refresh(signer) }, enabled = !state.loading && !state.working) {
-                    Icon(Icons.Outlined.Groups, contentDescription = "Aggiorna Community")
+        if (!embedded || state.selectedChannel != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (embedded) 4.dp else 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = if (state.selectedChannel != null) viewModel::closeChannel else onBack) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Indietro")
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (state.selectedChannel == null) "Community" else state.selectedChannel?.name.orEmpty(),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (state.selectedChannel == null) "Spazi Concord a cui partecipi" else "Canale Concord cifrato",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state.selectedChannel == null) {
+                    IconButton(onClick = { viewModel.refresh(signer) }, enabled = !state.loading && !state.working) {
+                        Icon(Icons.Outlined.Groups, contentDescription = "Aggiorna Community")
+                    }
                 }
             }
+            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
         }
-        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 
         if (state.selectedChannel != null) {
             ConcordChannelPane(
@@ -127,8 +130,11 @@ fun ConcordCommunitiesScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = if (embedded) 12.dp else 16.dp,
+                    vertical = if (embedded) 8.dp else 16.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(if (embedded) 10.dp else 14.dp),
             ) {
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -66,6 +66,38 @@ class SubscriptionManager(private val relayPool: RelayPool) {
     }
 
     /**
+     * Await EOSE from distinct relay URLs for one subscription.
+     *
+     * AUTH retries can cause the same relay to send EOSE more than once. Counting raw
+     * EOSE signals can therefore falsely mark a multi-relay Concord read as complete.
+     * Keep the relay identity and count each expected relay at most once.
+     */
+    suspend fun awaitEoseRelays(
+        targetSubId: String,
+        expectedRelayUrls: Set<String>,
+        timeoutMs: Long = 15_000,
+        generation: Long = relayPool.reconnectGeneration
+    ): Set<String> {
+        if (expectedRelayUrls.isEmpty() || relayPool.reconnectGeneration != generation) return emptySet()
+        val responded = LinkedHashSet<String>()
+        withTimeoutOrNull(timeoutMs) {
+            relayPool.relayEoseSignals
+                .filter {
+                    it.subscriptionId == targetSubId &&
+                        it.relayUrl in expectedRelayUrls &&
+                        relayPool.reconnectGeneration == generation
+                }
+                .takeWhile { signal ->
+                    responded.add(signal.relayUrl)
+                    responded.size < expectedRelayUrls.size &&
+                        relayPool.reconnectGeneration == generation
+                }
+                .collect()
+        }
+        return responded
+    }
+
+    /**
      * Close a subscription on all relays (including ephemeral).
      */
     fun closeSubscription(subscriptionId: String) {

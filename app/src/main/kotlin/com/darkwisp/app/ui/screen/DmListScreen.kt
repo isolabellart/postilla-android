@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,6 +70,7 @@ import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.viewmodel.DmListViewModel
 import com.darkwisp.app.ui.theme.wispSwitchColors
 import com.darkwisp.app.viewmodel.GroupListViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunitiesViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -78,6 +80,7 @@ import java.util.Locale
 fun DmListScreen(
     viewModel: DmListViewModel,
     groupListViewModel: GroupListViewModel,
+    concordCommunitiesViewModel: ConcordCommunitiesViewModel,
     eventRepo: EventRepository,
     userPubkey: String? = null,
     signer: NostrSigner? = null,
@@ -125,37 +128,39 @@ fun DmListScreen(
             )
         },
         floatingActionButton = {
-            Box {
-                FloatingActionButton(
-                    onClick = {
-                        if (selectedTab == 0) onNewGroupDm()
-                        else showFabMenu = true
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    if (selectedTab == 0) {
-                        Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
-                    } else {
-                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
-                    }
-                }
-                if (selectedTab == 1) {
-                    DropdownMenu(
-                        expanded = showFabMenu,
-                        onDismissRequest = { showFabMenu = false }
+            if (selectedTab != 2) {
+                Box {
+                    FloatingActionButton(
+                        onClick = {
+                            if (selectedTab == 0) onNewGroupDm()
+                            else showFabMenu = true
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_discover_groups)) },
-                            onClick = { showFabMenu = false; showDiscoverSheet = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_join_group)) },
-                            onClick = { showFabMenu = false; showJoinDialog = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_create_group)) },
-                            onClick = { showFabMenu = false; showCreateDialog = true }
-                        )
+                        if (selectedTab == 0) {
+                            Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
+                        } else {
+                            Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
+                        }
+                    }
+                    if (selectedTab == 1) {
+                        DropdownMenu(
+                            expanded = showFabMenu,
+                            onDismissRequest = { showFabMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_discover_groups)) },
+                                onClick = { showFabMenu = false; showDiscoverSheet = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_join_group)) },
+                                onClick = { showFabMenu = false; showJoinDialog = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_create_group)) },
+                                onClick = { showFabMenu = false; showCreateDialog = true }
+                            )
+                        }
                     }
                 }
             }
@@ -177,6 +182,11 @@ fun DmListScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text(stringResource(R.string.tab_chat_rooms)) }
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Outlined.Groups, contentDescription = "Communities") },
+                )
             }
 
             val unreadGroups by groupListViewModel.unreadGroups.collectAsState()
@@ -193,6 +203,12 @@ fun DmListScreen(
                     onToggleNotify = { relayUrl, groupId, enabled ->
                         groupListViewModel.setGroupNotified(relayUrl, groupId, enabled)
                     }
+                )
+                2 -> ConcordCommunitiesScreen(
+                    viewModel = concordCommunitiesViewModel,
+                    signer = signer,
+                    onBack = {},
+                    embedded = true,
                 )
             }
         }

@@ -1,5 +1,6 @@
 package com.darkwisp.app.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.NostrSigner
@@ -33,9 +34,14 @@ class ConcordCommunitiesViewModel : ViewModel() {
     private val _state = MutableStateFlow(ConcordCommunitiesUiState())
     val state: StateFlow<ConcordCommunitiesUiState> = _state.asStateFlow()
 
-    fun bind(relayPool: RelayPool, subscriptions: SubscriptionManager, blossomRepository: BlossomRepository) {
+    fun bind(
+        context: Context,
+        relayPool: RelayPool,
+        subscriptions: SubscriptionManager,
+        blossomRepository: BlossomRepository,
+    ) {
         if (repository == null) {
-            repository = ConcordRepository(relayPool, subscriptions, blossomRepository)
+            repository = ConcordRepository(context, relayPool, subscriptions, blossomRepository)
         }
     }
 
@@ -51,14 +57,28 @@ class ConcordCommunitiesViewModel : ViewModel() {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null, info = null)
             try {
-                // First visit to Communities automatically redeems the official Postilla invite.
-                runCatching { repo.ensureOfficialPostillaCommunity(signer) }
-                    .onFailure { _state.value = _state.value.copy(info = "Community Postilla: " + (it.message ?: "accesso non completato")) }
-                val joined = repo.loadJoinedCommunities(signer)
+                // Load the personal list once, then attempt the official invite against that
+                // same snapshot. Partial relay coverage must not erase communities already seen.
+                val result = repo.loadJoinedCommunities(signer, ensureOfficialPostilla = true)
+                val visibleCommunities = if (result.relaysConfirmed) {
+                    result.communities
+                } else {
+                    val retained = LinkedHashMap<String, ConcordCommunitySummary>()
+                    _state.value.communities.forEach { retained[it.id] = it }
+                    result.communities.forEach { retained.putIfAbsent(it.id, it) }
+                    retained.values.sortedBy { it.name.lowercase() }
+                }
+                val info = result.officialInviteError?.let { "Community Postilla: $it" }
+                    ?: if (!result.relaysConfirmed) {
+                        "Alcuni relay Concord non hanno risposto. Mostro anche le Community già recuperate e conservo la lista locale."
+                    } else {
+                        null
+                    }
                 _state.value = _state.value.copy(
                     loading = false,
-                    communities = joined,
+                    communities = visibleCommunities,
                     error = null,
+                    info = info,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(

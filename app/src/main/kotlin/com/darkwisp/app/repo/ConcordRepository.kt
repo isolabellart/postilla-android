@@ -1,5 +1,7 @@
 package com.darkwisp.app.repo
 
+import android.content.Context
+import org.json.JSONArray
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
@@ -84,11 +86,69 @@ data class ConcordCreatedCommunity(
     val inviteUrl: String,
 )
 
+data class ConcordJoinedCommunitiesResult(
+    val communities: List<ConcordCommunitySummary>,
+    val relaysConfirmed: Boolean,
+    val officialInviteError: String? = null,
+)
+
 class ConcordRepository(
+    context: Context,
     private val relayPool: RelayPool,
     private val subscriptions: SubscriptionManager,
     private val blossomRepository: BlossomRepository,
 ) {
+    private val listBackupPrefs = context.applicationContext.getSharedPreferences(
+        "concord-user-community-list-backup",
+        Context.MODE_PRIVATE,
+    )
+
+    private fun readCommunityListBackup(pubkey: String): List<NostrEvent> {
+        val encoded = listBackupPrefs.getString("account:$pubkey", null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(encoded)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val json = array.optString(index).takeIf { it.isNotBlank() } ?: continue
+                    runCatching { NostrEvent.fromJson(json) }.getOrNull()?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Keep only the newest encrypted copy per addressable list coordinate.
+     * The backup stores ciphertext events, never plaintext memberships or community roots.
+     */
+    private fun persistCommunityListBackup(pubkey: String, incoming: List<NostrEvent>) {
+        val merged = (readCommunityListBackup(pubkey) + incoming)
+            .filter {
+                it.pubkey == pubkey &&
+                    (it.kind == USER_COMMUNITY_LIST_FRAGMENT_KIND || it.kind == LEGACY_USER_COMMUNITY_LIST_KIND)
+            }
+        val newestByCoordinate = LinkedHashMap<String, NostrEvent>()
+        for (event in merged) {
+            val dTag = event.tags.firstOrNull { it.firstOrNull() == "d" }?.getOrNull(1).orEmpty()
+            val coordinate = if (event.kind == USER_COMMUNITY_LIST_FRAGMENT_KIND) {
+                "${event.kind}:$dTag"
+            } else {
+                "${event.kind}:$pubkey"
+            }
+            val previous = newestByCoordinate[coordinate]
+            if (previous == null ||
+                event.created_at > previous.created_at ||
+                (event.created_at == previous.created_at && event.id > previous.id)
+            ) {
+                newestByCoordinate[coordinate] = event
+            }
+        }
+        val encoded = JSONArray()
+        newestByCoordinate.values
+            .sortedBy { it.created_at }
+            .takeLast(128)
+            .forEach { encoded.put(it.toJson()) }
+        listBackupPrefs.edit().putString("account:$pubkey", encoded.toString()).apply()
+    }
     companion object {
         const val OFFICIAL_POSTILLA_INVITE =
             "https://v3.coinos.io/invite/naddr1qvzqqqyzz5pzpgqw540hvar6acgeuyrfnll60n6qrg9me4h90yucs3u2eh8tqmqrqqqqhhcy6s#BAADABJtZXNzYWdlcy5jb2lub3MuaW8AD3JlbGF5LmNvaW5vcy5pbwAQcmVsYXkucHJpbWFsLm5ldJqwIkTDMxKJDWju8TxtQzg"
@@ -246,8 +306,35 @@ class ConcordRepository(
         return loadCommunity(entry, signer)
     }
 
-    suspend fun loadJoinedCommunities(signer: PostillaSigner): List<ConcordCommunitySummary> {
-        val entries = loadUserCommunityList(signer).entries
+    suspend fun loadJoinedCommunities(
+        signer: PostillaSigner,
+        ensureOfficialPostilla: Boolean = false,
+    ): ConcordJoinedCommunitiesResult {
+        val document = loadUserCommunityList(signer)
+        var entries = document.entries
+        var officialInviteError: String? = null
+
+        // The previous flow queried the private list twice on every visit (once before
+        // redeeming the official invite, then again for rendering). Reuse this one snapshot.
+        if (ensureOfficialPostilla) {
+            try {
+                val parsed = ConcordInviteLink.parseUrl(OFFICIAL_POSTILLA_INVITE)
+                    ?: throw IllegalStateException("The official Postilla Concord invite is malformed.")
+                val invite = resolveInvite(OFFICIAL_POSTILLA_INVITE, signer)
+                val existing = entries.firstOrNull {
+                    it.id.equals(invite.communityId, ignoreCase = true)
+                }
+                val entry = if (existing == null || existing.rootEpoch < invite.rootEpoch) {
+                    joinResolvedInvite(OFFICIAL_POSTILLA_INVITE, parsed, invite, signer, document)
+                } else {
+                    existing
+                }
+                entries = entries.filterNot { it.id.equals(entry.id, ignoreCase = true) } + entry
+            } catch (error: Exception) {
+                officialInviteError = error.message ?: "accesso non completato"
+            }
+        }
+
         val loaded = ArrayList<ConcordCommunitySummary>(entries.size)
         for (entry in entries.sortedBy { it.name.lowercase() }) {
             try {
@@ -266,7 +353,11 @@ class ConcordRepository(
                 )
             }
         }
-        return loaded
+        return ConcordJoinedCommunitiesResult(
+            communities = loaded,
+            relaysConfirmed = document.relaysConfirmed,
+            officialInviteError = officialInviteError,
+        )
     }
 
     suspend fun joinInvite(inviteUrl: String, signer: PostillaSigner): ConcordCommunitySummary {
@@ -296,7 +387,7 @@ class ConcordRepository(
             .distinct()
             .take(28)
         if (relays.isEmpty()) throw IllegalArgumentException("The invitation has no reachable bootstrap relays.")
-        val events = queryAcrossRelays(
+        val queryResult = queryAcrossRelaysDetailed(
             relays,
             Filter(
                 kinds = listOf(parsed.kind),
@@ -305,7 +396,9 @@ class ConcordRepository(
                 // the current addressable bundle more reliably by author + kind alone.
                 limit = 1000,
             ),
-        ).mapNotNull { runCatching { QuartzEvent.fromJson(it.toJson()) }.getOrNull() }
+        )
+        val events = queryResult.events
+            .mapNotNull { runCatching { QuartzEvent.fromJson(it.toJson()) }.getOrNull() }
         return when (val status = ConcordInviteBundle.classify(
             events,
             parsed.linkSignerPubKey,
@@ -314,7 +407,12 @@ class ConcordRepository(
             is InviteBundleStatus.Live -> status.invite
             is InviteBundleStatus.Expired -> throw IllegalStateException("This Concord invitation has expired.")
             InviteBundleStatus.Revoked -> throw IllegalStateException("This Concord invitation has been revoked.")
-            InviteBundleStatus.Absent -> throw IllegalStateException("The invitation was not found on its bootstrap relays.")
+            InviteBundleStatus.Absent -> {
+                if (!queryResult.complete) {
+                    throw IllegalStateException("Postilla could not confirm the Concord invite relays. Check the connection and retry.")
+                }
+                throw IllegalStateException("The invitation was not found on its bootstrap relays.")
+            }
             InviteBundleStatus.Unreadable -> throw IllegalStateException("The invitation could not be decrypted or validated.")
         }
     }
@@ -417,10 +515,15 @@ class ConcordRepository(
             ),
             timeoutMs = 30_000,
         )
-        val events = queryResult.events.sortedByDescending { it.created_at }
+        if (queryResult.events.isNotEmpty()) {
+            persistCommunityListBackup(signer.pubkeyHex, queryResult.events)
+        }
+        val events = (readCommunityListBackup(signer.pubkeyHex) + queryResult.events)
+            .distinctBy { it.id }
+            .sortedByDescending { it.created_at }
         if (events.isEmpty() && !queryResult.complete) {
             throw IllegalStateException(
-                "Postilla could not confirm the Community-list relays. Check the connection and retry; no empty list was assumed."
+                "Postilla could not confirm the Community-list relays and no previously saved list is available. Check the connection and retry; no empty list was assumed."
             )
         }
 
@@ -463,13 +566,14 @@ class ConcordRepository(
         relays: List<String>,
         relaysConfirmed: Boolean,
     ) {
-        if (!relaysConfirmed) {
+        if (fragments.isEmpty && !relaysConfirmed) {
             throw IllegalStateException(
-                "Postilla could not confirm every relay used to read the Community list. The write was stopped to avoid overwriting memberships stored elsewhere."
+                "Postilla could not confirm the Community-list relays and no saved fragment is available. The membership was not written."
             )
         }
         val newDocument = ConcordCommunityList.encodeInternal(entries, residue)
-        val writes = fragments.planWrites(newDocument, System.currentTimeMillis() / 1000)
+        val writeBase = forceScopedConcordListWritesWhenUnconfirmed(fragments, relaysConfirmed)
+        val writes = writeBase.planWrites(newDocument, System.currentTimeMillis() / 1000)
         if (writes.isEmpty()) return
 
         val quartzSigner = PostillaQuartzSigner(signer)
@@ -502,6 +606,7 @@ class ConcordRepository(
             if (!outcome.confirmed) {
                 throw IllegalStateException("No Concord relay confirmed the joined-Community list fragment ${write.index}.")
             }
+            persistCommunityListBackup(signer.pubkeyHex, listOf(nostrEvent))
         }
     }
 
@@ -669,6 +774,12 @@ class ConcordRepository(
     ): ConcordCreatedCommunity {
         val selectedRelays = relays.map { it.trim() }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct().take(5)
         if (selectedRelays.isEmpty()) throw IllegalArgumentException("Choose at least one Community relay.")
+        val current = loadUserCommunityList(signer)
+        if (current.fragments.isEmpty && !current.relaysConfirmed) {
+            throw IllegalStateException(
+                "Postilla could not confirm the Community-list relays and no saved fragment is available. Community creation was stopped before publishing."
+            )
+        }
         val quartzSigner = PostillaQuartzSigner(signer)
         val now = System.currentTimeMillis() / 1000
         val created = ConcordCommunityFactory.create(
@@ -728,7 +839,6 @@ class ConcordRepository(
             addedAt = now,
             inviteRef = minted.url.substringBefore('#'),
         )
-        val current = loadUserCommunityList(signer)
         publishUserCommunityList(
             signer = signer,
             entries = current.entries.filterNot { it.id == entry.id } + entry,
@@ -853,6 +963,7 @@ class ConcordRepository(
         val targets = relays.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct().take(5)
         if (targets.isEmpty()) return@coroutineScope RelayQueryBatchResult(emptyList(), 0, 0, 0)
         val subscriptionId = "postilla-concord-" + UUID.randomUUID()
+        val generation = relayPool.reconnectGeneration
         val received = LinkedHashMap<String, NostrEvent>()
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
             relayPool.relayEvents
@@ -864,7 +975,12 @@ class ConcordRepository(
         val request = ClientMessage.req(subscriptionId, filter)
         // Start EOSE collection before the first REQ so a fast relay cannot race past it.
         val eoseAwaiter = async(start = CoroutineStart.UNDISPATCHED) {
-            subscriptions.awaitEoseCount(subscriptionId, targets.size, timeoutMs = timeoutMs)
+            subscriptions.awaitEoseRelays(
+                targetSubId = subscriptionId,
+                expectedRelayUrls = targets.toSet(),
+                timeoutMs = timeoutMs,
+                generation = generation,
+            )
         }
         // A NIP-42 challenge may close the first REQ before the stream-key AUTH is
         // completed. Re-issue the same subscription once the derived AUTH is sent.
@@ -878,12 +994,12 @@ class ConcordRepository(
         val sentTargets = targets.filter { url ->
             relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true)
         }
-        val eoseCount = eoseAwaiter.await()
+        val eoseRelays = eoseAwaiter.await()
         authRetry.cancelAndJoin()
         val close = ClientMessage.close(subscriptionId)
         targets.forEach { relayPool.sendToRelayOrEphemeral(it, close, skipBadCheck = true) }
         collector.cancelAndJoin()
-        RelayQueryBatchResult(received.values.toList(), sentTargets.size, targets.size, eoseCount)
+        RelayQueryBatchResult(received.values.toList(), sentTargets.size, targets.size, eoseRelays.size)
     }
 
     private suspend fun queryAcrossRelays(
@@ -908,6 +1024,34 @@ class ConcordRepository(
         }
         QueryAcrossRelaysResult(events, complete)
     }
+}
+
+/**
+ * If relay coverage is partial, a snapshot that happens to contain all currently declared
+ * fragments must not be treated as a complete list: another relay may still hold a newer
+ * fragment head. Mark an unobservable next index as unreadable in memory only. Quartz then
+ * keeps the declared count and rewrites only held fragments touched by this change.
+ */
+internal fun forceScopedConcordListWritesWhenUnconfirmed(
+    fragments: ConcordListFragmentSet,
+    relaysConfirmed: Boolean,
+): ConcordListFragmentSet {
+    if (relaysConfirmed || fragments.isEmpty || !fragments.complete) return fragments
+    val heldCopies = fragments.held.map { (index, held) ->
+        ConcordListFragmentSet.Copy(
+            index = index,
+            createdAt = held.createdAt,
+            id = "postilla-held-fragment-$index",
+            plaintext = held.plaintext,
+        )
+    }
+    val unknownNextFragment = ConcordListFragmentSet.Copy(
+        index = fragments.declared,
+        createdAt = 0L,
+        id = "postilla-unconfirmed-fragment-${fragments.declared}",
+        plaintext = null,
+    )
+    return ConcordListFragmentSet.of(heldCopies + unknownNextFragment)
 }
 
 /**

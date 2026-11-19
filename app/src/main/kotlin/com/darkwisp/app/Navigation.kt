@@ -294,6 +294,7 @@ fun WispNavHost(
 
     LaunchedEffect(Unit) {
         concordCommunitiesViewModel.bind(
+            context = appContext,
             relayPool = feedViewModel.relayPool,
             subscriptions = feedViewModel.subManager,
             blossomRepository = feedViewModel.blossomRepo,
@@ -2050,6 +2051,7 @@ fun WispNavHost(
             DmListScreen(
                 viewModel = dmListViewModel,
                 groupListViewModel = groupListViewModel,
+                concordCommunitiesViewModel = concordCommunitiesViewModel,
                 eventRepo = feedViewModel.eventRepo,
                 userPubkey = feedViewModel.getUserPubkey(),
                 signer = activeSigner,

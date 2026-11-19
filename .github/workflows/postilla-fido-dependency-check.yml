@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: postilla-communities-staging-1.0.36-${{ github.ref }}
+  group: postilla-communities-staging-1.0.37-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -118,8 +118,8 @@ jobs:
           echo "Package: $PACKAGE_ID"
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced.staging" ]]
-          [[ "$VERSION_NAME" == "1.0.36" ]]
-          [[ "$VERSION_CODE" == "36" ]]
+          [[ "$VERSION_NAME" == "1.0.37" ]]
+          [[ "$VERSION_CODE" == "37" ]]
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
@@ -137,7 +137,7 @@ jobs:
       - name: Upload signed staging APK for device testing
         uses: actions/upload-artifact@v4
         with:
-          name: postilla-communities-concord-1.0.36-staging-signed
+          name: postilla-communities-concord-1.0.37-staging-signed
           path: app/build/outputs/apk/staging/app-staging.apk
           if-no-files-found: error
           retention-days: 30
