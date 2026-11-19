@@ -117,6 +117,7 @@ class ConcordRepository(
     private data class RelayQueryBatchResult(
         val events: List<NostrEvent>,
         val sentCount: Int,
+        val targetCount: Int,
         val eoseCount: Int,
     )
 
@@ -849,7 +850,7 @@ class ConcordRepository(
         timeoutMs: Long,
     ): RelayQueryBatchResult = coroutineScope {
         val targets = relays.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct().take(5)
-        if (targets.isEmpty()) return@coroutineScope RelayQueryBatchResult(emptyList(), 0, 0)
+        if (targets.isEmpty()) return@coroutineScope RelayQueryBatchResult(emptyList(), 0, 0, 0)
         val subscriptionId = "postilla-concord-" + UUID.randomUUID()
         val received = LinkedHashMap<String, NostrEvent>()
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -860,6 +861,10 @@ class ConcordRepository(
                 }
         }
         val request = ClientMessage.req(subscriptionId, filter)
+        // Start EOSE collection before the first REQ so a fast relay cannot race past it.
+        val eoseAwaiter = async(start = CoroutineStart.UNDISPATCHED) {
+            subscriptions.awaitEoseCount(subscriptionId, targets.size, timeoutMs = timeoutMs)
+        }
         // A NIP-42 challenge may close the first REQ before the stream-key AUTH is
         // completed. Re-issue the same subscription once the derived AUTH is sent.
         val authRetry = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -872,18 +877,12 @@ class ConcordRepository(
         val sentTargets = targets.filter { url ->
             relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true)
         }
-        val eoseCount = if (sentTargets.isNotEmpty()) {
-            withTimeoutOrNull(timeoutMs) {
-                subscriptions.awaitEoseCount(subscriptionId, sentTargets.size, timeoutMs = timeoutMs)
-            } ?: 0
-        } else {
-            0
-        }
+        val eoseCount = eoseAwaiter.await()
         authRetry.cancelAndJoin()
         val close = ClientMessage.close(subscriptionId)
         targets.forEach { relayPool.sendToRelayOrEphemeral(it, close, skipBadCheck = true) }
         collector.cancelAndJoin()
-        RelayQueryBatchResult(received.values.toList(), sentTargets.size, eoseCount)
+        RelayQueryBatchResult(received.values.toList(), sentTargets.size, targets.size, eoseCount)
     }
 
     private suspend fun queryAcrossRelays(
@@ -903,7 +902,9 @@ class ConcordRepository(
         if (batches.isEmpty()) return@coroutineScope QueryAcrossRelaysResult(emptyList(), false)
         val results = batches.map { batch -> async { queryBatch(batch, filter, timeoutMs) } }.awaitAll()
         val events = results.flatMap { it.events }.distinctBy { it.id }
-        val complete = results.isNotEmpty() && results.all { it.sentCount > 0 && it.eoseCount >= it.sentCount }
+        val complete = results.isNotEmpty() && results.all {
+            it.targetCount > 0 && it.sentCount == it.targetCount && it.eoseCount >= it.targetCount
+        }
         QueryAcrossRelaysResult(events, complete)
     }
 }
