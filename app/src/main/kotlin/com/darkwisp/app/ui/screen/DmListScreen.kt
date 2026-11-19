@@ -106,6 +106,12 @@ fun DmListScreen(
     LaunchedEffect(groupListViewModel) {
         groupListViewModel.adminErrors.collect { adminError = it }
     }
+    // Ensure the public Postilla community is present for the active account.
+    LaunchedEffect(userPubkey, signer) {
+        if (!userPubkey.isNullOrBlank()) {
+            groupListViewModel.ensureDefaultCommunityGroup(signer)
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
