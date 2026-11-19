@@ -56,7 +56,7 @@ jobs:
         run: |
           ./gradlew --no-daemon --no-build-cache --max-workers=2 \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
-            :app:testStagingUnitTest --stacktrace
+            :app:testDebugUnitTest --stacktrace
 
       - name: Build staging APK
         run: |
