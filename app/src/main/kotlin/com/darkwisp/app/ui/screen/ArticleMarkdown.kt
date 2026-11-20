@@ -79,7 +79,7 @@ internal fun formatArticleMarkdownSelection(
         return ArticleMarkdownEdit(updated, start, start + replacement.length)
     }
 
-    val lineStart = text.lastIndexOf('\n', (start - 1).coerceAtLeast(0)) + 1
+    val lineStart = text.lastIndexOf('\n', start - 1) + 1
     val updated = text.substring(0, lineStart) + blockMarker + text.substring(lineStart)
     val cursor = start + blockMarker.length
     return ArticleMarkdownEdit(updated, cursor, cursor)
@@ -178,7 +178,9 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
 }
 
 @Composable
-private fun buildArticleInlineMarkdown(text: String) = buildAnnotatedString {
+private fun buildArticleInlineMarkdown(text: String) : androidx.compose.ui.text.AnnotatedString {
+    val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    return buildAnnotatedString {
     var cursor = 0
     markdownInlineRegex.findAll(text).forEach { match ->
         append(text.substring(cursor, match.range.first))
@@ -189,7 +191,7 @@ private fun buildArticleInlineMarkdown(text: String) = buildAnnotatedString {
             token.startsWith("~~") && token.endsWith("~~") ->
                 withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(token.substring(2, token.length - 2)) }
             token.startsWith("`") && token.endsWith("`") ->
-                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = MaterialTheme.colorScheme.surfaceVariant)) {
+                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) {
                     append(token.substring(1, token.length - 1))
                 }
             token.startsWith("*") && token.endsWith("*") ->
@@ -198,6 +200,7 @@ private fun buildArticleInlineMarkdown(text: String) = buildAnnotatedString {
         cursor = match.range.last + 1
     }
     append(text.substring(cursor))
+    }
 }
 
 @Composable
