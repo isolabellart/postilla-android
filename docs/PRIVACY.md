@@ -57,7 +57,7 @@ The exact relay and Blossom servers depend on defaults, user settings, and the e
 
 Postilla stores account settings, relay preferences, cached content, and wallet-related data on the device. Private keys, DeepL API credentials, and Spark wallet recovery material use Android encrypted preferences where implemented.
 
-A crash report is written to app-internal storage when the app crashes. It includes the timestamp, app version, device manufacturer/model, Android version, and stack trace. It is **not automatically uploaded**. If the user chooses **Send Report**, the report is sent as a NIP-17 encrypted message to the Postilla developer through configured report relays.
+A crash report is written to app-internal storage when the app crashes. It includes the timestamp, app version, device manufacturer/model, Android version, and stack trace. It is **not automatically uploaded**. If the user chooses **Send Report**, the report is sent as a NIP-17 encrypted message to the Postilla developer through the app's fixed report-relay list.
 
 Optional diagnostic logging is disabled by default. When enabled by the user, diagnostic logs are stored in app-internal storage. The user may inspect, clear, or share those logs from the app's diagnostic flow. Shared logs may contain technical details and should be reviewed before sending.
 
