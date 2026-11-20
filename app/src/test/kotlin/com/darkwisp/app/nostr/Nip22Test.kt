@@ -168,3 +168,42 @@ class Nip22Test {
         assertTrue(Nip22.referencesRoot(note, rootId))
     }
 }
+
+
+class Nip22LongFormArticleTest {
+    private val author = "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb"
+
+    @Test
+    fun articleRootCommentUsesLongFormAddress() {
+        val article = NostrEvent(
+            id = "article-event-id", pubkey = author, created_at = 1_800_000_000L,
+            kind = Nip23.KIND_LONG_FORM, tags = listOf(listOf("d", "essay-1")),
+            content = "# Essay", sig = "test"
+        )
+        val tags = Nip22.buildAddressableRootCommentTags(article)
+        val coordinate = "30023:$author:essay-1"
+        assertTrue(tags.contains(listOf("A", coordinate)))
+        assertTrue(tags.contains(listOf("K", "30023")))
+        assertTrue(tags.contains(listOf("P", author)))
+    }
+
+    @Test
+    fun nestedLongFormCommentKeepsArticleRootAndTargetsParent() {
+        val coordinate = "30023:$author:essay-1"
+        val parent = NostrEvent(
+            id = "parent-comment-id",
+            pubkey = "bc28aad5b167f31dd37c66d8c95d400c6411d83275ed12c504f60965d1f9eec6",
+            created_at = 1_800_000_001L,
+            kind = Nip22.KIND_COMMENT,
+            tags = listOf(listOf("A", coordinate), listOf("K", "30023"), listOf("P", author)),
+            content = "First comment", sig = "test"
+        )
+        val tags = Nip22.buildAddressableCommentReplyTags(parent)
+        assertTrue(tags.contains(listOf("A", coordinate)))
+        assertTrue(tags.contains(listOf("K", "30023")))
+        assertTrue(tags.contains(listOf("P", author)))
+        assertTrue(tags.contains(listOf("e", parent.id, "", parent.pubkey)))
+        assertTrue(tags.contains(listOf("k", "1111")))
+        assertTrue(tags.contains(listOf("p", parent.pubkey)))
+    }
+}

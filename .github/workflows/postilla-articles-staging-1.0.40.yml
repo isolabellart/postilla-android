@@ -1,0 +1,167 @@
+name: Postilla Articles NIP-23 staging validation 1.0.40
+
+on:
+  push:
+    branches:
+      - staging/postilla-articles-1.0.40-20261120
+  workflow_dispatch:
+
+concurrency:
+  group: postilla-articles-staging-1.0.40-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test, build and verify signed Preview APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+      STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+
+    steps:
+      - name: Check required signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$KEYSTORE_B64" ]] && missing+=("DARK_WISP_ENHANCED_KEYSTORE_BASE64")
+          [[ -z "$STORE_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_STORE_PASSWORD")
+          [[ -z "$KEY_ALIAS" ]] && missing+=("DARK_WISP_ENHANCED_KEY_ALIAS")
+          [[ -z "$KEY_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_KEY_PASSWORD")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required permanent signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact Postilla v1.0.39 source staging base
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_BASE="76abd0612b9e7752eb45eaf657c113a78ab5cdda"
+          git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
+          echo "Verified that this staging branch descends from the exact Postilla v1.0.39 source staging commit."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify Spark FIDO exclusion and keep ML Kit translation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            :app:dependencies --configuration stagingRuntimeClasspath \
+            | tee "$RUNNER_TEMP/postilla-staging-dependencies.txt"
+
+          if grep -Fq "androidx.credentials:credentials-play-services-auth" "$RUNNER_TEMP/postilla-staging-dependencies.txt"; then
+            echo "::error::Credential Manager Play Services auth adapter is still present."
+            exit 1
+          fi
+          if grep -Fq "com.google.android.gms:play-services-fido" "$RUNNER_TEMP/postilla-staging-dependencies.txt"; then
+            echo "::error::Google Play Services FIDO artifact is still present."
+            exit 1
+          fi
+          if grep -R -n -E 'PasskeyClient|PasskeyProvider|connectWithPasskey|connect_with_passkey' app/src/main; then
+            echo "::error::Postilla source unexpectedly references the Breez passkey flow."
+            exit 1
+          fi
+          if ! grep -Fq "com.google.mlkit:translate" "$RUNNER_TEMP/postilla-staging-dependencies.txt"; then
+            echo "::error::ML Kit translation dependency is missing."
+            exit 1
+          fi
+          grep -Fq 'OutlinedTextField(' app/src/main/kotlin/com/darkwisp/app/ui/screen/WalletScreen.kt
+          grep -Fq 'NsecPasteGuard.blockIfNsec(connectionString, value)' app/src/main/kotlin/com/darkwisp/app/ui/screen/WalletScreen.kt
+          grep -Fq 'DEFAULT_COMMUNITY_RELAY = "wss://groups.hzrd149.com"' app/src/main/kotlin/com/darkwisp/app/nostr/Nip29.kt
+          grep -Fq 'DEFAULT_COMMUNITY_GROUP_ID = "2f28ff"' app/src/main/kotlin/com/darkwisp/app/nostr/Nip29.kt
+          grep -Fq 'ensureDefaultCommunityGroup(signer)' app/src/main/kotlin/com/darkwisp/app/ui/screen/DmListScreen.kt
+          echo "Verified: no Credential Manager Play Services adapter, no FIDO artifact, and ML Kit translation remains available."
+          grep -Fq 'KIND_LONG_FORM = 30023' app/src/main/kotlin/com/darkwisp/app/nostr/Nip23.kt
+          grep -Fq 'onWriteArticle = {' app/src/main/kotlin/com/darkwisp/app/Navigation.kt
+          grep -Fq 'Icons.Outlined.Translate' app/src/main/kotlin/com/darkwisp/app/ui/screen/ArticleScreen.kt
+          grep -Fq 'bigATags = listOf(coordinate)' app/src/main/kotlin/com/darkwisp/app/viewmodel/ArticleViewModel.kt
+          echo "Verified: NIP-23 composer, article translation control, and NIP-22 addressable comment retrieval are present."
+      - name: Decode Postilla signing keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/postilla-staging.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          {
+            echo "RELEASE_STORE_FILE=$KEYSTORE_PATH"
+            echo "RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Run staging unit tests
+        run: |
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            testStagingUnitTest --stacktrace
+
+      - name: Build signed staging APK
+        run: |
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            assembleStaging --stacktrace
+
+      - name: Verify staging package identity, version and permanent signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/staging/app-staging.apk"
+          test -s "$APK"
+
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)"
+          test -x "$APKANALYZER"
+          PACKAGE_ID="$("$APKANALYZER" manifest application-id "$APK")"
+          VERSION_NAME="$("$APKANALYZER" manifest version-name "$APK")"
+          VERSION_CODE="$("$APKANALYZER" manifest version-code "$APK")"
+          echo "Package: $PACKAGE_ID"
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+          [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced.staging" ]]
+          [[ "$VERSION_NAME" == "1.0.40" ]]
+          [[ "$VERSION_CODE" == "40" ]]
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1)"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | tee "$RUNNER_TEMP/staging-apk-signature.txt"
+          ACTUAL_CERT_SHA256="$(printf '%s\n' "$SIGNATURE_OUTPUT" \
+            | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
+            | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED_CERT_SHA256="86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841"
+          if [[ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]]; then
+            echo "::error::APK certificate mismatch. Expected $EXPECTED_CERT_SHA256, got ${ACTUAL_CERT_SHA256:-<missing>}."
+            exit 1
+          fi
+
+          cp "$APK" "Postilla-Preview-v1.0.40.apk"
+          sha256sum "Postilla-Preview-v1.0.40.apk" | tee "$RUNNER_TEMP/postilla-preview-1.0.40-sha256.txt"
+
+      - name: Upload signed staging APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: postilla-articles-staging-1.0.40
+          path: Postilla-Preview-v1.0.40.apk
+          if-no-files-found: error
+          retention-days: 90

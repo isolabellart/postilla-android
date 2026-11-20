@@ -176,7 +176,11 @@ class ArticleViewModel : ViewModel() {
         // Two-phase loading matching ThreadViewModel pattern
         loadJob = viewModelScope.launch {
             // Phase 1a: Subscribe for comments via `a` tag on author's read relays + top relays
-            val commentFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT), aTags = listOf(coordinate))
+            val commentFilter = Filter(
+                kinds = listOf(1, Nip22.KIND_COMMENT),
+                aTags = listOf(coordinate),
+                bigATags = listOf(coordinate)
+            )
             outboxRouter.subscribeToUserReadRelays(commentSubId, author, commentFilter)
             val aTagMsg = ClientMessage.req(commentSubId, commentFilter)
             for (url in topRelayUrls) {

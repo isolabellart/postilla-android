@@ -16,6 +16,8 @@ import com.madebyevan.thumbhash.ThumbHash
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Keys
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip18
 import com.darkwisp.app.nostr.Nip19
@@ -680,9 +682,19 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (_explicit.value) {
             tags.add(listOf("content-warning", ""))
         }
+        val isLongFormArticleReply = replyTo != null &&
+            (replyTo.kind == Nip23.KIND_LONG_FORM || Nip22.longFormRootCoordinate(replyTo) != null)
         if (replyTo != null) {
-            val hint = outboxRouter?.getRelayHint(replyTo.pubkey) ?: ""
-            tags.addAll(Nip10.buildReplyTags(replyTo, hint))
+            when {
+                replyTo.kind == Nip23.KIND_LONG_FORM ->
+                    tags.addAll(Nip22.buildAddressableRootCommentTags(replyTo))
+                isLongFormArticleReply ->
+                    tags.addAll(Nip22.buildAddressableCommentReplyTags(replyTo))
+                else -> {
+                    val hint = outboxRouter?.getRelayHint(replyTo.pubkey) ?: ""
+                    tags.addAll(Nip10.buildReplyTags(replyTo, hint))
+                }
+            }
         }
 
         val (mentionedPubkeys, _, mentionedAddresses) = extractNostrRefs(content)
@@ -709,7 +721,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         // publicly. The compose UI hides the toggle in gallery/poll/schedule/quote modes, so we
         // branch before those tag-building paths and emit just the reply + mentions + hashtags
         // + emojis inside the encrypted rumor.
-        if (replyTo != null && _privateReply.value) {
+        if (replyTo != null && _privateReply.value && !isLongFormArticleReply) {
             for (hashtag in _hashtags.value) tags.add(listOf("t", hashtag))
             tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
             val privateReplyTags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
@@ -798,7 +810,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 eventKind = Nip88.KIND_POLL
             }
         } else {
-            eventKind = 1
+            eventKind = if (isLongFormArticleReply) Nip22.KIND_COMMENT else 1
         }
 
         if (!_galleryMode.value) {

@@ -166,7 +166,8 @@ fun ComposeScreen(
     powPrefs: PowPreferences? = null,
     resolvedEmojis: Map<String, String> = emptyMap(),
     onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null,
-    initialContent: String? = null
+    initialContent: String? = null,
+    onWriteArticle: () -> Unit = {}
 ) {
     val content by viewModel.content.collectAsState()
     var composerMinHeight by remember { mutableStateOf(160.dp) }
@@ -268,32 +269,38 @@ fun ComposeScreen(
                 },
                 actions = {
                     if (replyTo != null || quoteTo != null) {
-                        // No gallery toggle when replying or quoting
+                        // Mode switches are hidden while replying or quoting.
                     } else if (galleryMode) {
                         OutlinedButton(
                             onClick = { viewModel.toggleGalleryMode() },
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 8.dp).width(176.dp).heightIn(min = 40.dp)
                         ) {
-                            Icon(
-                                Icons.AutoMirrored.Outlined.Article,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.compose_switch_to_text))
                         }
                     } else {
-                        OutlinedButton(
-                            onClick = { viewModel.toggleGalleryMode() },
-                            modifier = Modifier.padding(end = 8.dp)
+                        Column(
+                            modifier = Modifier.padding(end = 8.dp),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(
-                                Icons.Outlined.PhotoLibrary,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.compose_switch_to_gallery))
+                            OutlinedButton(
+                                onClick = { viewModel.toggleGalleryMode() },
+                                modifier = Modifier.width(176.dp).heightIn(min = 40.dp)
+                            ) {
+                                Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.compose_switch_to_gallery))
+                            }
+                            OutlinedButton(
+                                onClick = onWriteArticle,
+                                modifier = Modifier.width(176.dp).heightIn(min = 40.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.article_compose_button))
+                            }
                         }
                     }
                 },
@@ -852,7 +859,9 @@ fun ComposeScreen(
 
                         // Private reply toggle: only meaningful for replies in plain text mode
                         // (private replies don't carry gallery/poll/schedule/quote payloads in v1).
-                        if (replyTo != null && quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
+                        if (replyTo != null && replyTo.kind != 30023 &&
+                            com.darkwisp.app.nostr.Nip22.longFormRootCoordinate(replyTo) == null &&
+                            quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
                             IconButton(onClick = {
                                 // Locked toggles short-circuit in the VM, so the state stays ON.
                                 val nextState = if (privateReplyLocked) true else !privateReply

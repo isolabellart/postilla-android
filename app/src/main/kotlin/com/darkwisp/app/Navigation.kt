@@ -40,6 +40,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.viewmodel.MarketplaceViewModel
 import com.darkwisp.app.ui.screen.MarketplaceEditorScreen
 import com.darkwisp.app.ui.screen.MarketplaceDetailScreen
@@ -87,6 +88,7 @@ import com.darkwisp.app.ui.screen.SearchScreen
 import com.darkwisp.app.ui.screen.SocialGraphScreen
 import com.darkwisp.app.ui.screen.BookmarkSetScreen
 import com.darkwisp.app.ui.screen.ArticleScreen
+import com.darkwisp.app.ui.screen.ArticleComposerScreen
 import com.darkwisp.app.ui.screen.BookmarksScreen
 import com.darkwisp.app.ui.screen.HashtagFeedScreen
 import com.darkwisp.app.ui.screen.KeysScreen
@@ -114,6 +116,7 @@ import com.darkwisp.app.ui.screen.RelayDetailScreen
 import com.darkwisp.app.ui.screen.WalletScreen
 import com.darkwisp.app.viewmodel.BlossomServersViewModel
 import com.darkwisp.app.viewmodel.ArticleViewModel
+import com.darkwisp.app.viewmodel.ArticleComposerViewModel
 import com.darkwisp.app.viewmodel.AuthViewModel
 import com.darkwisp.app.viewmodel.ComposeViewModel
 import com.darkwisp.app.viewmodel.DmConversationViewModel
@@ -152,6 +155,7 @@ object Routes {
     const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}?relays={relays}&eventId={eventId}&kind={kind}"
     const val MARKETPLACE_EDITOR = "marketplace/edit?eventId={eventId}&author={author}&dTag={dTag}&kind={kind}"
     const val COMPOSE = "compose"
+    const val ARTICLE_COMPOSER = "article_compose"
     const val RELAYS = "relays"
     const val PROFILE_EDIT = "profile/edit"
     const val USER_PROFILE = "profile/{pubkey}"
@@ -233,8 +237,8 @@ fun NostrUriData.toRoute(): String? = when (this) {
                 }.joinToString("&")
                 "marketplace/address/$author/${android.net.Uri.encode(dTag)}${if (query.isNotEmpty()) "?$query" else ""}"
             }
-            (kind == 30023 || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null ->
-                "article/$kind/$author/$dTag"
+            (kind == Nip23.KIND_LONG_FORM || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null ->
+                "article/$kind/$author/${android.net.Uri.encode(dTag)}"
             else -> null
         }
 }
@@ -253,6 +257,7 @@ fun WispNavHost(
     val feedViewModel: FeedViewModel = viewModel()
     val marketplaceViewModel: MarketplaceViewModel = viewModel()
     val composeViewModel: ComposeViewModel = viewModel()
+    val articleComposerViewModel: ArticleComposerViewModel = viewModel()
     val relayViewModel: RelayViewModel = viewModel()
     val profileViewModel: ProfileViewModel = viewModel()
     val dmListViewModel: DmListViewModel = viewModel()
@@ -1624,6 +1629,45 @@ fun WispNavHost(
                     if (dTag.isNotBlank()) {
                         navController.navigate(marketplaceAddressRoute(event))
                     }
+                },
+                onWriteArticle = {
+                    replyTarget = null
+                    quoteTarget = null
+                    articleComposerViewModel.startNew()
+                    navController.navigate(Routes.ARTICLE_COMPOSER)
+                }
+            )
+        }
+
+        composable(Routes.ARTICLE_COMPOSER) {
+            DisposableEffect(articleComposerViewModel, activeSigner) {
+                onDispose {
+                    articleComposerViewModel.saveDraft(
+                        feedViewModel.relayPool,
+                        activeSigner,
+                        feedViewModel.interfacePrefs.isClientTagEnabled()
+                    )
+                }
+            }
+            ArticleComposerScreen(
+                viewModel = articleComposerViewModel,
+                relayPool = feedViewModel.relayPool,
+                signer = activeSigner,
+                eventRepository = feedViewModel.eventRepo,
+                includeClientTag = feedViewModel.interfacePrefs.isClientTagEnabled(),
+                onBack = {
+                    articleComposerViewModel.saveDraft(
+                        feedViewModel.relayPool,
+                        activeSigner,
+                        feedViewModel.interfacePrefs.isClientTagEnabled()
+                    )
+                    navController.popBackStack()
+                },
+                onPublished = { event ->
+                    navController.popBackStack()
+                    navController.navigate(
+                        "article/${event.kind}/${event.pubkey}/${android.net.Uri.encode(Nip23.dTag(event))}"
+                    )
                 }
             )
         }
@@ -1642,34 +1686,38 @@ fun WispNavHost(
                 viewModel = draftsViewModel,
                 onBack = { navController.popBackStack() },
                 onDraftClick = { draft ->
-                    // Extract reply target from draft tags if present
-                    // Prefer "reply" marker, fall back to "root"
-                    val replyTag = draft.tags
-                        .firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "reply" }
-                        ?: draft.tags.firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "root" }
-                    if (replyTag != null) {
-                        val eventId = replyTag[1]
-                        val cached = feedViewModel.eventRepo.getEvent(eventId)
-                        replyTarget = cached ?: run {
-                            // Build a stub event from draft tags so reply context works
-                            val peerPubkey = draft.tags
-                                .firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) ?: ""
-                            NostrEvent(
-                                id = eventId,
-                                pubkey = peerPubkey,
-                                created_at = 0L,
-                                kind = 1,
-                                tags = draft.tags.filter { it.firstOrNull() == "e" },
-                                content = "",
-                                sig = ""
-                            )
-                        }
-                    } else {
+                    if (draft.kind == Nip23.KIND_LONG_FORM) {
                         replyTarget = null
+                        quoteTarget = null
+                        articleComposerViewModel.loadDraft(draft)
+                        navController.navigate(Routes.ARTICLE_COMPOSER)
+                    } else {
+                        val replyTag = draft.tags
+                            .firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "reply" }
+                            ?: draft.tags.firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "root" }
+                        if (replyTag != null) {
+                            val eventId = replyTag[1]
+                            val cached = feedViewModel.eventRepo.getEvent(eventId)
+                            replyTarget = cached ?: run {
+                                val peerPubkey = draft.tags
+                                    .firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) ?: ""
+                                NostrEvent(
+                                    id = eventId,
+                                    pubkey = peerPubkey,
+                                    created_at = 0L,
+                                    kind = 1,
+                                    tags = draft.tags.filter { it.firstOrNull() == "e" },
+                                    content = "",
+                                    sig = ""
+                                )
+                            }
+                        } else {
+                            replyTarget = null
+                        }
+                        quoteTarget = null
+                        composeViewModel.loadDraft(draft)
+                        navController.navigate(Routes.COMPOSE)
                     }
-                    quoteTarget = null
-                    composeViewModel.loadDraft(draft)
-                    navController.navigate(Routes.COMPOSE)
                 },
                 onDeleteDraft = { dTag ->
                     draftsViewModel.deleteDraft(dTag, feedViewModel.relayPool, activeSigner, feedViewModel.deletedEventsRepo)
@@ -3231,6 +3279,11 @@ fun WispNavHost(
             ArticleScreen(
                 viewModel = articleViewModel,
                 eventRepo = feedViewModel.eventRepo,
+                translationRepository = feedViewModel.translationRepo,
+                onEditArticle = { event ->
+                    articleComposerViewModel.loadExisting(event)
+                    navController.navigate(Routes.ARTICLE_COMPOSER)
+                },
                 onBack = { navController.popBackStack() },
                 onProfileClick = { pubkey -> navController.navigate("profile/$pubkey") },
                 onHashtagClick = { tag ->

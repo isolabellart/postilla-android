@@ -21,6 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +40,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,12 +60,20 @@ import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
+import android.widget.Toast
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.TranslationState
+import com.darkwisp.app.repo.TranslationStatus
 import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.nostr.CustomNip
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.ui.component.ActionBar
 import com.darkwisp.app.ui.component.NoteActions
 import com.darkwisp.app.ui.component.PostCard
@@ -94,7 +107,9 @@ fun ArticleScreen(
     userPubkey: String? = null,
     resolvedEmojis: Map<String, String> = emptyMap(),
     unicodeEmojis: List<String> = emptyList(),
-    onOpenEmojiLibrary: (() -> Unit)? = null
+    onOpenEmojiLibrary: (() -> Unit)? = null,
+    translationRepository: TranslationRepository? = null,
+    onEditArticle: (NostrEvent) -> Unit = {}
 ) {
     val article by viewModel.article.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -111,13 +126,52 @@ fun ArticleScreen(
     val zapVersion by eventRepo.zapVersion.collectAsState()
     val repostVersion by eventRepo.repostVersion.collectAsState()
     val profileVersion by eventRepo.profileVersion.collectAsState()
+    val translationVersion by translationRepository?.version?.collectAsState()
+        ?: remember { androidx.compose.runtime.mutableIntStateOf(0) }
 
     val authorPubkey = article?.pubkey
     val profile = remember(authorPubkey, profileVersion) { authorPubkey?.let { eventRepo.getProfileData(it) } }
-
-    val blocks = remember(article) {
-        article?.content?.let { parseMarkdownBlocks(it) } ?: emptyList()
+    val summary = article?.tags?.firstOrNull { it.size >= 2 && it[0] == "summary" }?.get(1).orEmpty()
+    val translationNamespace = translationRepository?.getCacheNamespace() ?: "unavailable"
+    val titleTranslationKey = "article:$translationNamespace:${article?.id.orEmpty()}:title"
+    val summaryTranslationKey = "article:$translationNamespace:${article?.id.orEmpty()}:summary"
+    val bodyTranslationKey = "article:$translationNamespace:${article?.id.orEmpty()}:body"
+    val titleTranslationState = remember(translationVersion, titleTranslationKey) {
+        translationRepository?.getState(titleTranslationKey) ?: TranslationState()
     }
+    val summaryTranslationState = remember(translationVersion, summaryTranslationKey) {
+        translationRepository?.getState(summaryTranslationKey) ?: TranslationState()
+    }
+    val bodyTranslationState = remember(translationVersion, bodyTranslationKey) {
+        translationRepository?.getState(bodyTranslationKey) ?: TranslationState()
+    }
+    val translationStates = listOfNotNull(
+        title?.takeIf(String::isNotBlank)?.let { titleTranslationState },
+        summary.takeIf(String::isNotBlank)?.let { summaryTranslationState },
+        article?.content?.takeIf(String::isNotBlank)?.let { bodyTranslationState }
+    )
+    val translationLoading = translationStates.any {
+        it.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+            it.status == TranslationStatus.DOWNLOADING_MODEL ||
+            it.status == TranslationStatus.TRANSLATING
+    }
+    val translationComplete = translationStates.isNotEmpty() && translationStates.all {
+        it.status == TranslationStatus.DONE || it.status == TranslationStatus.SAME_LANGUAGE
+    }
+    val hasTranslation = translationStates.any {
+        it.status == TranslationStatus.DONE && it.translatedText.isNotBlank()
+    }
+    val translationFailed = translationStates.any { it.status == TranslationStatus.ERROR }
+    var showOriginalArticle by remember(article?.id) { mutableStateOf(false) }
+    val displayTitle = if (!showOriginalArticle && titleTranslationState.status == TranslationStatus.DONE &&
+        titleTranslationState.translatedText.isNotBlank()) titleTranslationState.translatedText else title
+    val displaySummary = if (!showOriginalArticle && summaryTranslationState.status == TranslationStatus.DONE &&
+        summaryTranslationState.translatedText.isNotBlank()) summaryTranslationState.translatedText else summary
+    val displayContent = if (!showOriginalArticle && bodyTranslationState.status == TranslationStatus.DONE &&
+        bodyTranslationState.translatedText.isNotBlank()) bodyTranslationState.translatedText else article?.content.orEmpty()
+    val blocks = remember(displayContent) { parseMarkdownBlocks(displayContent) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     val articleEmojiMap = remember(article) {
         article?.let { Nip30.parseEmojiTags(it) } ?: emptyMap()
@@ -132,7 +186,7 @@ fun ArticleScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = title ?: if (article?.kind == CustomNip.KIND) "NIP" else "Article",
+                        text = displayTitle?.takeIf(String::isNotBlank) ?: if (article?.kind == CustomNip.KIND) "NIP" else "Article",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -140,6 +194,26 @@ fun ArticleScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    article?.takeIf { it.kind == Nip23.KIND_LONG_FORM && it.pubkey == userPubkey }?.let { ownArticle ->
+                        IconButton(onClick = { onEditArticle(ownArticle) }) {
+                            Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.article_edit))
+                        }
+                    }
+                    article?.takeIf { it.kind == Nip23.KIND_LONG_FORM }?.let { shareableArticle ->
+                        IconButton(onClick = {
+                            val address = Nip19.naddrEncode(
+                                dTag = Nip23.dTag(shareableArticle),
+                                authorHex = shareableArticle.pubkey,
+                                kind = shareableArticle.kind
+                            )
+                            clipboardManager.setText(AnnotatedString("nostr:$address"))
+                            Toast.makeText(context, context.getString(R.string.article_address_copied), Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.article_copy_address))
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -192,10 +266,19 @@ fun ArticleScreen(
                             }
 
                             Text(
-                                text = title ?: "Untitled",
+                                text = displayTitle?.takeIf(String::isNotBlank) ?: "Untitled",
                                 style = MaterialTheme.typography.headlineMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+
+                            if (displaySummary.isNotBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = displaySummary,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
                             Spacer(Modifier.height(12.dp))
 
@@ -254,6 +337,59 @@ fun ArticleScreen(
                                 }
                             }
 
+                            if (translationRepository != null && translationStates.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (translationFailed) {
+                                        Text(
+                                            stringResource(R.string.marketplace_translation_failed),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    } else if (translationComplete && !hasTranslation) {
+                                        Text(
+                                            stringResource(R.string.marketplace_translation_same_language),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (!translationComplete || hasTranslation) {
+                                        IconButton(
+                                            onClick = {
+                                                if (translationComplete && hasTranslation) {
+                                                    showOriginalArticle = !showOriginalArticle
+                                                } else {
+                                                    if (!title.isNullOrBlank() && titleTranslationState.status !in setOf(TranslationStatus.DONE, TranslationStatus.SAME_LANGUAGE))
+                                                        translationRepository.translate(titleTranslationKey, title.orEmpty())
+                                                    if (summary.isNotBlank() && summaryTranslationState.status !in setOf(TranslationStatus.DONE, TranslationStatus.SAME_LANGUAGE))
+                                                        translationRepository.translate(summaryTranslationKey, summary)
+                                                    if (!article?.content.isNullOrBlank() && bodyTranslationState.status !in setOf(TranslationStatus.DONE, TranslationStatus.SAME_LANGUAGE))
+                                                        translationRepository.translate(bodyTranslationKey, article?.content.orEmpty())
+                                                }
+                                            },
+                                            enabled = !translationLoading
+                                        ) {
+                                            if (translationLoading) {
+                                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                            } else {
+                                                Icon(
+                                                    Icons.Outlined.Translate,
+                                                    contentDescription = stringResource(
+                                                        if (translationComplete && hasTranslation) {
+                                                            if (showOriginalArticle) R.string.marketplace_show_translation
+                                                            else R.string.marketplace_show_original
+                                                        } else R.string.marketplace_translate
+                                                    ),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(16.dp))
                         }
                     }

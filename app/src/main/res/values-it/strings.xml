@@ -1001,4 +1001,5 @@
     <string name="marketplace_image_next">Immagine successiva</string>
     <string name="marketplace_image_counter">%1$d di %2$d</string>
     <string name="compose_resize_text_area">Ridimensiona il campo di testo</string>
+    <string name="article_draft_label">Articolo</string>
 </resources>

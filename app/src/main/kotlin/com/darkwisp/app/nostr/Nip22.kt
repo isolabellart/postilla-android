@@ -32,6 +32,29 @@ object Nip22 {
     fun referencesAddressableRoot(event: NostrEvent, addressTag: String): Boolean =
         event.kind == KIND_COMMENT && event.tags.any { it.size >= 2 && it[0] == "A" && it[1] == addressTag }
 
+    /** Root coordinate for a comment on an addressable long-form article. */
+    fun longFormRootCoordinate(event: NostrEvent): String? =
+        event.tags.firstOrNull { it.size >= 2 && it[0] == "A" && it[1].startsWith("${Nip23.KIND_LONG_FORM}:") }?.get(1)
+            ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "a" && it[1].startsWith("${Nip23.KIND_LONG_FORM}:") }?.get(1)
+
+    /** Build a kind-1111 reply while retaining the NIP-23 article scope. */
+    fun buildAddressableCommentReplyTags(parentComment: NostrEvent): List<List<String>> {
+        val coordinate = longFormRootCoordinate(parentComment)
+            ?: throw IllegalArgumentException("Parent comment is not scoped to a NIP-23 article")
+        val parts = coordinate.split(":", limit = 3)
+        require(parts.size == 3) { "Invalid article coordinate" }
+        val rootPubkey = parentComment.tags.firstOrNull { it.size >= 2 && it[0] == "P" }?.get(1)
+            ?: parts[1]
+        return listOf(
+            listOf("A", coordinate),
+            listOf("K", parts[0]),
+            listOf("P", rootPubkey),
+            listOf("e", parentComment.id, "", parentComment.pubkey),
+            listOf("k", parentComment.kind.toString()),
+            listOf("p", parentComment.pubkey)
+        )
+    }
+
     /** Build a kind-1111 reply to a comment while retaining the listing as the thread root. */
     fun buildAddressableCommentReplyTags(root: NostrEvent, parentComment: NostrEvent): List<List<String>> {
         require(parentComment.kind == KIND_COMMENT) { "NIP-22 replies must target another kind-1111 comment" }
