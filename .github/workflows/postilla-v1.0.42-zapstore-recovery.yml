@@ -1,0 +1,288 @@
+name: Publish and verify Postilla v1.0.42 on Zapstore (one-time recovery)
+
+on:
+  push:
+    branches:
+      - "ops/postilla-v1.0.42-zapstore-recovery-20261120"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zapstore-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-and-verify:
+    name: Validate exact GitHub release, publish and verify Zapstore catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RELEASE_TAG: v1.0.42
+      EXPECTED_APK_SHA256: 026ec5d4af312da0c768e1f76004f5f7f2fe3b77605292b993fb988408d0ff2a
+      EXPECTED_CERT_SHA256: 86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841
+      EXPECTED_VERSION_CODE: "42"
+      EXPECTED_DELEGATE_PUBKEY: 8af9683c5868749cc3a261a0e006f3f53e4bea0aa81f31f0f027d684e7f0c0c8
+
+    steps:
+      - name: Check out current Zapstore metadata
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: false
+
+      - name: Install pinned Zapstore CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/zapstore/zsp/v2/cmd/zsp@v2.0.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/zsp" --version
+
+      - name: Fetch pinned zsp source for NIP-46 identity verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.0.1 https://github.com/zapstore/zsp.git "$RUNNER_TEMP/zsp"
+
+      - name: Validate exact published GitHub release and prepare targeted Zapstore config
+        id: preflight
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          [[ "$(jq -r '.tag_name' <<< "$RELEASE_DATA")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.draft' <<< "$RELEASE_DATA")" == "false" ]]
+          [[ "$(jq -r '.prerelease' <<< "$RELEASE_DATA")" == "false" ]]
+
+          RELEASE_URL="$(jq -r '.html_url' <<< "$RELEASE_DATA")"
+          EXPECTED_APK_NAME="Postilla-v1.0.42.apk"
+          ASSET_DATA="$(jq -c --arg name "$EXPECTED_APK_NAME" \
+            '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+          [[ -n "$ASSET_DATA" ]] || {
+            echo "::error::The published GitHub release is missing $EXPECTED_APK_NAME."
+            exit 1
+          }
+
+          ASSET_DIGEST="$(jq -r '.digest // empty' <<< "$ASSET_DATA")"
+          [[ "$ASSET_DIGEST" == "sha256:$EXPECTED_APK_SHA256" ]] || {
+            echo "::error::The GitHub Release asset digest differs from the independently verified production APK."
+            exit 1
+          }
+
+          echo "Verified stable GitHub release: $RELEASE_URL"
+          echo "Verified asset: $EXPECTED_APK_NAME"
+          echo "Verified APK SHA-256: $EXPECTED_APK_SHA256"
+
+          python3 - "$RELEASE_TAG" "$GITHUB_WORKSPACE/zapstore.yaml" "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          tag, source_path, target_path = sys.argv[1:]
+          source = pathlib.Path(source_path).read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r"(?m)^release_filter:\s*.*$",
+              "release_filter: '^" + re.escape(tag) + "$'",
+              source,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one release_filter in zapstore.yaml")
+          pathlib.Path(target_path).write_text(updated, encoding="utf-8")
+          print("Prepared exact release filter for " + tag)
+          PY
+
+          ZSP="$(go env GOPATH)/bin/zsp"
+          "$ZSP" --json check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" > "$RUNNER_TEMP/zsp-preflight.json"
+          cat "$RUNNER_TEMP/zsp-preflight.json"
+
+          jq -e \
+            --arg app "com.isolabellart.darkwispenhanced" \
+            --arg version "1.0.42" \
+            --argjson code 42 \
+            --arg hash "$EXPECTED_APK_SHA256" \
+            --arg cert "$EXPECTED_CERT_SHA256" \
+            '.ok == true and .listed == true and
+             .apk.app_id == $app and
+             .apk.version_name == $version and
+             .apk.version_code == $code and
+             .apk.hash == $hash and
+             .apk.certificate_hash == $cert' \
+            "$RUNNER_TEMP/zsp-preflight.json" >/dev/null || {
+              echo "::error::Zapstore preflight does not resolve the exact verified Postilla 1.0.42 APK."
+              exit 1
+            }
+
+          PUBLISHED_VERSION_CODE="$(jq -r '.published_version_code // 0' "$RUNNER_TEMP/zsp-preflight.json")"
+          if (( PUBLISHED_VERSION_CODE > EXPECTED_VERSION_CODE )); then
+            echo "::error::Zapstore already lists a newer version code ($PUBLISHED_VERSION_CODE)."
+            exit 1
+          elif (( PUBLISHED_VERSION_CODE == EXPECTED_VERSION_CODE )); then
+            echo "Zapstore already lists version code 42; exact APK hash and certificate are verified."
+            SHOULD_PUBLISH=false
+          else
+            SHOULD_PUBLISH=true
+          fi
+
+          {
+            echo "should_publish=$SHOULD_PUBLISH"
+            echo "published_version_code=$PUBLISHED_VERSION_CODE"
+            echo "version_code=$EXPECTED_VERSION_CODE"
+            echo "apk_hash=$EXPECTED_APK_SHA256"
+            echo "certificate_hash=$EXPECTED_CERT_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Zapstore v1.0.42 preflight"
+            echo "- GitHub release: $RELEASE_URL"
+            echo "- APK SHA-256: $EXPECTED_APK_SHA256"
+            echo "- Certificate SHA-256: $EXPECTED_CERT_SHA256"
+            echo "- Catalog version code before publication: $PUBLISHED_VERSION_CODE"
+            echo "- Publish required: $SHOULD_PUBLISH"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify Postilla Bunker identity with a real NIP-46 handshake
+        if: steps.preflight.outputs.should_publish == 'true'
+        shell: bash
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+          BUNKER_CLIENT_KEY: ${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$SIGN_WITH" || "$SIGN_WITH" != bunker://* ]]; then
+            echo "::error::Missing or invalid ZAPSTORE_SIGN_WITH bunker URL."
+            exit 1
+          fi
+          if [[ ! "$BUNKER_CLIENT_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Missing or invalid ZAPSTORE_BUNKER_CLIENT_KEY."
+            exit 1
+          fi
+
+          BUNKER_TARGET="$(printf '%s' "$SIGN_WITH" | sed -E 's#^bunker://([^?]*).*#\1#' | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$BUNKER_TARGET" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::The Bunker URL does not contain a valid remote-signer public key."
+            exit 1
+          fi
+
+          install -d -m 700 "$HOME/.config/zsp/bunker-keys"
+          printf '%s\n' "$BUNKER_CLIENT_KEY" > "$HOME/.config/zsp/bunker-keys/$BUNKER_TARGET.key"
+          chmod 600 "$HOME/.config/zsp/bunker-keys/$BUNKER_TARGET.key"
+          unset BUNKER_CLIENT_KEY
+
+          mkdir -p "$RUNNER_TEMP/zsp/.ci-bunker-check"
+          cat > "$RUNNER_TEMP/zsp/.ci-bunker-check/main.go" <<'GO'
+          package main
+
+          import (
+            "context"
+            "fmt"
+            "os"
+            "time"
+
+            zspnostr "github.com/zapstore/zsp/v2/internal/nostr"
+          )
+
+          func main() {
+            ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+            defer cancel()
+
+            signer, err := zspnostr.NewSigner(ctx, os.Getenv("SIGN_WITH"))
+            if err != nil {
+              fmt.Fprintln(os.Stderr, "NIP-46 connection failed:", err)
+              os.Exit(1)
+            }
+            defer signer.Close()
+
+            const expected = "8af9683c5868749cc3a261a0e006f3f53e4bea0aa81f31f0f027d684e7f0c0c8"
+            if signer.PublicKey() != expected {
+              fmt.Fprintln(os.Stderr, "The Bunker returned an unexpected delegated signing identity.")
+              os.Exit(1)
+            }
+            fmt.Println("NIP-46 handshake successful. Postilla delegate identity verified.")
+          }
+          GO
+
+          cd "$RUNNER_TEMP/zsp"
+          go run ./.ci-bunker-check
+          echo "Postilla NIP-46 identity verified."
+
+      - name: Publish the exact 1.0.42 release to Zapstore
+        if: steps.preflight.outputs.should_publish == 'true'
+        shell: bash
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+        run: |
+          set -euo pipefail
+          zsp publish -q "$GITHUB_WORKSPACE/.zapstore-targeted.yaml"
+
+      - name: Verify the exact APK is indexed by Zapstore
+        shell: bash
+        env:
+          VERSION_CODE: ${{ steps.preflight.outputs.version_code }}
+          APK_HASH: ${{ steps.preflight.outputs.apk_hash }}
+          CERTIFICATE_HASH: ${{ steps.preflight.outputs.certificate_hash }}
+        run: |
+          set -euo pipefail
+          CHECK_JSON="$RUNNER_TEMP/zsp-postpublish.json"
+          CHECK_STDERR="$RUNNER_TEMP/zsp-postpublish.stderr"
+          ZSP="$(go env GOPATH)/bin/zsp"
+
+          for attempt in $(seq 1 20); do
+            set +e
+            "$ZSP" --json check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" > "$CHECK_JSON" 2> "$CHECK_STDERR"
+            CHECK_RC=$?
+            set -e
+
+            if (( CHECK_RC == 0 )) && jq -e \
+              --argjson code "$VERSION_CODE" \
+              --arg hash "$APK_HASH" \
+              --arg cert "$CERTIFICATE_HASH" \
+              '.ok == true and .listed == true and
+               .apk.app_id == "com.isolabellart.darkwispenhanced" and
+               .apk.version_name == "1.0.42" and
+               .apk.version_code == $code and
+               .apk.hash == $hash and
+               .apk.certificate_hash == $cert and
+               .published_version_code == $code' \
+              "$CHECK_JSON" >/dev/null; then
+                echo "Zapstore catalog confirms the exact Postilla 1.0.42 production APK."
+                cat "$CHECK_JSON"
+                {
+                  echo "## Zapstore v1.0.42 publication verified"
+                  echo "- Version code: $VERSION_CODE"
+                  echo "- APK SHA-256: $APK_HASH"
+                  echo "- Certificate SHA-256: $CERTIFICATE_HASH"
+                  echo "- Catalog check attempts: $attempt"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+            fi
+
+            echo "Zapstore has not indexed the exact version yet (check $attempt/20)."
+            [[ ! -s "$CHECK_JSON" ]] || cat "$CHECK_JSON"
+            [[ ! -s "$CHECK_STDERR" ]] || cat "$CHECK_STDERR"
+            if (( attempt < 20 )); then sleep 30; fi
+          done
+
+          echo "::error::Zapstore did not confirm the exact APK within ten minutes."
+          exit 1
+
+      - name: Preserve Zapstore diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zapstore-v1.0.42-recovery-diagnostics
+          path: |
+            ${{ runner.temp }}/zsp-preflight.json
+            ${{ runner.temp }}/zsp-postpublish.json
+            ${{ runner.temp }}/zsp-postpublish.stderr
+          if-no-files-found: warn
+          retention-days: 30
