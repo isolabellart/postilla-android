@@ -1025,6 +1025,5 @@
     <string name="article_address_copied">Indirizzo articolo copiato</string>
     <string name="article_publish_unconfirmed">Nessun relay ha confermato l'articolo. Il testo è ancora qui: riprova.</string>
     <string name="article_not_signed_in">Accedi per pubblicare un articolo.</string>
-    <string name="article_draft_label">Articolo</string>
 
 </resources>
