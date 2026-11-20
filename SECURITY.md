@@ -21,4 +21,4 @@ Do not include private keys, seed phrases, wallet recovery material, DeepL API k
 
 ## Scope and limitations
 
-Postilla is an independently maintained open-source Android Nostr client. A successful CI build, static-analysis result, or source review is not a comprehensive security audit. Wallet and third-party service behavior may require separate review by their respective providers.
+Postilla is an independently maintained open-source Android Nostr client. The repository includes a scheduled GitHub CodeQL workflow for Kotlin and Java. Its results must be reviewed and triaged; a clean CodeQL run, successful CI build, or source review is not a comprehensive independent security audit. Wallet and third-party service behavior may require separate review by their respective providers.
