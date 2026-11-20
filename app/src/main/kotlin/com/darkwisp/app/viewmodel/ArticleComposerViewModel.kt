@@ -114,7 +114,11 @@ class ArticleComposerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun insertMarkdown(marker: String) {
         val addition = when (marker) {
-            "## ", "> ", "- " -> "\n$marker"
+            "## " -> "\n## Titolo"
+            "**" -> "**grassetto**"
+            "*" -> "*corsivo*"
+            "> " -> "\n> citazione"
+            "- " -> "\n- elemento"
             else -> marker
         }
         _body.value = if (_body.value.isBlank()) addition else _body.value + addition
@@ -159,7 +163,7 @@ class ArticleComposerViewModel(app: Application) : AndroidViewModel(app) {
         if (_summary.value.isNotBlank()) add(listOf("summary", _summary.value.trim()))
         if (_coverImage.value.isNotBlank()) add(listOf("image", _coverImage.value.trim()))
         add(listOf("published_at", articlePublishedAt.toString()))
-        cleanHashtags().map(String::lowercase).distinct().forEach { add(listOf("t", it)) }
+        cleanHashtags().map { it.lowercase() }.distinct().forEach { add(listOf("t", it)) }
         if (includeClientTag) add(listOf("client", "Postilla"))
     }
 
