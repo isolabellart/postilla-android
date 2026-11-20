@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
@@ -91,6 +92,7 @@ import androidx.compose.ui.res.stringResource
 import coil3.compose.AsyncImage
 import com.darkwisp.app.nostr.FlatNotificationItem
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
@@ -192,6 +194,7 @@ fun NotificationsScreen(
     onAddEmojiSet: ((String, String) -> Unit)? = null,
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 ) {
     val notifications by viewModel.filteredFlatNotifications.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -240,7 +243,8 @@ fun NotificationsScreen(
 
     val postCardParams = remember(
         eventRepo, userPubkey, profileVersion, reactionVersion, zapVersion,
-        replyCountVersion, repostVersion, followListSize, resolvedEmojis, unicodeEmojis, pollVoteVersion
+        replyCountVersion, repostVersion, followListSize, resolvedEmojis, unicodeEmojis, pollVoteVersion,
+        onMarketplaceListingClick
     ) {
         NotifPostCardParams(
             eventRepo = eventRepo,
@@ -254,6 +258,7 @@ fun NotificationsScreen(
             resolvedEmojis = resolvedEmojis,
             unicodeEmojis = unicodeEmojis,
             onOpenEmojiLibrary = onOpenEmojiLibrary,
+            onMarketplaceListingClick = onMarketplaceListingClick,
             isFollowing = { viewModel.isFollowing(it) },
             onNoteClick = onNoteClick,
             onProfileClick = onProfileClick,
@@ -738,8 +743,16 @@ private fun ZenNotificationRow(
                         )
                     }
                 }
+                // The compact feed keeps the familiar icon + avatar row, with one post preview beneath it.
+                if (!isExpanded) {
+                    CompactNotificationPreview(
+                        item = item,
+                        eventRepo = eventRepo,
+                        resolveGroupMessage = resolveGroupMessage
+                    )
+                }
                 // Show voted option labels for NIP-88 polls
-                if (item.type == NotificationType.VOTE && item.voteOptionIds.isNotEmpty()) {
+                if (isExpanded && item.type == NotificationType.VOTE && item.voteOptionIds.isNotEmpty()) {
                     val optionLabels = remember(item.referencedEventId, item.voteOptionIds) {
                         val pollEvent = eventRepo?.getEvent(item.referencedEventId)
                         if (pollEvent != null) {
@@ -759,7 +772,7 @@ private fun ZenNotificationRow(
                     }
                 }
                 // Show voted option label for zap poll votes (kind 6969)
-                if (item.type == NotificationType.ZAP && item.zapPollOptionIndex != null) {
+                if (isExpanded && item.type == NotificationType.ZAP && item.zapPollOptionIndex != null) {
                     val optionLabel = remember(item.referencedEventId, item.zapPollOptionIndex) {
                         val pollEvent = eventRepo?.getEvent(item.referencedEventId)
                         if (pollEvent != null) {
@@ -1078,6 +1091,118 @@ private fun GroupChatExpansion(
     }
 }
 
+// ── Compact notification preview ────────────────────────────────────────
+
+@Composable
+private fun CompactNotificationPreview(
+    item: FlatNotificationItem,
+    eventRepo: EventRepository?,
+    resolveGroupMessage: ((groupChatId: String, messageId: String) -> Triple<String?, String?, Map<String, String>>)? = null
+) {
+    // A reply previews the new reply itself; a quote previews the quoting post.
+    // Reactions, reposts, zaps and votes preview the post they refer to.
+    val groupMessageId = if (item.type == NotificationType.REPLY) {
+        item.replyEventId ?: item.referencedEventId
+    } else {
+        item.referencedEventId
+    }
+    val groupContent = if (item.groupChatId != null && groupMessageId.isNotBlank()) {
+        resolveGroupMessage?.invoke(item.groupChatId, groupMessageId)?.first
+    } else null
+
+    val directContent = when {
+        !groupContent.isNullOrBlank() -> groupContent
+        item.type == NotificationType.DM || item.type == NotificationType.DM_REACTION -> item.dmContent
+        item.type == NotificationType.DM_ZAP || item.type == NotificationType.PROFILE_ZAP -> item.zapMessage
+        else -> null
+    }
+
+    if (!directContent.isNullOrBlank()) {
+        CompactPreviewText(directContent)
+        return
+    }
+
+    val repo = eventRepo ?: return
+    val eventId = when (item.type) {
+        // A private reply may not be fetchable as a public event. In that case,
+        // show its referenced parent post rather than attempting an invalid fetch.
+        NotificationType.REPLY -> if (item.isPrivateReply) {
+            item.referencedEventId
+        } else {
+            item.replyEventId ?: item.referencedEventId
+        }
+        NotificationType.QUOTE -> item.quoteEventId ?: item.referencedEventId
+        else -> item.referencedEventId
+    }.takeIf { it.isNotBlank() } ?: return
+
+    val quotedVersion by repo.quotedEventVersion.collectAsState()
+    val eventCacheVersion by repo.eventCacheVersion.collectAsState()
+    val addressParts = remember(eventId) { eventId.split(":", limit = 3) }
+    val isListingCoordinate = addressParts.size == 3 &&
+        addressParts[0] == Nip99.KIND_LISTING.toString()
+    val event = remember(eventId, quotedVersion, eventCacheVersion) {
+        if (isListingCoordinate) {
+            repo.findAddressableEvent(Nip99.KIND_LISTING, addressParts[1], addressParts[2])
+        } else {
+            repo.getEvent(eventId)
+        }
+    }
+
+    LaunchedEffect(repo, eventId) {
+        if (isListingCoordinate) {
+            repo.requestAddressableEvent(Nip99.KIND_LISTING, addressParts[1], addressParts[2])
+        } else if (repo.getEvent(eventId) == null) {
+            repo.requestQuotedEvent(eventId)
+        }
+    }
+
+    if (event?.kind == Nip99.KIND_LISTING) {
+        val imageUrl = Nip99.images(event).firstOrNull()
+        val title = Nip99.title(event).ifBlank { event.content }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (!imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier.size(52.dp)
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    } else {
+        CompactPreviewText(event?.content)
+    }
+}
+
+@Composable
+private fun CompactPreviewText(content: String?) {
+    val previewLine = content
+        ?.lineSequence()
+        ?.firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: return
+
+    Text(
+        text = previewLine,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = 2.dp)
+    )
+}
+
 // ── Note Expansion (non-reply types) ────────────────────────────────────
 
 @Composable
@@ -1382,10 +1507,20 @@ private fun ReferencedNotePostCard(
     val eventRepo = params.eventRepo ?: return
 
     val version by eventRepo.quotedEventVersion.collectAsState()
-    val event = remember(eventId, version) { eventRepo.getEvent(eventId) }
+    val addressParts = remember(eventId) { eventId.split(":", limit = 3) }
+    val isListingCoordinate = addressParts.size == 3 && addressParts[0] == Nip99.KIND_LISTING.toString()
+    val event = remember(eventId, version) {
+        if (isListingCoordinate) {
+            eventRepo.findAddressableEvent(Nip99.KIND_LISTING, addressParts[1], addressParts[2])
+        } else {
+            eventRepo.getEvent(eventId)
+        }
+    }
 
-    LaunchedEffect(eventId) {
-        if (eventRepo.getEvent(eventId) == null) {
+    LaunchedEffect(eventId, relayHints) {
+        if (isListingCoordinate) {
+            eventRepo.requestAddressableEvent(Nip99.KIND_LISTING, addressParts[1], addressParts[2], relayHints)
+        } else if (eventRepo.getEvent(eventId) == null) {
             eventRepo.requestQuotedEvent(eventId, relayHints)
         }
     }
@@ -1394,6 +1529,15 @@ private fun ReferencedNotePostCard(
         Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         }
+        return
+    }
+
+    if (event.kind == Nip99.KIND_LISTING) {
+        MarketplaceListingCard(
+            event = event,
+            eventRepository = eventRepo,
+            onClick = { params.onNoteClick(event.id) }
+        )
         return
     }
 
@@ -1499,8 +1643,9 @@ private fun ReferencedNotePostCard(
             onQuotedNoteClick = params.onNoteClick,
             noteActions = run {
                 val p = params
-                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null) {
+                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null || p.onMarketplaceListingClick != null) {
                     com.darkwisp.app.ui.component.NoteActions(
+                        onMarketplaceListingClick = p.onMarketplaceListingClick,
                         onPayInvoice = p.onPayInvoice,
                         onGroupRoom = p.onGroupRoom,
                         fetchGroupPreview = p.fetchGroupPreview,
@@ -1589,8 +1734,9 @@ private fun ReferencedNotePostCard(
             onZapPollVote = { idx -> params.onZapPollVote(event.id, idx) },
             noteActions = run {
                 val p = params
-                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null) {
+                if (p.onPayInvoice != null || p.onGroupRoom != null || p.fetchGroupPreview != null || p.onAddEmojiSet != null || p.onOpenEmojiLibrary != null || p.onMarketplaceListingClick != null) {
                     com.darkwisp.app.ui.component.NoteActions(
+                        onMarketplaceListingClick = p.onMarketplaceListingClick,
                         onPayInvoice = p.onPayInvoice,
                         onGroupRoom = p.onGroupRoom,
                         fetchGroupPreview = p.fetchGroupPreview,
@@ -1650,7 +1796,8 @@ private data class NotifPostCardParams(
     val fetchGroupPreview: (suspend (String, String) -> com.darkwisp.app.repo.GroupPreview?)? = null,
     val onAddEmojiSet: ((String, String) -> Unit)? = null,
     val onRemoveEmojiSet: ((String, String) -> Unit)? = null,
-    val isEmojiSetAdded: ((String, String) -> Boolean)? = null
+    val isEmojiSetAdded: ((String, String) -> Boolean)? = null,
+    val onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 )
 
 // ── Inline Sent Reply ──────────────────────────────────────────────────
@@ -2123,6 +2270,14 @@ private fun NotificationTypeIcon(item: FlatNotificationItem, showSats: Boolean =
         }
         NotificationType.DM_ZAP -> {} // handled by early-return above
         NotificationType.PROFILE_ZAP -> {} // handled by early-return above
+        NotificationType.MARKETPLACE_BOOKMARK -> {
+            Icon(
+                Icons.Outlined.BookmarkBorder,
+                contentDescription = "Saved to Marketplace watchlist",
+                modifier = Modifier.size(iconSize),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 
@@ -2138,6 +2293,7 @@ private fun actionText(item: FlatNotificationItem): String = when (item.type) {
     NotificationType.DM_REACTION -> "reacted to your message"
     NotificationType.DM_ZAP -> "zapped your message"
     NotificationType.PROFILE_ZAP -> "zapped your profile"
+    NotificationType.MARKETPLACE_BOOKMARK -> "saved your listing"
 }
 
 // ── Daily Summary Bar ──────────────────────────────────────────────────

@@ -6,15 +6,20 @@ import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip30
+import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Bolt11
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
+import com.darkwisp.app.nostr.Nip99
+import com.darkwisp.app.nostr.Nip01EventOrder
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrEvent.Companion.fromJson
 import com.darkwisp.app.nostr.ProfileData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -30,6 +35,22 @@ import com.darkwisp.app.db.EventPersistence
 import java.util.concurrent.ConcurrentHashMap
 
 private const val ADDRESS_INDEX_CAPACITY = 512
+
+/**
+ * Resolve which reaction IDs a deletion should remove.
+ * A remote NIP-09 lists only the IDs it actually deletes; a local manual Unlike
+ * passes the whole known set. If no explicit IDs are supplied, fall back to the
+ * current representative, or all known IDs when no representative remains.
+ */
+internal fun reactionIdsToRemove(
+    knownIds: Set<String>,
+    explicitlyDeletedIds: Set<String>,
+    latestReactionId: String?
+): Set<String> = when {
+    explicitlyDeletedIds.isNotEmpty() -> explicitlyDeletedIds
+    latestReactionId != null -> setOf(latestReactionId)
+    else -> knownIds
+}
 
 data class ZapDetail(
     val pubkey: String,
@@ -139,6 +160,125 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val _relayFeed = MutableStateFlow<List<NostrEvent>>(emptyList())
     val relayFeed: StateFlow<List<NostrEvent>> = _relayFeed
 
+    // Separate stream for replies/comments authored by followed users. Root notes stay in
+    // the ordinary feed; the original PostCard renderer is reused for every reply here.
+    private val replyFeedList = mutableListOf<NostrEvent>()
+    private val replyFeedIds = HashSet<String>()
+    private val _replyFeed = MutableStateFlow<List<NostrEvent>>(emptyList())
+    val replyFeed: StateFlow<List<NostrEvent>> = _replyFeed
+    @Volatile private var replyFeedAuthors: Set<String> = emptySet()
+    private var replyFeedScanJob: Job? = null
+    @Volatile private var replyFeedScanGeneration = 0L
+
+    fun setReplyFeedAuthors(authors: Set<String>) {
+        val nextAuthors = authors.toSet()
+        if (nextAuthors == replyFeedAuthors) return
+
+        replyFeedAuthors = nextAuthors
+        val generation = ++replyFeedScanGeneration
+        replyFeedScanJob?.cancel()
+
+        // Immediately remove replies from authors that are no longer followed.
+        // The cache scan below repopulates newly eligible replies asynchronously.
+        synchronized(replyFeedList) {
+            val retained = replyFeedList.filter { it.pubkey in nextAuthors }
+            replyFeedList.clear()
+            replyFeedList.addAll(retained)
+            replyFeedIds.clear()
+            replyFeedIds.addAll(retained.map { it.id })
+            _replyFeed.value = ArrayList(replyFeedList)
+        }
+
+        if (nextAuthors.isEmpty()) {
+            replyFeedScanJob = null
+            return
+        }
+
+        // Cache scanning and sorting can touch thousands of events. Keep it off the
+        // caller/UI thread, while merging any live events inserted during the scan.
+        replyFeedScanJob = scope.launch(Dispatchers.Default) {
+            val since = System.currentTimeMillis() / 1000 - 7 * 24 * 3600L
+            val cachedReplies = eventCache.values.asSequence()
+                .filter { it.created_at >= since && isReplyFeedEvent(it) }
+                .filter { muteRepo?.isBlocked(it.pubkey) != true }
+                .filter { muteRepo?.isEventMuted(it) != true }
+                .filter { deletedEventsRepo?.isDeleted(it.id) != true }
+                .filter { !isWotFiltered(it.pubkey, it.kind) }
+                .filter {
+                    val root = Nip22.getRootScopeId(it) ?: Nip10.getRootId(it) ?: Nip10.getReplyTarget(it) ?: it.id
+                    muteRepo?.isThreadMuted(root) != true
+                }
+                .toList()
+
+            if (generation != replyFeedScanGeneration) return@launch
+
+            synchronized(replyFeedList) {
+                if (generation != replyFeedScanGeneration) return@synchronized
+                val merged = LinkedHashMap<String, NostrEvent>()
+                cachedReplies.forEach { merged[it.id] = it }
+                // A live event may have arrived after the cache snapshot was taken.
+                replyFeedList.forEach { event ->
+                    if (event.created_at >= since && isReplyFeedEvent(event)) {
+                        merged[event.id] = event
+                    }
+                }
+                val sorted = merged.values
+                    .sortedByDescending { it.created_at }
+                    .take(500)
+                replyFeedList.clear()
+                replyFeedList.addAll(sorted)
+                replyFeedIds.clear()
+                replyFeedIds.addAll(sorted.map { it.id })
+                _replyFeed.value = ArrayList(replyFeedList)
+            }
+        }
+    }
+
+    private fun isReplyFeedEvent(event: NostrEvent): Boolean {
+        if (event.pubkey !in replyFeedAuthors) return false
+        return when (event.kind) {
+            1 -> Nip10.isReply(event)
+            Nip22.KIND_COMMENT -> {
+                val tags = event.tags
+                val hasRootScope = tags.any {
+                    it.size >= 2 && it[0] in setOf("E", "A", "I") && it[1].isNotBlank()
+                }
+                val hasRootKind = tags.any {
+                    it.size >= 2 && it[0] == "K" && it[1].isNotBlank()
+                }
+                val hasParentScope = tags.any {
+                    it.size >= 2 && it[0] in setOf("e", "a", "i") && it[1].isNotBlank()
+                }
+                val hasParentKind = tags.any {
+                    it.size >= 2 && it[0] == "k" && it[1].isNotBlank()
+                }
+                // NIP-22 requires both root (E/A/I + K) and parent (e/a/i + k) scopes.
+                hasRootScope && hasRootKind && hasParentScope && hasParentKind
+            }
+            else -> false
+        }
+    }
+
+    private fun insertReplyFeedEvent(event: NostrEvent) {
+        if (event.created_at > System.currentTimeMillis() / 1000 + 30) return
+        if (!isReplyFeedEvent(event)) return
+        if (muteRepo?.isBlocked(event.pubkey) == true) return
+        if (muteRepo?.isEventMuted(event) == true) return
+        if (deletedEventsRepo?.isDeleted(event.id) == true) return
+        if (isWotFiltered(event.pubkey, event.kind)) return
+        val root = Nip22.getRootScopeId(event) ?: Nip10.getRootId(event) ?: Nip10.getReplyTarget(event) ?: event.id
+        if (muteRepo?.isThreadMuted(root) == true) return
+        synchronized(replyFeedList) {
+            if (!replyFeedIds.add(event.id)) return
+            val index = replyFeedList.indexOfFirst { it.created_at < event.created_at }
+            if (index < 0) replyFeedList.add(event) else replyFeedList.add(index, event)
+            if (replyFeedList.size > 500) {
+                replyFeedIds.remove(replyFeedList.removeAt(replyFeedList.lastIndex).id)
+            }
+            _replyFeed.value = ArrayList(replyFeedList)
+        }
+    }
+
     // Author filter: null = show all, non-null = only show events from these pubkeys
     private val _authorFilter = MutableStateFlow<Set<String>?>(null)
 
@@ -174,8 +314,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val _relaySourceVersion = MutableStateFlow(0)
     val relaySourceVersion: StateFlow<Int> = _relaySourceVersion
 
-    // Repost tracking: inner event id -> set of reposter pubkeys
+    // Repost tracking: distinct reposters for avatars, plus every repost event for
+    // accurate counts and NIP-09 undo. Keys are the embedded/original event IDs.
     private val repostAuthors = LruCache<String, MutableSet<String>>(15000)
+    private data class RepostRecord(val author: String, val createdAt: Long)
+    private val repostEvents = LruCache<String, ConcurrentHashMap<String, RepostRecord>>(15000)
+    // Reverse index lets a kind-5 deletion remove the repost from its target's counters.
+    private val repostTargetsByEventId = LruCache<String, String>(30000)
     // Feed sort time override: eventId -> effective sort timestamp (e.g. repost time)
     private val feedSortTime = LruCache<String, Long>(15000)
     // Track which events the current user has reposted: eventId -> true
@@ -191,6 +336,14 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     val reactionVersion: StateFlow<Int> = _reactionVersion
     // Per-target-event dedup sets — evict with the same lifecycle as their count caches
     private val countedReactionIds = LruCache<String, MutableSet<String>>(15000)
+    // Marketplace likes are counted once per pubkey and stable listing address,
+    // because repeated kind-7 events from one author must not inflate the product score.
+    private val countedMarketplaceReactionAuthors = LruCache<String, MutableSet<String>>(15000)
+    private val countedMarketplaceReactionEmoji = LruCache<String, String>(30000)
+    // Keep every reaction event ID per target/author/emoji so Undo can delete duplicates too.
+    private val userReactionEventIds = LruCache<String, MutableSet<String>>(30000)
+    private data class ReactionRecord(val targetKeys: List<String>, val authorPubkey: String, val emoji: String)
+    private val reactionRecordsById = LruCache<String, ReactionRecord>(30000)
     private val countedZapIds = LruCache<String, MutableSet<String>>(15000)
     // Reply dedup: parentEventId -> set of counted reply event IDs (LRU so it evicts with replyCounts)
     private val countedReplyIds = LruCache<String, MutableSet<String>>(15000)
@@ -259,7 +412,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     /** Visibility filter shared by all observation snapshots (no disk I/O). */
     private fun isVisible(event: NostrEvent): Boolean {
         if (muteRepo?.isBlocked(event.pubkey) == true) return false
-        if (deletedEventsRepo?.isDeleted(event.id) == true) return false
+        if (deletedEventsRepo?.isEventDeleted(event) == true) return false
         return true
     }
 
@@ -279,19 +432,22 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     /** Newest visible event for [key], from the capped index or still in [eventCache]. */
     private fun addressSnapshot(key: String): NostrEvent? {
-        addressIndex[key]?.takeIf(::isVisible)?.let { return it }
         val parts = key.split(":", limit = 3)
         if (parts.size < 3) return null
         val kind = parts[0].toIntOrNull() ?: return null
         val author = parts[1]
         if (muteRepo?.isBlocked(author) == true) return null
         val dTag = parts[2]
-        var best: NostrEvent? = null
+
+        // The capped address index is a fast candidate, not the source of truth:
+        // an event can be hydrated into eventCache through getEvent() without having
+        // passed through the normal relay-ingest path that updates this index.
+        var best = addressIndex[key]?.takeIf(::isVisible)
         for (event in eventCache.values) {
             if (event.kind != kind || event.pubkey != author || !isVisible(event)) continue
             val eventDTag = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1) ?: ""
             if (eventDTag != dTag) continue
-            if (best == null || best.created_at <= event.created_at) best = event
+            if (best == null || Nip01EventOrder.isNewer(event, best)) best = event
         }
         return best
     }
@@ -307,7 +463,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             val key = addressableKey(event)
             if (key != null) {
                 val existing = addressIndex[key]
-                if (existing == null || existing.created_at <= event.created_at) {
+                if (existing == null || Nip01EventOrder.isNewer(event, existing)) {
                     if (existing != null && existing.id != event.id) addressIdIndex.remove(existing.id)
                     addressIndex[key] = event
                     addressIdIndex[event.id] = key
@@ -471,7 +627,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     @Volatile private var relaySourceDirtyFlag = false
     @Volatile private var pollVoteDirty = false
 
-    private val WOT_EXEMPT_KINDS = intArrayOf(0, 3, 4, 10002, 10050, 1059, 13, 14)
+    private val WOT_EXEMPT_KINDS = intArrayOf(0, 3, 4, 10002, 10050, 1059, 13, 14, Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT)
 
     private fun isWotFiltered(pubkey: String, kind: Int): Boolean {
         if (safetyPrefs?.wotFilterEnabled?.value != true) return false
@@ -482,6 +638,14 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return !netRepo.isInQualifiedNetwork(pubkey)
     }
 
+    /** Apply the account's moderation and trust filters to auxiliary event views. */
+    fun isEventVisibleToUser(event: NostrEvent): Boolean {
+        if (muteRepo?.isBlocked(event.pubkey) == true) return false
+        if (muteRepo?.isEventMuted(event) == true) return false
+        if (deletedEventsRepo?.isEventDeleted(event) == true) return false
+        return !isWotFiltered(event.pubkey, event.kind)
+    }
+
     fun addEvent(event: NostrEvent) {
         if (event.kind == Nip88.KIND_POLL_RESPONSE) {
             val isNew = event.id !in seenEventIds
@@ -490,17 +654,31 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (event.kind in intArrayOf(20, 21, 22)) {
             Log.d("GALLERY", "[EventRepo] addEvent kind=${event.kind} id=${event.id.take(12)} pubkey=${event.pubkey.take(8)} alreadySeen=${event.id in seenEventIds}")
         }
-        if (!seenEventIds.add(event.id)) return  // atomic dedup across all relay threads
+        if (!seenEventIds.add(event.id)) {
+            insertReplyFeedEvent(event)
+            // A Marketplace revision can be hydrated through a cache/detail path
+            // before the relay feed delivers it. Still enforce a newer Hidden revision
+            // against older public copies already displayed in the feed.
+            purgeMarketplaceAddressIfLatestHidden(event)
+            if (event.kind == Nip23.KIND_LONG_FORM) {
+                syncLatestArticleRevisionInFeed(event, countAsNewIfFirstRevision = false)
+            }
+            // A kind-6 repost may have entered seenEventIds through cacheEvent() or
+            // another profile path before reaching this pipeline. Reconcile its
+            // metadata even when the event itself is already deduplicated.
+            if (event.kind == 6) recordRepostIfEligible(event)
+            return  // atomic dedup across all relay threads
+        }
         if (event.created_at > System.currentTimeMillis() / 1000 + 30) return  // reject future-dated notes (30s grace for clock skew)
         if (muteRepo?.isBlocked(event.pubkey) == true) return
-        if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
+        if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || Nip99.isMarketplaceKind(event.kind) || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
         if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
             // NIP-22 replies-to-comments reference the thread root only via
             // uppercase E scope — prefer it over the lowercase-e parent.
             val threadRoot = Nip22.getRootScopeId(event) ?: Nip10.getRootId(event) ?: Nip10.getReplyTarget(event) ?: event.id
             if (muteRepo?.isThreadMuted(threadRoot) == true) return
         }
-        if (deletedEventsRepo?.isDeleted(event.id) == true) return
+        if (deletedEventsRepo?.isEventDeleted(event) == true) return
         if (isWotFiltered(event.pubkey, event.kind)) return
         // Track liveness: only count followed authors with recent active-content kinds,
         // so historical fetches, profile metadata, and strangers don't inflate the online count.
@@ -522,6 +700,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
         eventPersistence?.persistEvent(event)
         relayHintStore?.extractHintsFromTags(event)
+        insertReplyFeedEvent(event)
 
         when (event.kind) {
             0 -> {
@@ -541,63 +720,67 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 // NIP-22 comments never appear in feeds — cached only, rendered in
                 // thread/article views and counted as replies.
             }
-            30023 -> {
-                binaryInsert(event, fromFeed = true)
+            Nip23.KIND_LONG_FORM -> {
+                syncLatestArticleRevisionInFeed(event, countAsNewIfFirstRevision = true)
+            }
+            Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> {
+                val addressableListing = addressSnapshot(
+                    addressKey(event.kind, event.pubkey, Nip99.dTag(event))
+                )
+                if (addressableListing != null && !Nip99.isVisibleToViewer(addressableListing, currentUserPubkey)) {
+                    // A newer Hidden revision must also remove older public revisions
+                    // already present in this viewer's feed, without deleting their cache copies.
+                    removeMarketplaceAddressFromFeed(event.kind, event.pubkey, Nip99.dTag(event))
+                } else if (addressableListing?.id == event.id &&
+                    Nip99.isVisibleToViewer(event, currentUserPubkey)
+                ) {
+                    // Keep one current revision per Marketplace address in the global feed.
+                    removeMarketplaceAddressFromFeed(event.kind, event.pubkey, Nip99.dTag(event))
+                    binaryInsert(event, fromFeed = true)
+                }
             }
             20, 21, 22 -> {
                 Log.d("GALLERY", "[EventRepo] routing kind ${event.kind} to binaryInsert id=${event.id.take(12)}")
                 binaryInsert(event, fromFeed = true)
             }
             6 -> {
-                // Repost: parse embedded event from content and insert it into the feed
+                // Repost: reconcile metadata, then insert its embedded event into the feed.
+                val inner = recordRepostIfEligible(event) ?: return
+                if (Nip99.isMarketplaceKind(inner.kind) && !Nip99.isVisibleToViewer(inner, currentUserPubkey)) return
                 if (event.content.isNotBlank()) {
                     try {
-                        val inner = fromJson(event.content)
-                        if (muteRepo?.isBlocked(inner.pubkey) == true) return
-                        if (muteRepo?.isEventMuted(inner) == true) return
-                        if (isWotFiltered(event.pubkey, 6) && isWotFiltered(inner.pubkey, 1)) return
-                        val authors = repostAuthors.get(inner.id)
-                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
-                        authors.add(event.pubkey)
-                        // Auto-mark if this is the current user's repost
-                        if (event.pubkey == currentUserPubkey) {
-                            userReposts.put(inner.id, true)
-                        }
-                        repostDirty = true
-                        markEventVersionDirty(inner.id)
                         val isReply = Nip10.isReply(inner)
-                        // Only bump feed sort time if the reposter is a followed author.
-                        // Engagement subscriptions bring in reposts from anyone — non-followed
-                        // reposters should update counts but not re-sort the feed.
+                        // Reposts from followed authors (including our own account) should
+                        // surface the embedded note in the Follows feed. The note may already
+                        // be in seenEventIds because it was loaded from a profile/cache; use
+                        // feedIds, not seenEventIds, to decide whether it has entered the feed.
                         val filter = _authorFilter.value
                         val reposterIsFollowed = filter == null || event.pubkey in filter
-                        if (seenEventIds.add(inner.id)) {
+                        val innerWasNew = seenEventIds.add(inner.id)
+                        if (innerWasNew) {
                             eventCache[inner.id] = inner
                             trackIncoming(inner)
-                            if (!isReply) {
-                                if (reposterIsFollowed) {
+                        }
+                        if (!isReply) {
+                            val alreadyInFeed = synchronized(feedList) { inner.id in feedIds }
+                            if (reposterIsFollowed) {
+                                val previousSortTime = feedSortTime.get(inner.id) ?: inner.created_at
+                                if (!alreadyInFeed || event.created_at > previousSortTime) {
                                     feedSortTime.put(inner.id, event.created_at)
-                                }
-                                val sortTime = if (reposterIsFollowed) event.created_at else inner.created_at
-                                binaryInsert(inner, sortTime = sortTime, fromFeed = true)
-                            }
-                        } else if (!isReply && reposterIsFollowed && event.pubkey != currentUserPubkey) {
-                            // Already seen — update sort time if repost is newer so it surfaces to top
-                            // Skip re-sort for the user's own reposts to avoid jarring viewport jumps
-                            val prevTime = feedSortTime.get(inner.id) ?: inner.created_at
-                            if (event.created_at > prevTime) {
-                                feedSortTime.put(inner.id, event.created_at)
-                                synchronized(feedList) {
-                                    val idx = feedList.indexOfFirst { it.id == inner.id }
-                                    if (idx >= 0) {
-                                        feedList.removeAt(idx)
-                                        feedIds.remove(inner.id)
-                                        if (filteredFeedIds.remove(inner.id)) {
-                                            filteredFeed.removeAll { it.id == inner.id }
+                                    if (alreadyInFeed) {
+                                        synchronized(feedList) {
+                                            feedList.removeAll { it.id == inner.id }
+                                            feedIds.remove(inner.id)
+                                            if (filteredFeedIds.remove(inner.id)) {
+                                                filteredFeed.removeAll { it.id == inner.id }
+                                            }
                                         }
                                     }
+                                    eventCache[inner.id] = inner
+                                    binaryInsert(inner, sortTime = event.created_at, fromFeed = true)
                                 }
-                                binaryInsert(inner, sortTime = event.created_at, fromFeed = true)
+                            } else if (innerWasNew) {
+                                binaryInsert(inner, sortTime = inner.created_at, fromFeed = true)
                             }
                         }
                     } catch (_: Exception) {}
@@ -606,9 +789,39 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             5 -> {
                 val deletedIds = Nip09.getDeletedEventIds(event)
                 for (id in deletedIds) {
-                    val target = eventCache[id]
-                    if (target == null || target.pubkey == event.pubkey) {
+                    val reactionRecord = reactionRecordsById.get(id)
+                    if (reactionRecord != null && reactionRecord.authorPubkey == event.pubkey) {
+                        // Kind-7 reactions are indexed for counts rather than cached as
+                        // ordinary events. Resolve their target from this local author
+                        // index so remote NIP-09 unlikes update Marketplace counts too.
+                        reactionRecordsById.remove(id)
                         deletedEventsRepo?.markDeleted(id)
+                        // A Marketplace reaction is indexed under both its
+                        // exact revision ID and stable NIP-99 coordinate. Remove the
+                        // event ID from every index so a later Like is not mistaken for
+                        // another Unlike on devices receiving this remote deletion.
+                        reactionRecord.targetKeys.forEach { targetKey ->
+                            removeReaction(
+                                targetKey,
+                                event.pubkey,
+                                reactionRecord.emoji,
+                                setOf(id)
+                            )
+                        }
+                    }
+
+                    val target = eventCache[id]
+                    val repostTarget = repostTargetsByEventId.get(id)
+                    val repostRecord = repostTarget?.let { repostEvents.get(it)?.get(id) }
+                    // A NIP-09 deletion is authoritative only when its target is known
+                    // and the target (or repost record) belongs to the deletion author.
+                    // Unknown IDs must never create tombstones before an event arrives.
+                    val authorMatches =
+                        target?.pubkey == event.pubkey ||
+                            repostRecord?.author == event.pubkey
+                    if (authorMatches) {
+                        deletedEventsRepo?.markDeleted(id)
+                        if (repostRecord != null) removeRepostEvent(id, event.pubkey)
                         removeEvent(id)
                     }
                 }
@@ -672,47 +885,94 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     private fun addReaction(event: NostrEvent) {
         if (isWotFiltered(event.pubkey, event.kind)) return
-        val targetEventId = event.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+        val eventTargetId = event.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
             ?: resolveAddressableTarget(event)
             ?: return
-        // Per-target dedup — evicts alongside the count cache so re-fetched data can be re-counted
-        val dedupSet = countedReactionIds.get(targetEventId)
-            ?: mutableSetOf<String>().also { countedReactionIds.put(targetEventId, it) }
-        synchronized(dedupSet) { if (!dedupSet.add(event.id)) return }
+        val explicitAddressTarget = event.tags.lastOrNull { it.size >= 2 && it[0] == "a" }
+            ?.get(1)
+            ?.takeIf { it.substringBefore(':').toIntOrNull()?.let(Nip99::isMarketplaceKind) == true }
+        // Older NIP-25 clients may omit the address tag and reference only the
+        // listing revision by event ID. When that revision is cached, still index
+        // the reaction against the stable NIP-99 coordinate so the product count
+        // does not reset when the listing is edited.
+        val addressTarget = explicitAddressTarget ?: getEvent(eventTargetId)
+            ?.takeIf { Nip99.isMarketplaceKind(it.kind) }
+            ?.let { Nip99.addressTag(it) }
+        val targetKeys = listOfNotNull(eventTargetId, addressTarget).distinct()
         val emoji = if (event.content.isBlank() || event.content == "+") "❤️" else event.content
-
-        // Cache custom emoji URLs from reaction event tags
         val emojiTags = Nip30.parseEmojiTags(event)
-        if (emojiTags.isNotEmpty()) {
-            val urlMap = reactionEmojiUrls.get(targetEventId)
-                ?: ConcurrentHashMap<String, String>().also { reactionEmojiUrls.put(targetEventId, it) }
-            for ((shortcode, url) in emojiTags) {
-                urlMap[":$shortcode:"] = url
+        // Prefer the stable coordinate for NIP-99 reactions so NIP-09 deletions
+        // can reconcile counts even when the listing has since been revised.
+        reactionRecordsById.put(
+            event.id,
+            ReactionRecord(targetKeys, event.pubkey, emoji)
+        )
+
+        for (targetKey in targetKeys) {
+            // Event-ID dedup still prevents relays from replaying the same event twice.
+            val dedupSet = synchronized(countedReactionIds) {
+                countedReactionIds.get(targetKey)
+                    ?: mutableSetOf<String>().also { countedReactionIds.put(targetKey, it) }
             }
-        }
+            val wasAdded = synchronized(dedupSet) { dedupSet.add(event.id) }
+            if (!wasAdded) continue
 
-        val counts = reactionCounts.get(targetEventId)
-            ?: ConcurrentHashMap<String, Int>().also { reactionCounts.put(targetEventId, it) }
-        counts[emoji] = (counts[emoji] ?: 0) + 1
+            if (emojiTags.isNotEmpty()) {
+                val urlMap = reactionEmojiUrls.get(targetKey)
+                    ?: ConcurrentHashMap<String, String>().also { reactionEmojiUrls.put(targetKey, it) }
+                for ((shortcode, url) in emojiTags) urlMap[":$shortcode:"] = url
+            }
 
-        // Track reactor pubkeys per emoji
-        val details = reactionDetails.get(targetEventId)
-            ?: ConcurrentHashMap<String, MutableList<String>>().also { reactionDetails.put(targetEventId, it) }
-        val pubkeys = details.getOrPut(emoji) { java.util.Collections.synchronizedList(mutableListOf()) }
-        synchronized(pubkeys) { if (event.pubkey !in pubkeys) pubkeys.add(event.pubkey) }
+            // A NIP-99 listing has a stable address across revisions. Count each
+            // reacting pubkey once for that address, regardless of how many kind-7
+            // events the same account publishes.
+            val isMarketplaceAddress = targetKey.substringBefore(':').toIntOrNull()?.let(Nip99::isMarketplaceKind) == true
+            val shouldIncrementCount = if (isMarketplaceAddress) {
+                val authorKey = "${targetKey}:${event.pubkey}"
+                val authors = synchronized(countedMarketplaceReactionAuthors) {
+                    countedMarketplaceReactionAuthors.get(targetKey)
+                        ?: mutableSetOf<String>().also {
+                            countedMarketplaceReactionAuthors.put(targetKey, it)
+                        }
+                }
+                val firstReaction = synchronized(authors) { authors.add(event.pubkey) }
+                if (firstReaction) {
+                    synchronized(countedMarketplaceReactionEmoji) {
+                        countedMarketplaceReactionEmoji.put(authorKey, emoji)
+                    }
+                }
+                firstReaction
+            } else {
+                true
+            }
 
-        // Only track the current user's reactions — other users' reactions are in
-        // reactionDetails already.  Storing every reactor would fill the 5000-entry LRU,
-        // evicting the current user's entries and losing highlight state while counts
-        // (keyed by eventId alone) remain correct.
-        if (event.pubkey == currentUserPubkey) {
-            val key = "${targetEventId}:${event.pubkey}"
-            val emojiMap = userReactions.get(key)
-                ?: ConcurrentHashMap<String, String>().also { userReactions.put(key, it) }
-            emojiMap[emoji] = event.id
+            if (shouldIncrementCount) {
+                val counts = reactionCounts.get(targetKey)
+                    ?: ConcurrentHashMap<String, Int>().also { reactionCounts.put(targetKey, it) }
+                counts[emoji] = (counts[emoji] ?: 0) + 1
+            }
+
+            val details = reactionDetails.get(targetKey)
+                ?: ConcurrentHashMap<String, MutableList<String>>().also { reactionDetails.put(targetKey, it) }
+            val pubkeys = details.getOrPut(emoji) { java.util.Collections.synchronizedList(mutableListOf()) }
+            synchronized(pubkeys) { if (event.pubkey !in pubkeys) pubkeys.add(event.pubkey) }
+
+            val idsKey = "${targetKey}:${event.pubkey}:${emoji}"
+            val ids = synchronized(userReactionEventIds) {
+                userReactionEventIds.get(idsKey)
+                    ?: mutableSetOf<String>().also { userReactionEventIds.put(idsKey, it) }
+            }
+            synchronized(ids) { ids.add(event.id) }
+
+            if (event.pubkey == currentUserPubkey) {
+                val userKey = "${targetKey}:${event.pubkey}"
+                val emojiMap = userReactions.get(userKey)
+                    ?: ConcurrentHashMap<String, String>().also { userReactions.put(userKey, it) }
+                emojiMap[emoji] = event.id
+            }
+            markEventVersionDirty(targetKey)
         }
         reactionDirty = true
-        markEventVersionDirty(targetEventId)
     }
 
     private fun addPollVote(event: NostrEvent) {
@@ -898,6 +1158,93 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         _feed.value = synchronized(feedList) { ArrayList(filteredFeed) }
     }
 
+    /** Remove stale public feed revisions as soon as a newer Hidden version is known. */
+    private fun purgeMarketplaceAddressIfLatestHidden(event: NostrEvent) {
+        if (!Nip99.isMarketplaceKind(event.kind)) return
+        val latest = addressSnapshot(addressKey(event.kind, event.pubkey, Nip99.dTag(event))) ?: return
+        if (!Nip99.isVisibleToViewer(latest, currentUserPubkey)) {
+            removeMarketplaceAddressFromFeed(event.kind, event.pubkey, Nip99.dTag(event))
+        }
+    }
+
+    /**
+     * Remove obsolete revisions of one addressable Marketplace listing from the
+     * visible feed only. Event/cache/persistence are deliberately left intact so
+     * the owner can still open and edit a Hidden listing.
+     */
+    private fun removeMarketplaceAddressFromFeed(kind: Int, author: String, dTag: String) {
+        if (!Nip99.isMarketplaceKind(kind) || dTag.isBlank()) return
+        val removedIds = mutableSetOf<String>()
+        synchronized(feedList) {
+            val iterator = feedList.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (candidate.kind == kind && candidate.pubkey == author && Nip99.dTag(candidate) == dTag) {
+                    removedIds.add(candidate.id)
+                    iterator.remove()
+                }
+            }
+            if (removedIds.isNotEmpty()) {
+                feedIds.removeAll(removedIds)
+                filteredFeed.removeAll { it.id in removedIds }
+                filteredFeedIds.removeAll(removedIds)
+            }
+        }
+        if (removedIds.isNotEmpty()) feedDirty.trySend(Unit)
+    }
+
+    /**
+     * Remove older visible feed copies of one NIP-23 coordinate. The event cache
+     * and ObjectBox history are deliberately preserved for revision lookup/editing.
+     */
+    private fun removeArticleAddressFromFeed(author: String, dTag: String): Boolean {
+        if (author.isBlank() || dTag.isBlank()) return false
+        val removedIds = mutableSetOf<String>()
+        synchronized(feedList) {
+            val iterator = feedList.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (candidate.kind == Nip23.KIND_LONG_FORM &&
+                    candidate.pubkey == author &&
+                    Nip23.dTag(candidate) == dTag
+                ) {
+                    removedIds.add(candidate.id)
+                    iterator.remove()
+                }
+            }
+            if (removedIds.isNotEmpty()) {
+                feedIds.removeAll(removedIds)
+                filteredFeed.removeAll { it.id in removedIds }
+                filteredFeedIds.removeAll(removedIds)
+            }
+        }
+        if (removedIds.isNotEmpty()) feedDirty.trySend(Unit)
+        return removedIds.isNotEmpty()
+    }
+
+    /**
+     * Reconcile the visible feed against the newest NIP-23 revision known locally.
+     * Old event objects remain in cache/persistence; only duplicate feed cards are
+     * replaced. This also handles out-of-order relay delivery and cache-first paths.
+     */
+    private fun syncLatestArticleRevisionInFeed(event: NostrEvent, countAsNewIfFirstRevision: Boolean) {
+        if (event.kind != Nip23.KIND_LONG_FORM) return
+        val dTag = Nip23.dTag(event)
+        if (dTag.isBlank()) return
+        val latest = Nip23.latestRevision(
+            events = eventCache.values.filter(::isVisible),
+            authorPubkey = event.pubkey,
+            dTag = dTag
+        ) ?: return
+        if (latest.created_at > System.currentTimeMillis() / 1000 + 30) return
+
+        val replacedPreviousRevision = removeArticleAddressFromFeed(event.pubkey, dTag)
+        binaryInsert(
+            latest,
+            fromFeed = countAsNewIfFirstRevision && !replacedPreviousRevision
+        )
+    }
+
     private fun binaryInsert(event: NostrEvent, sortTime: Long = event.created_at, fromFeed: Boolean = false) {
         var filteredChanged = false
         synchronized(feedList) {
@@ -945,6 +1292,22 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             .toList()
     }
 
+    /**
+     * Returns recent events for an author from both the live cache and ObjectBox.
+     * The persistent slice lets profile screens render previously-seen history offline.
+     */
+    fun getCachedEventsByAuthorAndKinds(pubkey: String, kinds: Set<Int>, limit: Int = 200): List<NostrEvent> {
+        if (pubkey.isBlank() || kinds.isEmpty() || limit <= 0) return emptyList()
+        val inMemory = eventCache.values.asSequence()
+            .filter { it.pubkey == pubkey && it.kind in kinds }
+            .toList()
+        val persisted = eventPersistence?.getEventsByAuthorAndKinds(pubkey, kinds, limit).orEmpty()
+        return (inMemory + persisted)
+            .distinctBy { it.id }
+            .sortedByDescending { it.created_at }
+            .take(limit)
+    }
+
     fun getLatestEventTimestamp(pubkey: String, kind: Int): Long? {
         return eventCache.values
             .asSequence()
@@ -953,10 +1316,18 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun cacheEvent(event: NostrEvent) {
+        // Cache-only resolution must respect NIP-09 tombstones too; otherwise a stale
+        // naddr/preview lookup could reintroduce a withdrawn addressable listing.
+        if (!isVisible(event)) return
+        // Profile and cache-only fetches can see repost wrappers before addEvent().
+        // Record their author/target relationship here as well; registration is
+        // idempotent because repostEvents is keyed by the wrapper event ID.
+        if (event.kind == 6) recordRepostIfEligible(event)
         if (eventCache.containsKey(event.id)) return
         seenEventIds.add(event.id)
         eventCache[event.id] = event
         trackIncoming(event)
+        purgeMarketplaceAddressIfLatestHidden(event)
         // Don't persist future-dated notes — scheduled posts fetched from the scheduler
         // relay would poison the ObjectBox cache and the feed's since filter on next boot.
         if (event.created_at <= System.currentTimeMillis() / 1000 + 30) {
@@ -978,6 +1349,12 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     fun removeEvent(eventId: String) {
         val removed = eventCache.remove(eventId)
+        synchronized(replyFeedList) {
+            if (replyFeedIds.remove(eventId)) {
+                replyFeedList.removeAll { it.id == eventId }
+                _replyFeed.value = ArrayList(replyFeedList)
+            }
+        }
         synchronized(feedList) {
             if (feedIds.remove(eventId)) {
                 feedList.removeAll { it.id == eventId }
@@ -1044,16 +1421,104 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     fun findAddressableEvent(kind: Int, author: String, dTag: String): NostrEvent? {
         if (muteRepo?.isBlocked(author) == true) return null
-        return eventCache.values.firstOrNull { event ->
-            event.kind == kind && event.pubkey == author &&
-                event.tags.any { it.size >= 2 && it[0] == "d" && it[1] == dTag }
+        var best: NostrEvent? = null
+        for (event in eventCache.values) {
+            if (!isVisible(event)) continue
+            if (Nip99.isMarketplaceKind(kind)) {
+                if (!matchesAddressableEventCoordinate(event, kind, author, dTag)) continue
+            } else {
+                if (event.kind != kind || event.pubkey != author) continue
+                if (event.tags.none { it.size >= 2 && it[0] == "d" && it[1] == dTag }) continue
+            }
+            val current = best
+            if (current == null || Nip01EventOrder.isNewer(event, current)) {
+                best = event
+            }
         }
+        return best
     }
 
+    /**
+     * Store-first lookup for NIP-99 and read-only legacy Marketplace products.
+     * Call from an IO/worker coroutine, not from composition.
+     */
+    fun findPersistedMarketplaceListing(
+        kind: Int,
+        author: String,
+        dTag: String,
+        limit: Int = 2_000
+    ): NostrEvent? {
+        if (!Nip99.isMarketplaceKind(kind) || author.isBlank() || dTag.isBlank() ||
+            muteRepo?.isBlocked(author) == true
+        ) return null
+        return eventPersistence
+            ?.getEventsByAuthorAndKind(author, kind, limit)
+            .orEmpty()
+            .asSequence()
+            .filter(::isVisible)
+            .filter { matchesAddressableEventCoordinate(it, kind, author, dTag) }
+            .maxWithOrNull(compareBy<NostrEvent> { it.created_at }.thenBy { it.id })
+    }
+
+    fun findPersistedNip99Listing(author: String, dTag: String, limit: Int = 2_000): NostrEvent? =
+        findPersistedMarketplaceListing(Nip99.KIND_LISTING, author, dTag, limit)
+
     fun getEvent(id: String): NostrEvent? {
-        val event = eventCache[id] ?: eventPersistence?.getEvent(id)?.also { eventCache[id] = it }
-        if (event != null && muteRepo?.isBlocked(event.pubkey) == true) return null
+        val event = eventCache[id] ?: eventPersistence?.getEvent(id)?.also {
+            eventCache[id] = it
+            // A disk-hydrated addressable event must also participate in latest-revision
+            // resolution; otherwise an older in-memory address index can mask it.
+            trackIncoming(it)
+        }
+        if (event != null && !isVisible(event)) return null
         return event
+    }
+
+    /**
+     * Resolve the latest locally known public Marketplace watchlist snapshots.
+     * These are NIP-51 kind 30003 sets with the app's dedicated Marketplace d-tag.
+     * Both the in-memory cache and ObjectBox are consulted so counters can render
+     * immediately instead of waiting for every relay to answer a fresh REQ.
+     */
+    fun getRecentMarketplaceWatchlistEvents(limit: Int = 5000): List<NostrEvent> {
+        if (limit <= 0) return emptyList()
+        val matches: (NostrEvent) -> Boolean = { event ->
+            event.kind == Nip51.KIND_BOOKMARK_SET &&
+                event.tags.any { it.size >= 2 && it[0] == "d" && it[1] == "dark-wisp-marketplace-watchlist" } &&
+                isVisible(event)
+        }
+        val cached = eventCache.values.filter(matches)
+        val persisted = eventPersistence
+            ?.getRecentEventsByKind(Nip51.KIND_BOOKMARK_SET, limit = limit)
+            .orEmpty()
+        return (cached + persisted)
+            .asSequence()
+            .filter(matches)
+            .distinctBy { it.id }
+            .sortedByDescending { it.created_at }
+            .take(limit)
+            .toList()
+    }
+
+    /**
+     * Resolve Marketplace NIP-22 comments from memory and ObjectBox so a listing
+     * discussion is immediately available after navigating away or restarting.
+     */
+    fun getRecentCommentsForAddressableRoot(address: String, limit: Int = 100): List<NostrEvent> {
+        if (address.isBlank() || limit <= 0) return emptyList()
+        val cached = eventCache.values.filter { event ->
+            event.kind == Nip22.KIND_COMMENT && Nip22.referencesAddressableRoot(event, address) && isVisible(event)
+        }
+        val persisted = eventPersistence
+            ?.getRecentEventsByKind(Nip22.KIND_COMMENT, limit = maxOf(limit * 10, 500))
+            .orEmpty()
+        return (cached + persisted)
+            .asSequence()
+            .filter { it.kind == Nip22.KIND_COMMENT && Nip22.referencesAddressableRoot(it, address) && isVisible(it) }
+            .distinctBy { it.id }
+            .sortedByDescending { it.created_at }
+            .take(limit)
+            .toList()
     }
 
     /**
@@ -1110,6 +1575,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     fun bumpEventCacheVersion() { _eventCacheVersion.value++ }
 
     fun getProfileData(pubkey: String): ProfileData? = profileRepo?.get(pubkey)
+
+    /** Search locally cached kind-0 profiles before relying on relay NIP-50 availability. */
+    fun searchProfiles(query: String, limit: Int = 40): List<ProfileData> =
+        profileRepo?.search(query, limit).orEmpty()
 
     /**
      * Keep the drawer's account switcher in sync with the newest kind 0 for
@@ -1194,50 +1663,161 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun getReactionCount(eventId: String): Int {
+        val addressKey = reactionTargetKeys(eventId)
+            .firstOrNull { it.substringBefore(':').toIntOrNull()?.let(Nip99::isMarketplaceKind) == true }
+        if (addressKey != null) {
+            val authors = countedMarketplaceReactionAuthors.get(addressKey) ?: return 0
+            return synchronized(authors) { authors.size }
+        }
         return reactionCounts.get(eventId)?.values?.sum() ?: 0
     }
 
-    fun hasUserReacted(eventId: String, userPubkey: String): Boolean {
-        val map = userReactions.get("${eventId}:${userPubkey}") ?: return false
-        return map.isNotEmpty()
+    /**
+     * NIP-99 listings have a stable address across revisions. Read/write reaction
+     * state against both the exact revision ID and its 30402:author:d coordinate.
+     */
+    private fun reactionTargetKeys(eventId: String): List<String> {
+        if (eventId.substringBefore(':').toIntOrNull()?.let(Nip99::isMarketplaceKind) == true) return listOf(eventId)
+        val target = getEvent(eventId)
+        val address = target
+            ?.takeIf { Nip99.isMarketplaceKind(it.kind) }
+            ?.let { Nip99.addressTag(it) }
+        return listOfNotNull(eventId, address).distinct()
     }
 
-    fun getUserReactionEmoji(eventId: String, userPubkey: String): String? {
-        return userReactions.get("${eventId}:${userPubkey}")?.keys?.firstOrNull()
-    }
-
-    fun getUserReactionEmojis(eventId: String, userPubkey: String): Set<String> {
-        return userReactions.get("${eventId}:${userPubkey}")?.keys?.toSet() ?: emptySet()
-    }
-
-    fun getUserReactionEventId(eventId: String, userPubkey: String, emoji: String): String? {
-        return userReactions.get("${eventId}:${userPubkey}")?.get(emoji)
-    }
-
-    fun removeReaction(eventId: String, userPubkey: String, emoji: String) {
-        val key = "${eventId}:${userPubkey}"
-        val emojiMap = userReactions.get(key) ?: return
-        emojiMap.remove(emoji)
-
-        // Decrement reaction count
-        val counts = reactionCounts.get(eventId)
-        if (counts != null) {
-            val current = counts[emoji] ?: 0
-            if (current > 1) counts[emoji] = current - 1 else counts.remove(emoji)
+    fun hasUserReacted(eventId: String, userPubkey: String): Boolean =
+        reactionTargetKeys(eventId).any { key ->
+            userReactions.get("${key}:${userPubkey}")?.isNotEmpty() == true
         }
 
-        // Remove from reaction details
-        val details = reactionDetails.get(eventId)
-        if (details != null) {
-            val pubkeys = details[emoji]
-            if (pubkeys != null) {
-                synchronized(pubkeys) { pubkeys.remove(userPubkey) }
-                if (pubkeys.isEmpty()) details.remove(emoji)
+    fun getUserReactionEmoji(eventId: String, userPubkey: String): String? =
+        reactionTargetKeys(eventId).firstNotNullOfOrNull { key ->
+            userReactions.get("${key}:${userPubkey}")?.keys?.firstOrNull()
+        }
+
+    fun getUserReactionEmojis(eventId: String, userPubkey: String): Set<String> =
+        reactionTargetKeys(eventId).flatMap { key ->
+            userReactions.get("${key}:${userPubkey}")?.keys.orEmpty()
+        }.toSet()
+
+    fun getUserReactionEventId(eventId: String, userPubkey: String, emoji: String): String? =
+        reactionTargetKeys(eventId).firstNotNullOfOrNull { key ->
+            userReactions.get("${key}:${userPubkey}")?.get(emoji)
+        }
+
+    /** All known reaction IDs for one author/emoji on the event or stable listing address. */
+    fun getUserReactionEventIds(eventId: String, userPubkey: String, emoji: String): Set<String> =
+        reactionTargetKeys(eventId).flatMap { key ->
+            val ids = userReactionEventIds.get("${key}:${userPubkey}:${emoji}") ?: return@flatMap emptyList()
+            synchronized(ids) { ids.toList() }
+        }.toSet()
+
+    fun removeReaction(
+        eventId: String,
+        userPubkey: String,
+        emoji: String,
+        eventIdsToRemove: Set<String> = emptySet()
+    ) {
+        for (targetKey in reactionTargetKeys(eventId)) {
+            val userKey = "${targetKey}:${userPubkey}"
+            val emojiMap = userReactions.get(userKey)
+            val latestId = emojiMap?.get(emoji)
+
+            val idsKey = "${targetKey}:${userPubkey}:${emoji}"
+            val knownIds = userReactionEventIds.get(idsKey)
+            val knownIdsSnapshot = knownIds?.let { synchronized(it) { it.toSet() } } ?: emptySet()
+            // Explicit NIP-09 IDs are authoritative; a remote deletion of one
+            // duplicate must never silently remove another still-active reaction.
+            val idsToRemove = reactionIdsToRemove(knownIdsSnapshot, eventIdsToRemove, latestId)
+            idsToRemove.forEach { reactionRecordsById.remove(it) }
+            var removedCount = 0
+            var remainingIds: Set<String> = emptySet()
+            if (knownIds != null) {
+                synchronized(knownIds) {
+                    val toRemove = if (idsToRemove.isNotEmpty()) idsToRemove else knownIds.toSet()
+                    toRemove.forEach { id ->
+                        if (knownIds.remove(id)) {
+                            val counted = countedReactionIds.get(targetKey)
+                            if (counted != null && synchronized(counted) { counted.remove(id) }) {
+                                removedCount++
+                            }
+                        }
+                    }
+                    remainingIds = knownIds.toSet()
+                }
+                if (remainingIds.isEmpty()) {
+                    userReactionEventIds.remove(idsKey)
+                }
+            } else if (idsToRemove.isNotEmpty()) {
+                val counted = countedReactionIds.get(targetKey)
+                if (counted != null) {
+                    synchronized(counted) {
+                        idsToRemove.forEach { if (counted.remove(it)) removedCount++ }
+                    }
+                }
             }
-        }
 
+            // Keep the selected emoji active while any matching reaction ID remains.
+            // If the previous representative was deleted, point the UI at a surviving ID.
+            if (remainingIds.isNotEmpty()) {
+                // userReactions is the active account's UI state, not a mirror of
+                // every reactor. Preserve/rebuild it only for the authenticated user.
+                if (userPubkey == currentUserPubkey) {
+                    val activeId = latestId?.takeIf { it in remainingIds } ?: remainingIds.first()
+                    val activeMap = emojiMap
+                        ?: ConcurrentHashMap<String, String>().also { userReactions.put(userKey, it) }
+                    activeMap[emoji] = activeId
+                }
+            } else {
+                emojiMap?.remove(emoji)
+                if (emojiMap?.isEmpty() == true) userReactions.remove(userKey)
+            }
+
+            val isMarketplaceAddress = targetKey.substringBefore(':').toIntOrNull()?.let(Nip99::isMarketplaceKind) == true
+            if (isMarketplaceAddress) {
+                // Keep one counted author while any other emoji reaction from this
+                // account remains. Remove the product's like only after the last one.
+                val prefix = "${targetKey}:${userPubkey}:"
+                val hasOtherReaction = synchronized(userReactionEventIds) {
+                    userReactionEventIds.snapshot().any { (key, ids) ->
+                        key.startsWith(prefix) && synchronized(ids) { ids.isNotEmpty() }
+                    }
+                }
+                if (!hasOtherReaction) {
+                    val authors = countedMarketplaceReactionAuthors.get(targetKey)
+                    val removedAuthor = authors?.let { synchronized(it) { it.remove(userPubkey) } } ?: false
+                    val countedEmoji = synchronized(countedMarketplaceReactionEmoji) {
+                        countedMarketplaceReactionEmoji.remove(userKey)
+                    }
+                    if (removedAuthor && countedEmoji != null) {
+                        val counts = reactionCounts.get(targetKey)
+                        if (counts != null) {
+                            val current = counts[countedEmoji] ?: 0
+                            if (current > 1) counts[countedEmoji] = current - 1 else counts.remove(countedEmoji)
+                        }
+                    }
+                }
+            } else if (removedCount > 0) {
+                val counts = reactionCounts.get(targetKey)
+                if (counts != null) {
+                    val current = counts[emoji] ?: 0
+                    val next = (current - removedCount).coerceAtLeast(0)
+                    if (next > 0) counts[emoji] = next else counts.remove(emoji)
+                }
+            }
+
+            val details = reactionDetails.get(targetKey)
+            val remainingForEmoji = userReactionEventIds.get(idsKey)?.let { synchronized(it) { it.isNotEmpty() } } == true
+            if (details != null && !remainingForEmoji) {
+                val pubkeys = details[emoji]
+                if (pubkeys != null) {
+                    synchronized(pubkeys) { pubkeys.remove(userPubkey) }
+                    if (pubkeys.isEmpty()) details.remove(emoji)
+                }
+            }
+            markEventVersionDirty(targetKey)
+        }
         reactionDirty = true
-        markEventVersionDirty(eventId)
     }
 
     fun addZapSats(eventId: String, sats: Long) {
@@ -1343,6 +1923,134 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return result
     }
 
+    /**
+     * Parse and register a visible kind-6 repost independently from feed insertion.
+     * This must also run for events already present in seenEventIds: cacheEvent() can
+     * mark a wrapper as seen before its author/target relationship reaches addEvent().
+     * Registration is idempotent, so repeated relay copies never inflate counts.
+     */
+    private fun recordRepostIfEligible(repostEvent: NostrEvent): NostrEvent? {
+        if (repostEvent.kind != 6 || repostEvent.content.isBlank()) return null
+        if (repostEvent.created_at > System.currentTimeMillis() / 1000 + 30) return null
+        if (deletedEventsRepo?.isDeleted(repostEvent.id) == true) return null
+        if (muteRepo?.isBlocked(repostEvent.pubkey) == true) return null
+
+        return try {
+            val inner = fromJson(repostEvent.content)
+            if (muteRepo?.isBlocked(inner.pubkey) == true) return null
+            if (muteRepo?.isEventMuted(inner) == true) return null
+            if (isWotFiltered(repostEvent.pubkey, 6) && isWotFiltered(inner.pubkey, 1)) return null
+            recordRepost(repostEvent, inner)
+            inner
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun recordRepost(repostEvent: NostrEvent, inner: NostrEvent) {
+        val records = repostEvents.get(inner.id)
+            ?: ConcurrentHashMap<String, RepostRecord>().also { repostEvents.put(inner.id, it) }
+        records[repostEvent.id] = RepostRecord(repostEvent.pubkey, repostEvent.created_at)
+        repostTargetsByEventId.put(repostEvent.id, inner.id)
+
+        val authors = repostAuthors.get(inner.id)
+            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
+        authors.add(repostEvent.pubkey)
+        if (repostEvent.pubkey == currentUserPubkey) userReposts.put(inner.id, true)
+
+        repostDirty = true
+        markEventVersionDirty(inner.id)
+    }
+
+    private fun removeRepostEvent(repostEventId: String, deletingPubkey: String) {
+        val targetId = repostTargetsByEventId.get(repostEventId) ?: return
+        val records = repostEvents.get(targetId) ?: return
+        val record = records[repostEventId] ?: return
+        if (record.author != deletingPubkey) return
+
+        repostTargetsByEventId.remove(repostEventId)
+        records.remove(repostEventId)
+        val stillByAuthor = records.values.any { it.author == record.author }
+        if (!stillByAuthor) repostAuthors.get(targetId)?.remove(record.author)
+
+        if (record.author == currentUserPubkey &&
+            records.values.none { it.author == currentUserPubkey }) {
+            userReposts.remove(targetId)
+        }
+        if (records.isEmpty()) {
+            repostEvents.remove(targetId)
+            repostAuthors.remove(targetId)
+        }
+
+        val authorFilter = _authorFilter.value
+        val latestFollowedRepost = records.values
+            .asSequence()
+            .filter { authorFilter == null || it.author in authorFilter }
+            .maxOfOrNull { it.createdAt }
+        if (latestFollowedRepost == null) feedSortTime.remove(targetId)
+        else feedSortTime.put(targetId, latestFollowedRepost)
+
+        // Keep the master and filtered feed ordering in sync after undo/deletion.
+        val target = eventCache[targetId] ?: synchronized(feedList) {
+            feedList.firstOrNull { it.id == targetId }
+        }
+        val wasInFeed = synchronized(feedList) { targetId in feedIds }
+        if (target != null && wasInFeed) {
+            synchronized(feedList) {
+                feedList.removeAll { it.id == targetId }
+                feedIds.remove(targetId)
+                if (filteredFeedIds.remove(targetId)) filteredFeed.removeAll { it.id == targetId }
+            }
+            binaryInsert(
+                target,
+                sortTime = latestFollowedRepost ?: target.created_at,
+                fromFeed = false
+            )
+        }
+
+        repostDirty = true
+        markEventVersionDirty(targetId)
+    }
+
+    /**
+     * All repost events for this target that belong to the currently signed-in user.
+     * Also consult the local event database so a repost from an earlier session is
+     * recognised even when its kind-6 event is outside the current relay subscription.
+     */
+    fun getUserRepostEventIds(eventId: String): List<String> {
+        val myPubkey = currentUserPubkey ?: return emptyList()
+        val persisted = eventPersistence?.getEventsByAuthorAndKind(myPubkey, 6, 5000).orEmpty()
+        persisted.forEach { repostEvent ->
+            if (deletedEventsRepo?.isDeleted(repostEvent.id) == true) return@forEach
+            val targetId = repostEvent.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+            if (targetId == eventId) {
+                try {
+                    recordRepost(repostEvent, fromJson(repostEvent.content))
+                } catch (_: Exception) {
+                }
+            }
+        }
+        return repostEvents.get(eventId)?.entries
+            ?.filter { it.value.author == myPubkey }
+            ?.map { it.key }
+            ?: emptyList()
+    }
+
+    /** Optimistically remove all known own repost events for [eventId] after publishing NIP-09. */
+    fun removeUserRepost(eventId: String) {
+        val myPubkey = currentUserPubkey
+        if (myPubkey == null) {
+            userReposts.remove(eventId)
+            repostDirty = true
+            markEventVersionDirty(eventId)
+            return
+        }
+        getUserRepostEventIds(eventId).forEach { removeRepostEvent(it, myPubkey) }
+        if (getUserRepostEventIds(eventId).isEmpty()) userReposts.remove(eventId)
+        repostDirty = true
+        markEventVersionDirty(eventId)
+    }
+
     fun getRepostAuthor(eventId: String): String? = repostAuthors.get(eventId)?.firstOrNull()
 
     fun getReposterPubkeys(eventId: String): List<String> =
@@ -1354,7 +2062,9 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return authors.any { it in pubkeys }
     }
 
-    fun getRepostCount(eventId: String): Int = repostAuthors.get(eventId)?.size ?: 0
+    /** Counts individual repost events; author lists remain deduplicated for avatars. */
+    fun getRepostCount(eventId: String): Int =
+        repostEvents.get(eventId)?.size ?: repostAuthors.get(eventId)?.size ?: 0
 
     fun getRepostTime(eventId: String): Long? = feedSortTime.get(eventId)
 
@@ -1535,9 +2245,17 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
      */
     fun rebuildFeedFromCache(sinceTimestamp: Long = System.currentTimeMillis() / 1000 - 60 * 60 * 24) {
         val snapshot = eventCache
+        val latestArticleIds = snapshot.values
+            .asSequence()
+            .filter { it.kind == Nip23.KIND_LONG_FORM && Nip23.dTag(it).isNotBlank() }
+            .groupBy { it.pubkey to Nip23.dTag(it) }
+            .mapValues { (_, revisions) -> Nip01EventOrder.newest(revisions)?.id }
         var inserted = 0
         for ((_, event) in snapshot) {
-            if (event.kind != 1 && event.kind != 20 && event.kind != 21 && event.kind != 22 && event.kind != 1068 && event.kind != 6969 && event.kind != 30023) continue
+            if (event.kind != 1 && event.kind != 20 && event.kind != 21 && event.kind != 22 && event.kind != 1068 && event.kind != 6969 && event.kind != Nip23.KIND_LONG_FORM) continue
+            if (event.kind == Nip23.KIND_LONG_FORM &&
+                latestArticleIds[event.pubkey to Nip23.dTag(event)] != event.id
+            ) continue
             if (event.created_at < sinceTimestamp) continue
             if (event.created_at > System.currentTimeMillis() / 1000 + 30) continue  // skip future-dated (scheduled) notes
             if (muteRepo?.isEventMuted(event) == true) continue
@@ -1647,14 +2365,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                         if (muteRepo?.isBlocked(inner.pubkey) == true) return
                         if (muteRepo?.isEventMuted(inner) == true) return
                         // Track repost metadata for badges
-                        val authors = repostAuthors.get(inner.id)
-                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
-                        authors.add(event.pubkey)
-                        if (event.pubkey == currentUserPubkey) {
-                            userReposts.put(inner.id, true)
-                        }
-                        repostDirty = true
-                        markEventVersionDirty(inner.id)
+                        recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
                         if (!isReply) {
                             eventCache[inner.id] = inner
@@ -1705,14 +2416,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                         val inner = NostrEvent.fromJson(event.content)
                         if (muteRepo?.isBlocked(inner.pubkey) == true) return
                         if (muteRepo?.isEventMuted(inner) == true) return
-                        val authors = repostAuthors.get(inner.id)
-                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
-                        authors.add(event.pubkey)
-                        if (event.pubkey == currentUserPubkey) {
-                            userReposts.put(inner.id, true)
-                        }
-                        repostDirty = true
-                        markEventVersionDirty(inner.id)
+                        recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
                         if (!isReply) {
                             eventCache[inner.id] = inner
@@ -1786,6 +2490,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         zapSats.evictAll()
         eventRelays.evictAll()
         repostAuthors.evictAll()
+        repostEvents.evictAll()
+        repostTargetsByEventId.evictAll()
         reactionCounts.evictAll()
         userReactions.evictAll()
         reactionDetails.evictAll()
@@ -1794,6 +2500,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         userReposts.evictAll()
         userZaps.evictAll()
         countedReactionIds.evictAll()
+        countedMarketplaceReactionAuthors.evictAll()
+        countedMarketplaceReactionEmoji.evictAll()
+        userReactionEventIds.evictAll()
+        reactionRecordsById.evictAll()
         countedZapIds.evictAll()
         countedReplyIds.evictAll()
         rootReplyIds.clear()

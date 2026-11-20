@@ -41,7 +41,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
@@ -88,6 +87,8 @@ import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.RelayInfoRepository
+import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.TranslationState
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.darkwisp.app.ui.component.DmBubble
@@ -113,6 +114,7 @@ fun DmConversationScreen(
     userProfile: ProfileData? = null,
     userPubkey: String?,
     eventRepo: EventRepository? = null,
+    translationRepo: TranslationRepository? = null,
     relayInfoRepo: RelayInfoRepository? = null,
     onBack: () -> Unit,
     onProfileClick: ((String) -> Unit)? = null,
@@ -142,6 +144,7 @@ fun DmConversationScreen(
     val miningStatus by viewModel.miningStatus.collectAsState()
     val replyingTo by viewModel.replyingToMessage.collectAsState()
     val selectedMessageId by viewModel.selectedMessageId.collectAsState()
+    val translationVersion by translationRepo?.version?.collectAsState() ?: remember { mutableStateOf(0) }
     val isGroup = participants.size > 1
     val listState = rememberLazyListState()
     var showRelayInfo by remember { mutableStateOf(false) }
@@ -373,9 +376,6 @@ fun DmConversationScreen(
                 dmTfv = TextFieldValue(messageText, TextRange(messageText.length))
             }
         }
-        LaunchedEffect(messageText) {
-            if (messageText.isNotBlank()) viewModel.clearSendError()
-        }
         val dmEmojiState = remember(dmTfv) { detectEmojiAutocomplete(dmTfv) }
         val dmEmojiVisualTransformation = remember(resolvedEmojis) { EmojiVisualTransformation(resolvedEmojis) }
 
@@ -401,6 +401,10 @@ fun DmConversationScreen(
                         val icons = msg.relayUrls.map { url ->
                             url to relayInfoRepo?.getIconUrl(url)
                         }
+                        val translationKey = msg.rumorId.ifEmpty { msg.id }
+                        val translationState = remember(translationVersion, translationKey) {
+                            translationRepo?.getState(translationKey) ?: TranslationState()
+                        }
                         DmBubble(
                             message = msg,
                             isSent = msg.senderPubkey == userPubkey,
@@ -408,6 +412,8 @@ fun DmConversationScreen(
                             conversationMessages = messages,
                             eventRepo = eventRepo,
                             relayIcons = icons,
+                            translationState = translationState,
+                            onTranslate = { translationRepo?.translateWithDeepL(translationKey, msg.content) },
                             onSelect = { viewModel.selectMessage(msg.id) },
                             onReply = { viewModel.setReplyingTo(it) },
                             onReact = { m, emoji -> viewModel.sendReaction(m.rumorId, emoji, relayPool, signer, resolvedEmojis); onEmojiUsed?.invoke(emoji) },
@@ -437,19 +443,19 @@ fun DmConversationScreen(
                 if (listState.isScrollInProgress) viewModel.selectMessage(null)
             }
 
-            // Bottom bar overlay with gradient
+            // Postilla composer: a calm, flat surface separated from the conversation.
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .onSizeChanged { bottomBarHeightPx = it.height }
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, MaterialTheme.colorScheme.background)
-                        )
-                    )
+                    .background(MaterialTheme.colorScheme.background)
                     .navigationBarsPadding()
             ) {
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
                 AnimatedVisibility(visible = uploadProgress != null) {
                     Text(
                         text = uploadProgress ?: "",

@@ -82,7 +82,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-enum class FeedType { FOR_YOU, FOLLOWS, EXTENDED_FOLLOWS, RELAY, LIST, TRENDING }
+enum class FeedType { FOR_YOU, FOLLOWS, WITH_REPLIES, EXTENDED_FOLLOWS, RELAY, LIST, TRENDING }
 
 enum class TrendingMode { NOTES, USERS }
 
@@ -285,6 +285,8 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     var nspamClassifier: com.darkwisp.app.ml.NSpamClassifier? = null
         private set
+    private val _nspamClassifierState = MutableStateFlow<com.darkwisp.app.ml.NSpamClassifier?>(null)
+    val nspamClassifierState: StateFlow<com.darkwisp.app.ml.NSpamClassifier?> = _nspamClassifierState
 
     init {
         eventRepo.safetyPrefs = safetyPrefs
@@ -301,17 +303,18 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
                 Log.e("FeedVM", "Failed to load nspam weights", e)
                 null
             }
+            _nspamClassifierState.value = nspamClassifier
             notifRepo.spamClassifier = nspamClassifier
         }
     }
     val customEmojiRepo = CustomEmojiRepository(app, pubkeyHex)
-    val translationRepo = TranslationRepository()
+    val translationRepo = TranslationRepository(app)
     val zapPrefs = ZapPreferences(app, pubkeyHex)
     val powPrefs = PowPreferences(app)
     private val processingDispatcher = Dispatchers.Default
 
     val metadataFetcher = MetadataFetcher(
-        relayPool, outboxRouter, subManager, profileRepo, eventRepo,
+        relayPool, outboxRouter, subManager, profileRepo, eventRepo, relayListRepo,
         accountScope, processingDispatcher
     ).also {
         eventRepo.metadataFetcher = it
@@ -411,11 +414,25 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // -- Exposed state --
+    private val combinedFeedSources = combine(
+        feedSub.feedType, eventRepo.feed, eventRepo.replyFeed, eventRepo.relayFeed
+    ) { type, main, replies, relay ->
+        Triple(type, main, Pair(replies, relay))
+    }
+
     val feed: StateFlow<List<NostrEvent>> = combine(
-        feedSub.feedType, eventRepo.feed, eventRepo.relayFeed, accountSwitching
-    ) { type, main, relay, switching ->
+        combinedFeedSources, accountSwitching
+    ) { sources, switching ->
+        val (type, main, replyAndRelay) = sources
+        val (replies, relay) = replyAndRelay
         if (switching) emptyList()
-        else if (type == FeedType.RELAY || type == FeedType.TRENDING) relay else main
+        else when (type) {
+            FeedType.RELAY, FeedType.TRENDING -> relay
+            // Conversations contains replies/comments only; unrelated content
+            // filters are hidden in this mode and must not transform the list.
+            FeedType.WITH_REPLIES -> replies
+            else -> main
+        }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val liveNowStreams: StateFlow<List<com.darkwisp.app.repo.LiveStream>> = liveStreamRepo.liveStreams

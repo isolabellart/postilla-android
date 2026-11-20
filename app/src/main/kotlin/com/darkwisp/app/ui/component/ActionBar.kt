@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.darkwisp.app.R
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.ui.theme.WispThemeColors
+import com.darkwisp.app.ui.theme.PostillaPalette
 import com.darkwisp.app.ui.util.AmountFormatter
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.window.Popup
@@ -99,6 +100,8 @@ fun ActionBar(
     val fiatMode = com.darkwisp.app.ui.util.isFiatMode()
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showRepostMenu by remember { mutableStateOf(false) }
+    // Keep the active repost indicator consistently orange in both themes.
+    val repostActiveColor = Color(0xFFFF9800)
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onReply) {
@@ -184,12 +187,13 @@ fun ActionBar(
                     Icon(
                         Icons.Outlined.Repeat,
                         contentDescription = stringResource(R.string.cd_repost),
-                        tint = if (hasUserReposted) WispThemeColors.repostColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (hasUserReposted) repostActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp)
                     )
                 }
                 if (showRepostMenu) {
                     RepostPopup(
+                        hasUserReposted = hasUserReposted,
                         onRepost = {
                             onRepost()
                             showRepostMenu = false
@@ -206,7 +210,7 @@ fun ActionBar(
                 Text(
                     text = repostCount.toString(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (hasUserReposted) WispThemeColors.repostColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (hasUserReposted) repostActiveColor else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
             }
@@ -377,7 +381,7 @@ internal fun LightningAnimation(modifier: Modifier = Modifier) {
             )
             // White-core silhouette on top. Don't tint — the white IS
             // the luminous core; the warm halos do the heat work.
-            drawPath(path = boltPath, color = Color.White)
+            drawPath(path = boltPath, color = PostillaPalette.Ivory)
         }
     }
 }
@@ -404,6 +408,7 @@ internal fun icBoltPath(w: Float, h: Float, scale: Float = 1f): Path {
 
 @Composable
 private fun RepostPopup(
+    hasUserReposted: Boolean,
     onRepost: () -> Unit,
     onQuote: () -> Unit,
     onDismiss: () -> Unit
@@ -414,14 +419,18 @@ private fun RepostPopup(
         properties = PopupProperties(focusable = true)
     ) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
             shadowElevation = 8.dp,
             tonalElevation = 4.dp
         ) {
             Row(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
                 TextButton(onClick = onRepost) {
-                    Text(stringResource(R.string.btn_retweet))
+                    Text(
+                        stringResource(
+                            if (hasUserReposted) R.string.btn_undo_repost else R.string.btn_retweet
+                        )
+                    )
                 }
                 TextButton(onClick = onQuote) {
                     Text(stringResource(R.string.title_quote))

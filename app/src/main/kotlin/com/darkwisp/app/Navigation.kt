@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import com.darkwisp.app.ui.screen.BroadcastStatusBar
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -38,6 +40,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.Nip23
+import com.darkwisp.app.viewmodel.MarketplaceViewModel
+import com.darkwisp.app.ui.screen.MarketplaceEditorScreen
+import com.darkwisp.app.ui.screen.MarketplaceDetailScreen
+import com.darkwisp.app.ui.screen.MarketplaceScreen
+import com.darkwisp.app.nostr.Nip99
+import com.darkwisp.app.nostr.Nip01EventOrder
 import com.darkwisp.app.nostr.NostrUriData
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
@@ -79,6 +88,7 @@ import com.darkwisp.app.ui.screen.SearchScreen
 import com.darkwisp.app.ui.screen.SocialGraphScreen
 import com.darkwisp.app.ui.screen.BookmarkSetScreen
 import com.darkwisp.app.ui.screen.ArticleScreen
+import com.darkwisp.app.ui.screen.ArticleComposerScreen
 import com.darkwisp.app.ui.screen.BookmarksScreen
 import com.darkwisp.app.ui.screen.HashtagFeedScreen
 import com.darkwisp.app.ui.screen.KeysScreen
@@ -106,6 +116,7 @@ import com.darkwisp.app.ui.screen.RelayDetailScreen
 import com.darkwisp.app.ui.screen.WalletScreen
 import com.darkwisp.app.viewmodel.BlossomServersViewModel
 import com.darkwisp.app.viewmodel.ArticleViewModel
+import com.darkwisp.app.viewmodel.ArticleComposerViewModel
 import com.darkwisp.app.viewmodel.AuthViewModel
 import com.darkwisp.app.viewmodel.ComposeViewModel
 import com.darkwisp.app.viewmodel.DmConversationViewModel
@@ -130,19 +141,27 @@ import com.darkwisp.app.viewmodel.SplashViewModel
 import com.darkwisp.app.viewmodel.LiveStreamViewModel
 import com.darkwisp.app.viewmodel.WalletViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 
 object Routes {
     const val SPLASH = "splash"
     const val AUTH = "auth"
     const val FEED = "feed"
+    const val MARKETPLACE = "marketplace"
+    const val MARKETPLACE_SELLER = "marketplace/seller/{pubkey}"
+    const val MARKETPLACE_DETAIL = "marketplace/detail/{eventId}"
+    const val MARKETPLACE_ADDRESS = "marketplace/address/{author}/{dTag}?relays={relays}&eventId={eventId}&kind={kind}"
+    const val MARKETPLACE_EDITOR = "marketplace/edit?eventId={eventId}&author={author}&dTag={dTag}&kind={kind}"
     const val COMPOSE = "compose"
+    const val ARTICLE_COMPOSER = "article_compose"
     const val RELAYS = "relays"
     const val PROFILE_EDIT = "profile/edit"
     const val USER_PROFILE = "profile/{pubkey}"
     const val THREAD = "thread/{eventId}"
     const val DM_LIST = "dms"
-    const val DM_CONVERSATION = "dm/{pubkey}"
+    const val DM_CONVERSATION = "dm/{pubkey}?prefill={prefill}&strictDm={strictDm}"
     const val DM_CONVERSATION_GROUP = "dm/group/{conversationKey}"
     const val CONTACT_PICKER = "contact_picker"
     const val GROUP_ROOM = "group_room/{encodedRelay}/{groupId}?scrollTo={scrollTo}"
@@ -178,6 +197,23 @@ object Routes {
     const val LIVE_STREAM = "live_stream/{hostPubkey}/{dTag}?relayHint={relayHint}"
 }
 
+private fun marketplaceAddressRoute(event: NostrEvent): String {
+    val base = "marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}"
+    val params = buildList {
+        add("eventId=${android.net.Uri.encode(event.id)}")
+        if (event.kind != Nip99.KIND_LISTING) add("kind=${event.kind}")
+    }
+    return "$base?${params.joinToString("&")}"
+}
+
+private fun marketplaceEditorRoute(event: NostrEvent): String = buildString {
+    append("marketplace/edit?")
+    append("eventId=${android.net.Uri.encode(event.id)}")
+    append("&author=${android.net.Uri.encode(event.pubkey)}")
+    append("&dTag=${android.net.Uri.encode(Nip99.dTag(event))}")
+    append("&kind=${event.kind}")
+}
+
 /** Unknown profile counts as zappable — the zap send path surfaces the error. */
 private fun zapRecipientHasLud16(
     feedViewModel: com.darkwisp.app.viewmodel.FeedViewModel,
@@ -193,8 +229,18 @@ fun NostrUriData.toRoute(): String? = when (this) {
     is NostrUriData.ProfileRef -> "profile/$pubkey"
     is NostrUriData.NoteRef -> "thread/$eventId"
     is NostrUriData.AddressRef ->
-        if ((kind == 30023 || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null)
-            "article/$kind/$author/$dTag" else null
+        when {
+            Nip99.isMarketplaceKind(kind ?: -1) && author != null -> {
+                val query = buildList {
+                    if (relays.isNotEmpty()) add("relays=${android.net.Uri.encode(relays.joinToString(","))}")
+                    if (kind != Nip99.KIND_LISTING) add("kind=$kind")
+                }.joinToString("&")
+                "marketplace/address/$author/${android.net.Uri.encode(dTag)}${if (query.isNotEmpty()) "?$query" else ""}"
+            }
+            (kind == Nip23.KIND_LONG_FORM || kind == com.darkwisp.app.nostr.CustomNip.KIND) && author != null ->
+                "article/$kind/$author/${android.net.Uri.encode(dTag)}"
+            else -> null
+        }
 }
 
 @Composable
@@ -203,14 +249,15 @@ fun WispNavHost(
     onDeepLinkConsumed: () -> Unit = {},
     isDarkTheme: Boolean = true,
     onToggleTheme: () -> Unit = {},
-    accentColor: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color(0xFFFF9800),
     isLargeText: Boolean = false,
     onInterfaceChanged: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = viewModel()
     val feedViewModel: FeedViewModel = viewModel()
+    val marketplaceViewModel: MarketplaceViewModel = viewModel()
     val composeViewModel: ComposeViewModel = viewModel()
+    val articleComposerViewModel: ArticleComposerViewModel = viewModel()
     val relayViewModel: RelayViewModel = viewModel()
     val profileViewModel: ProfileViewModel = viewModel()
     val dmListViewModel: DmListViewModel = viewModel()
@@ -276,6 +323,11 @@ fun WispNavHost(
             SigningMode.READ_ONLY -> null
             null -> null
         }
+    }
+
+    val watchlistOwnerPubkey = feedViewModel.getUserPubkey()
+    val marketplaceWatchlistPriceTracker = remember(watchlistOwnerPubkey) {
+        com.darkwisp.app.repo.MarketplaceWatchlistPriceTracker(context.applicationContext, watchlistOwnerPubkey)
     }
 
     // Push signer into FeedViewModel when it becomes available
@@ -472,8 +524,24 @@ fun WispNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    // Keep NIP-99 items flowing into the shared feed even when users never
+    // open the Marketplace screen itself. The repository applies the same feed
+    // moderation and content filters as it does to ordinary kind-1 notes.
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == Routes.FEED) {
+            marketplaceViewModel.load(
+                selectedScope = com.darkwisp.app.viewmodel.MarketplaceScope.ALL,
+                relayPool = feedViewModel.relayPool,
+                eventRepository = feedViewModel.eventRepo,
+                followedPubkeys = emptyList(),
+                userPubkey = feedViewModel.getUserPubkey(),
+                relayListRepository = feedViewModel.relayListRepo
+            )
+        }
+    }
+
     val nonAppRoutes = setOf(Routes.SPLASH, Routes.AUTH, Routes.LOADING, Routes.ONBOARDING_PROFILE, Routes.ONBOARDING_SUGGESTIONS, Routes.ONBOARDING_TOPICS, Routes.ONBOARDING_FIRST_POST, Routes.EXISTING_USER_ONBOARDING)
-    val hideBottomBarRoutes = nonAppRoutes + Routes.DM_CONVERSATION + Routes.DM_CONVERSATION_GROUP + Routes.CONTACT_PICKER + Routes.GROUP_ROOM + Routes.GROUP_DETAIL + Routes.LIVE_STREAM
+    val hideBottomBarRoutes = nonAppRoutes + Routes.WALLET + Routes.DM_CONVERSATION + Routes.DM_CONVERSATION_GROUP + Routes.CONTACT_PICKER + Routes.GROUP_ROOM + Routes.GROUP_DETAIL + Routes.LIVE_STREAM
     val socialGraphDiscoveryState by feedViewModel.extendedNetworkRepo.discoveryState.collectAsState()
     val socialGraphComputing = currentRoute == Routes.SOCIAL_GRAPH && (
         socialGraphDiscoveryState is com.darkwisp.app.repo.DiscoveryState.FetchingFollowLists ||
@@ -866,6 +934,19 @@ fun WispNavHost(
                 onProfileClick = { pubkey ->
                     navController.navigate("profile/$pubkey")
                 },
+                onMarketplace = { navController.navigate(Routes.MARKETPLACE) },
+                onMyStorefront = {
+                    feedViewModel.getUserPubkey()?.let { pubkey ->
+                        navController.navigate("marketplace/seller/$pubkey")
+                    }
+                },
+                onMarketplaceWatchlist = {
+                    feedViewModel.getUserPubkey()?.let { pubkey ->
+                        navController.navigate("bookmark_set/$pubkey/dark-wisp-marketplace-watchlist")
+                    }
+                },
+                marketplaceWatchlistPriceTracker = marketplaceWatchlistPriceTracker,
+                onListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onDms = {
                     navController.navigate(Routes.DM_LIST)
                 },
@@ -1010,27 +1091,528 @@ fun WispNavHost(
             )
         }
 
-        composable(Routes.COMPOSE) {
+
+        composable(Routes.MARKETPLACE) {
+            val followedPubkeys = feedViewModel.contactRepo.getFollowList().map { it.pubkey }
+            MarketplaceScreen(
+                viewModel = marketplaceViewModel,
+                relayPool = feedViewModel.relayPool,
+                eventRepository = feedViewModel.eventRepo,
+                relayListRepository = feedViewModel.relayListRepo,
+                followedPubkeys = followedPubkeys,
+                userPubkey = feedViewModel.getUserPubkey(),
+                onBack = { navController.popBackStack() },
+                onOpenListing = { event ->
+                    // Preview events may live only in MarketplaceViewModel's cache.
+                    // Hydrate the shared repository before entering detail/editor routes.
+                    feedViewModel.eventRepo.cacheEvent(event)
+                    navController.navigate(marketplaceAddressRoute(event))
+                },
+                onCreateListing = { navController.navigate("marketplace/edit") }
+            )
+        }
+
+        composable(
+            Routes.MARKETPLACE_SELLER,
+            arguments = listOf(navArgument("pubkey") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sellerPubkey = backStackEntry.arguments?.getString("pubkey") ?: return@composable
+            val sellerProfileVersion by feedViewModel.eventRepo.profileVersion.collectAsState(initial = 0)
+            val sellerProfile = remember(sellerPubkey, sellerProfileVersion) { feedViewModel.eventRepo.getProfileData(sellerPubkey) }
+            LaunchedEffect(sellerPubkey) { feedViewModel.eventRepo.requestProfileIfMissing(sellerPubkey) }
+            MarketplaceScreen(
+                viewModel = marketplaceViewModel,
+                relayPool = feedViewModel.relayPool,
+                eventRepository = feedViewModel.eventRepo,
+                relayListRepository = feedViewModel.relayListRepo,
+                followedPubkeys = feedViewModel.contactRepo.getFollowList().map { it.pubkey },
+                userPubkey = feedViewModel.getUserPubkey(),
+                onBack = { navController.popBackStack() },
+                onOpenListing = { event ->
+                    // Preview events may live only in MarketplaceViewModel's cache.
+                    // Hydrate the shared repository before entering detail/editor routes.
+                    feedViewModel.eventRepo.cacheEvent(event)
+                    navController.navigate(marketplaceAddressRoute(event))
+                },
+                onCreateListing = { navController.navigate("marketplace/edit") },
+                sellerPubkey = sellerPubkey,
+                sellerName = sellerProfile?.displayString,
+                canCreateListing = sellerPubkey == feedViewModel.getUserPubkey()
+            )
+        }
+
+        composable(
+            Routes.MARKETPLACE_DETAIL,
+            arguments = listOf(navArgument("eventId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val eventId = backStackEntry.arguments?.getString("eventId") ?: return@composable
+            val event by feedViewModel.eventRepo
+                .observeEvent(eventId)
+                .collectAsState(initial = feedViewModel.eventRepo.peekEvent(eventId))
+            val viewerPubkey = feedViewModel.getUserPubkey()
+            val addressableEventFlow = remember(event?.kind, event?.pubkey, event?.let(Nip99::dTag)) {
+                event?.takeIf { Nip99.isMarketplaceKind(it.kind) }?.let { listing ->
+                    feedViewModel.eventRepo.observeAddressableEvent(listing.kind, listing.pubkey, Nip99.dTag(listing))
+                } ?: kotlinx.coroutines.flow.flowOf(null)
+            }
+            val latestAddressableEvent by addressableEventFlow.collectAsState(initial = event)
+            val latestListing = latestAddressableEvent ?: event
+            val hiddenFromViewer = event?.let {
+                !Nip99.isVisibleToViewer(it, viewerPubkey) ||
+                    (Nip99.isMarketplaceKind(it.kind) && latestListing != null &&
+                        !Nip99.isVisibleToViewer(latestListing, viewerPubkey))
+            } == true
+            LaunchedEffect(eventId) {
+                if (feedViewModel.eventRepo.peekEvent(eventId) == null) {
+                    feedViewModel.eventRepo.requestQuotedEvent(eventId)
+                }
+            }
+            LaunchedEffect(event?.kind, event?.pubkey, event?.let(Nip99::dTag)) {
+                event?.takeIf { Nip99.isMarketplaceKind(it.kind) }?.let { listing ->
+                    feedViewModel.eventRepo.requestAddressableEvent(
+                        listing.kind, listing.pubkey, Nip99.dTag(listing)
+                    )
+                }
+            }
+            if (hiddenFromViewer) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.marketplace_hidden_unavailable))
+                    androidx.compose.material3.Button(onClick = { navController.popBackStack() }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.cd_back))
+                    }
+                }
+            } else if (event == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else {
+                val listing = event!!
+                val marketplaceSpamClassifier by feedViewModel.nspamClassifierState.collectAsState()
+                MarketplaceDetailScreen(
+                    event = listing,
+                    userPubkey = feedViewModel.getUserPubkey(),
+                    onBack = { navController.popBackStack() },
+                    onOpenProfile = { pubkey -> navController.navigate("profile/$pubkey") },
+                    onBookmarkSetChanged = { bookmarkEvent ->
+                        feedViewModel.bookmarkSetRepo.setOwner(bookmarkEvent.pubkey)
+                        feedViewModel.bookmarkSetRepo.updateFromEvent(bookmarkEvent)
+                    },
+                    bookmarkSetRepository = feedViewModel.bookmarkSetRepo,
+                    onEdit = { navController.navigate(marketplaceEditorRoute(listing)) },
+                    onContactSeller = { message ->
+                        val listingAddress = Nip19.naddrEncode(
+                            dTag = Nip99.dTag(listing),
+                            authorHex = listing.pubkey,
+                            kind = event!!.kind
+                        )
+                        val messageWithReference = message.trim() + "\n\nnostr:" + listingAddress
+                        val encodedMessage = android.net.Uri.encode(messageWithReference)
+                        navController.navigate("dm/${listing.pubkey}?prefill=${encodedMessage}&strictDm=true")
+                    },
+                    eventRepository = feedViewModel.eventRepo,
+                    relayPool = feedViewModel.relayPool,
+                    signer = activeSigner,
+                    onReact = { feedViewModel.sendReaction(listing) },
+                    onZap = { amount, msg, anonymous, isPrivate ->
+                        feedViewModel.sendZap(listing, amount, msg, anonymous, isPrivate, eventATag = Nip99.addressTag(listing))
+                    },
+                    isWalletConnected = feedViewModel.activeWalletProvider.hasConnection(),
+                    zapPrefsRepo = feedViewModel.zapPrefs,
+                    onGoToWallet = { navController.navigate(Routes.WALLET) },
+                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, listing.pubkey),
+                    profileLookup = { feedViewModel.profileRepo.get(it) },
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    translationRepository = feedViewModel.translationRepo,
+                    spamClassifier = marketplaceSpamClassifier,
+                    spamAuthorCache = feedViewModel.spamAuthorCache,
+                    safetyPrefs = feedViewModel.safetyPrefs,
+                    contactRepo = feedViewModel.contactRepo,
+                    powPrefs = feedViewModel.powPrefs,
+                    interfacePrefs = feedViewModel.interfacePrefs,
+                    onReactComment = { comment -> feedViewModel.sendReaction(comment) },
+                    onBoostListing = { listingReference ->
+                        replyTarget = null
+                        quoteTarget = null
+                        navController.navigate("${Routes.COMPOSE}?prefillContent=${android.net.Uri.encode(listingReference)}")
+                    }
+                )
+            }
+        }
+
+        composable(
+            Routes.MARKETPLACE_ADDRESS,
+            arguments = listOf(
+                navArgument("author") { type = NavType.StringType },
+                navArgument("dTag") { type = NavType.StringType },
+                navArgument("eventId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("kind") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("relays") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val author = backStackEntry.arguments?.getString("author") ?: return@composable
+            val dTag = backStackEntry.arguments?.getString("dTag") ?: return@composable
+            val fallbackEventId = backStackEntry.arguments?.getString("eventId")
+            val listingKind = backStackEntry.arguments?.getString("kind")?.toIntOrNull()
+                ?.takeIf(Nip99::isMarketplaceKind) ?: Nip99.KIND_LISTING
+            val relayHints = backStackEntry.arguments?.getString("relays")
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.startsWith("wss://") }
+                ?: emptyList()
+            val cachedFallbackEvent = Nip01EventOrder.newest(
+                listOfNotNull(
+                    fallbackEventId?.let { feedViewModel.eventRepo.getEvent(it) },
+                    feedViewModel.eventRepo.findAddressableEvent(listingKind, author, dTag)
+                ).filter { candidate ->
+                    candidate.kind == listingKind &&
+                        candidate.pubkey == author &&
+                        Nip99.dTag(candidate) == dTag
+                }
+            )
+            val addressableEvent by feedViewModel.eventRepo
+                .observeAddressableEvent(listingKind, author, dTag)
+                .collectAsState(initial = cachedFallbackEvent)
+            // Keep the exact cached revision for withdrawn listings, but never let an
+            // older address-index snapshot replace a newer event selected by its ID.
+            val candidateEvent = Nip01EventOrder.newest(
+                listOfNotNull(cachedFallbackEvent, addressableEvent).filter { candidate ->
+                    candidate.kind == listingKind &&
+                        candidate.pubkey == author &&
+                        Nip99.dTag(candidate) == dTag
+                }
+            )
+            val viewerPubkey = feedViewModel.getUserPubkey()
+            val event = candidateEvent?.takeIf { Nip99.isVisibleToViewer(it, viewerPubkey) }
+            val hiddenFromViewer = candidateEvent != null && event == null
+            var detailLookupTimedOut by remember(listingKind, author, dTag) { mutableStateOf(false) }
+            var detailRetryNonce by remember(listingKind, author, dTag) { mutableLongStateOf(0L) }
+            LaunchedEffect(listingKind, author, dTag, relayHints, fallbackEventId, detailRetryNonce, viewerPubkey, hiddenFromViewer) {
+                detailLookupTimedOut = false
+                if (event != null || hiddenFromViewer) return@LaunchedEffect
+                val resolved = withTimeoutOrNull(15_000L) {
+                    val addressRequest = launch {
+                        feedViewModel.eventRepo.requestAddressableEvent(
+                            listingKind, author, dTag, relayHints
+                        )
+                    }
+                    val idRequest = fallbackEventId?.let { eventId ->
+                        launch { feedViewModel.eventRepo.requestQuotedEvent(eventId) }
+                    }
+                    try {
+                        snapshotFlow { addressableEvent }.first { candidate ->
+                            candidate != null &&
+                                candidate.kind == listingKind &&
+                                candidate.pubkey == author &&
+                                Nip99.dTag(candidate) == dTag
+                        }
+                    } finally {
+                        addressRequest.cancel()
+                        idRequest?.cancel()
+                    }
+                }
+                detailLookupTimedOut = resolved == null
+            }
+            if (hiddenFromViewer) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.marketplace_hidden_unavailable))
+                    androidx.compose.material3.Button(onClick = { navController.popBackStack() }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.cd_back))
+                    }
+                }
+            } else if (event == null && detailLookupTimedOut) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        androidx.compose.ui.res.stringResource(R.string.marketplace_naddr_not_found)
+                    )
+                    androidx.compose.material3.Button(onClick = { detailRetryNonce++ }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.retry))
+                    }
+                }
+            } else if (event == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else {
+                val marketplaceSpamClassifier by feedViewModel.nspamClassifierState.collectAsState()
+                MarketplaceDetailScreen(
+                    event = event!!,
+                    userPubkey = feedViewModel.getUserPubkey(),
+                    onBack = { navController.popBackStack() },
+                    onOpenProfile = { pubkey -> navController.navigate("profile/$pubkey") },
+                    onBookmarkSetChanged = { bookmarkEvent ->
+                        feedViewModel.bookmarkSetRepo.setOwner(bookmarkEvent.pubkey)
+                        feedViewModel.bookmarkSetRepo.updateFromEvent(bookmarkEvent)
+                    },
+                    bookmarkSetRepository = feedViewModel.bookmarkSetRepo,
+                    onEdit = { navController.navigate(marketplaceEditorRoute(event!!)) },
+                    onContactSeller = { message ->
+                        val listingAddress = Nip19.naddrEncode(
+                            dTag = Nip99.dTag(event!!),
+                            authorHex = event!!.pubkey,
+                            kind = event!!.kind
+                        )
+                        val messageWithReference = message.trim() + "\n\nnostr:" + listingAddress
+                        val encodedMessage = android.net.Uri.encode(messageWithReference)
+                        navController.navigate("dm/${event!!.pubkey}?prefill=${encodedMessage}&strictDm=true")
+                    },
+                    eventRepository = feedViewModel.eventRepo,
+                    relayPool = feedViewModel.relayPool,
+                    signer = activeSigner,
+                    onReact = { feedViewModel.sendReaction(event!!) },
+                    onZap = { amount, msg, anonymous, isPrivate ->
+                        feedViewModel.sendZap(event!!, amount, msg, anonymous, isPrivate, eventATag = Nip99.addressTag(event!!))
+                    },
+                    isWalletConnected = feedViewModel.activeWalletProvider.hasConnection(),
+                    zapPrefsRepo = feedViewModel.zapPrefs,
+                    onGoToWallet = { navController.navigate(Routes.WALLET) },
+                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, event!!.pubkey),
+                    profileLookup = { feedViewModel.profileRepo.get(it) },
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    translationRepository = feedViewModel.translationRepo,
+                    spamClassifier = marketplaceSpamClassifier,
+                    spamAuthorCache = feedViewModel.spamAuthorCache,
+                    safetyPrefs = feedViewModel.safetyPrefs,
+                    contactRepo = feedViewModel.contactRepo,
+                    powPrefs = feedViewModel.powPrefs,
+                    interfacePrefs = feedViewModel.interfacePrefs,
+                    onReactComment = { comment -> feedViewModel.sendReaction(comment) },
+                    onBoostListing = { listingReference ->
+                        replyTarget = null
+                        quoteTarget = null
+                        navController.navigate("${Routes.COMPOSE}?prefillContent=${android.net.Uri.encode(listingReference)}")
+                    }
+                )
+            }
+        }
+
+        composable(
+            Routes.MARKETPLACE_EDITOR,
+            arguments = listOf(
+                navArgument("eventId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("author") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("dTag") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("kind") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val eventId = backStackEntry.arguments?.getString("eventId")
+            val editorAuthor = backStackEntry.arguments?.getString("author")
+            val editorDTag = backStackEntry.arguments?.getString("dTag")
+            val editorKind = backStackEntry.arguments?.getString("kind")
+                ?.toIntOrNull()?.takeIf(Nip99::isMarketplaceKind)
+            val hasAddressLookup = editorKind != null &&
+                !editorAuthor.isNullOrBlank() && !editorDTag.isNullOrBlank()
+            val hasExistingTarget = eventId != null || hasAddressLookup
+
+            val eventByIdFlow = remember(eventId) {
+                eventId?.let { feedViewModel.eventRepo.observeEvent(it) }
+                    ?: kotlinx.coroutines.flow.flowOf(null)
+            }
+            val eventById by eventByIdFlow.collectAsState(
+                initial = eventId?.let { feedViewModel.eventRepo.peekEvent(it) }
+            )
+            val cachedAddressEvent = remember(editorKind, editorAuthor, editorDTag) {
+                if (hasAddressLookup) {
+                    feedViewModel.eventRepo.findAddressableEvent(
+                        editorKind!!, editorAuthor!!, editorDTag!!
+                    )
+                } else null
+            }
+            val eventByAddressFlow = remember(editorKind, editorAuthor, editorDTag) {
+                if (hasAddressLookup) {
+                    feedViewModel.eventRepo.observeAddressableEvent(
+                        editorKind!!, editorAuthor!!, editorDTag!!
+                    )
+                } else {
+                    kotlinx.coroutines.flow.flowOf(null)
+                }
+            }
+            val eventByAddress by eventByAddressFlow.collectAsState(initial = cachedAddressEvent)
+            val existingEvent by remember(
+                eventId, editorKind, editorAuthor, editorDTag,
+                eventById, eventByAddress, cachedAddressEvent
+            ) {
+                derivedStateOf {
+                    Nip01EventOrder.newest(
+                        listOfNotNull(eventById, eventByAddress, cachedAddressEvent).filter { candidate ->
+                            if (hasAddressLookup) {
+                                candidate.kind == editorKind &&
+                                    candidate.pubkey == editorAuthor &&
+                                    Nip99.dTag(candidate) == editorDTag
+                            } else {
+                                candidate.id == eventId
+                            }
+                        }
+                    )
+                }
+            }
+
+            var editorLookupTimedOut by remember(eventId, editorAuthor, editorDTag, editorKind) {
+                mutableStateOf(false)
+            }
+            var editorRetryNonce by remember(eventId, editorAuthor, editorDTag, editorKind) {
+                mutableLongStateOf(0L)
+            }
+            LaunchedEffect(eventId, editorAuthor, editorDTag, editorKind, editorRetryNonce) {
+                editorLookupTimedOut = false
+                if (!hasExistingTarget || existingEvent != null) return@LaunchedEffect
+                val resolved = withTimeoutOrNull(15_000L) {
+                    val addressRequest = if (hasAddressLookup) {
+                        launch {
+                            feedViewModel.eventRepo.requestAddressableEvent(
+                                editorKind!!, editorAuthor!!, editorDTag!!
+                            )
+                        }
+                    } else null
+                    val idRequest = eventId?.let { requestedId ->
+                        launch { feedViewModel.eventRepo.requestQuotedEvent(requestedId) }
+                    }
+                    try {
+                        snapshotFlow { existingEvent }.first { it != null }
+                    } finally {
+                        addressRequest?.cancel()
+                        idRequest?.cancel()
+                    }
+                }
+                editorLookupTimedOut = resolved == null
+            }
+            if (hasExistingTarget && existingEvent == null) {
+                if (editorLookupTimedOut) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                    ) {
+                        androidx.compose.material3.Text(
+                            androidx.compose.ui.res.stringResource(R.string.marketplace_naddr_not_found)
+                        )
+                        androidx.compose.material3.Button(onClick = { editorRetryNonce++ }) {
+                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.retry))
+                        }
+                    }
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    }
+                }
+            } else {
+                MarketplaceEditorScreen(
+                    existingEvent = existingEvent,
+                userPubkey = feedViewModel.getUserPubkey(),
+                signer = activeSigner,
+                relayPool = feedViewModel.relayPool,
+                eventRepository = feedViewModel.eventRepo,
+                onBack = { navController.popBackStack() },
+                onPublished = { event ->
+                    existingEvent?.takeIf { it.kind == Nip99.KIND_LEGACY_PRODUCT }?.let { oldListing ->
+                        marketplaceViewModel.removeByExactAddress(
+                            oldListing.kind,
+                            oldListing.pubkey,
+                            Nip99.dTag(oldListing)
+                        )
+                    }
+                    marketplaceViewModel.addOrUpdate(event)
+
+                    // The editor is opened on top of the source screen. After editing,
+                    // remove both the editor and its stale detail destination before
+                    // opening the newly published revision. Otherwise Back reveals the
+                    // editor again, followed by the obsolete detail revision.
+                    navController.popBackStack() // Remove MarketplaceEditorScreen.
+                    if (existingEvent != null) {
+                        navController.popBackStack() // Replace the detail screen being edited.
+                    }
+
+                    navController.navigate(
+                        marketplaceAddressRoute(event)
+                    ) {
+                        launchSingleTop = true
+                    }
+                },
+                onWithdrawn = {
+                    existingEvent?.let {
+                        marketplaceViewModel.removeByAddress(it.pubkey, Nip99.dTag(it))
+                    }
+                    if (!navController.popBackStack(Routes.MARKETPLACE, inclusive = false)) {
+                        navController.navigate(Routes.MARKETPLACE) {
+                            launchSingleTop = true
+                        }
+                    }
+                }
+                )
+            }
+        }
+
+        composable(
+            route = "${Routes.COMPOSE}?prefillContent={prefillContent}",
+            arguments = listOf(
+                navArgument("prefillContent") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val initialComposeContent = backStackEntry.arguments?.getString("prefillContent")
+            val routeComposeViewModel = if (initialComposeContent != null) {
+                viewModel<com.darkwisp.app.viewmodel.ComposeViewModel>(
+                    viewModelStoreOwner = backStackEntry,
+                    key = "marketplace-boost-compose"
+                )
+            } else {
+                composeViewModel
+            }
             // Initialize PoW toggle from persisted preferences
             LaunchedEffect(Unit) {
-                composeViewModel.initPowState(feedViewModel.powPrefs.isNotePowEnabled())
+                routeComposeViewModel.initPowState(feedViewModel.powPrefs.isNotePowEnabled())
             }
             // Auto-save draft when leaving compose screen (back button, navigation, etc.)
             DisposableEffect(Unit) {
                 onDispose {
-                    if (composeViewModel.content.value.text.isNotBlank()) {
-                        composeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
+                    if (routeComposeViewModel.content.value.text.isNotBlank()) {
+                        routeComposeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
                     }
                 }
             }
             ComposeScreen(
-                viewModel = composeViewModel,
+                viewModel = routeComposeViewModel,
                 relayPool = feedViewModel.relayPool,
                 replyTo = replyTarget,
                 quoteTo = quoteTarget,
+                initialContent = initialComposeContent,
                 onBack = { navController.popBackStack() },
                 onSaveDraft = {
-                    composeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
+                    routeComposeViewModel.saveDraft(feedViewModel.relayPool, replyTarget, activeSigner)
                     navController.popBackStack()
                 },
                 outboxRouter = feedViewModel.outboxRouter,
@@ -1041,7 +1623,52 @@ fun WispNavHost(
                 onNotePublished = { feedViewModel.refreshNotifRepliesEtag() },
                 powManager = feedViewModel.powManager,
                 powPrefs = feedViewModel.powPrefs,
-                resolvedEmojis = feedViewModel.customEmojiRepo.resolvedEmojis.collectAsState().value
+                resolvedEmojis = feedViewModel.customEmojiRepo.resolvedEmojis.collectAsState().value,
+                onMarketplaceListingClick = { event ->
+                    val dTag = Nip99.dTag(event)
+                    if (dTag.isNotBlank()) {
+                        navController.navigate(marketplaceAddressRoute(event))
+                    }
+                },
+                onWriteArticle = {
+                    replyTarget = null
+                    quoteTarget = null
+                    articleComposerViewModel.startNew()
+                    navController.navigate(Routes.ARTICLE_COMPOSER)
+                }
+            )
+        }
+
+        composable(Routes.ARTICLE_COMPOSER) {
+            DisposableEffect(articleComposerViewModel, activeSigner) {
+                onDispose {
+                    articleComposerViewModel.saveDraft(
+                        feedViewModel.relayPool,
+                        activeSigner,
+                        feedViewModel.interfacePrefs.isClientTagEnabled()
+                    )
+                }
+            }
+            ArticleComposerScreen(
+                viewModel = articleComposerViewModel,
+                relayPool = feedViewModel.relayPool,
+                signer = activeSigner,
+                eventRepository = feedViewModel.eventRepo,
+                includeClientTag = feedViewModel.interfacePrefs.isClientTagEnabled(),
+                onBack = {
+                    articleComposerViewModel.saveDraft(
+                        feedViewModel.relayPool,
+                        activeSigner,
+                        feedViewModel.interfacePrefs.isClientTagEnabled()
+                    )
+                    navController.popBackStack()
+                },
+                onPublished = { event ->
+                    navController.popBackStack()
+                    navController.navigate(
+                        "article/${event.kind}/${event.pubkey}/${android.net.Uri.encode(Nip23.dTag(event))}"
+                    )
+                }
             )
         }
 
@@ -1059,34 +1686,38 @@ fun WispNavHost(
                 viewModel = draftsViewModel,
                 onBack = { navController.popBackStack() },
                 onDraftClick = { draft ->
-                    // Extract reply target from draft tags if present
-                    // Prefer "reply" marker, fall back to "root"
-                    val replyTag = draft.tags
-                        .firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "reply" }
-                        ?: draft.tags.firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "root" }
-                    if (replyTag != null) {
-                        val eventId = replyTag[1]
-                        val cached = feedViewModel.eventRepo.getEvent(eventId)
-                        replyTarget = cached ?: run {
-                            // Build a stub event from draft tags so reply context works
-                            val peerPubkey = draft.tags
-                                .firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) ?: ""
-                            NostrEvent(
-                                id = eventId,
-                                pubkey = peerPubkey,
-                                created_at = 0L,
-                                kind = 1,
-                                tags = draft.tags.filter { it.firstOrNull() == "e" },
-                                content = "",
-                                sig = ""
-                            )
-                        }
-                    } else {
+                    if (draft.kind == Nip23.KIND_LONG_FORM) {
                         replyTarget = null
+                        quoteTarget = null
+                        articleComposerViewModel.loadDraft(draft)
+                        navController.navigate(Routes.ARTICLE_COMPOSER)
+                    } else {
+                        val replyTag = draft.tags
+                            .firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "reply" }
+                            ?: draft.tags.firstOrNull { it.size >= 4 && it[0] == "e" && it[3] == "root" }
+                        if (replyTag != null) {
+                            val eventId = replyTag[1]
+                            val cached = feedViewModel.eventRepo.getEvent(eventId)
+                            replyTarget = cached ?: run {
+                                val peerPubkey = draft.tags
+                                    .firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) ?: ""
+                                NostrEvent(
+                                    id = eventId,
+                                    pubkey = peerPubkey,
+                                    created_at = 0L,
+                                    kind = 1,
+                                    tags = draft.tags.filter { it.firstOrNull() == "e" },
+                                    content = "",
+                                    sig = ""
+                                )
+                            }
+                        } else {
+                            replyTarget = null
+                        }
+                        quoteTarget = null
+                        composeViewModel.loadDraft(draft)
+                        navController.navigate(Routes.COMPOSE)
                     }
-                    quoteTarget = null
-                    composeViewModel.loadDraft(draft)
-                    navController.navigate(Routes.COMPOSE)
                 },
                 onDeleteDraft = { dTag ->
                     draftsViewModel.deleteDraft(dTag, feedViewModel.relayPool, activeSigner, feedViewModel.deletedEventsRepo)
@@ -1201,7 +1832,25 @@ fun WispNavHost(
                     navController.popBackStack()
                 },
                 onUnblockUser = { feedViewModel.unblockUser(pubkey) },
-                onNoteClick = { event -> navController.navigate("thread/${event.id}") },
+                onNoteClick = { event ->
+                    val rootAddress = if (event.kind == com.darkwisp.app.nostr.Nip22.KIND_COMMENT) {
+                        com.darkwisp.app.nostr.Nip22.getAddressableRootTag(event)
+                    } else if (Nip99.isMarketplaceKind(event.kind)) {
+                        Nip99.addressTag(event)
+                    } else null
+                    val parts = rootAddress?.split(":", limit = 3)
+                    val rootKind = parts?.getOrNull(0)?.toIntOrNull()
+                    if (parts?.size == 3 && rootKind != null && Nip99.isMarketplaceKind(rootKind)) {
+                        val cachedListing = event.takeIf {
+                            Nip99.isMarketplaceKind(it.kind) && it.pubkey == parts[1] && Nip99.dTag(it) == parts[2]
+                        } ?: feedViewModel.eventRepo.findAddressableEvent(rootKind, parts[1], parts[2])
+                        val route = cachedListing?.let(::marketplaceAddressRoute)
+                            ?: "marketplace/address/${parts[1]}/${android.net.Uri.encode(parts[2])}?kind=$rootKind"
+                        navController.navigate(route)
+                    } else {
+                        navController.navigate("thread/${event.id}")
+                    }
+                },
                 onQuotedNoteClick = { eventId -> navController.navigate("thread/$eventId") },
                 onReact = { event, emoji -> feedViewModel.toggleReaction(event, emoji) },
                 onZap = { event, amountMsats, message, isAnonymous, isPrivate -> feedViewModel.sendZap(event, amountMsats, message, isAnonymous, isPrivate) },
@@ -1262,6 +1911,8 @@ fun WispNavHost(
                     val encodedRelay = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(relayUrl.toByteArray())
                     navController.navigate("group_room/$encodedRelay/${android.net.Uri.encode(groupId)}")
                 },
+                onOpenStorefront = { navController.navigate("marketplace/seller/$pubkey") },
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                     val route = buildString {
                         append("live_stream/$hostPubkey/${android.net.Uri.encode(dTag)}")
@@ -1345,6 +1996,7 @@ fun WispNavHost(
                 eventRepo = feedViewModel.eventRepo,
                 muteRepo = feedViewModel.muteRepo,
                 contactRepo = feedViewModel.contactRepo,
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onProfileClick = { pubkey ->
                     navController.navigate("profile/$pubkey")
                 },
@@ -1467,12 +2119,18 @@ fun WispNavHost(
 
         composable(
             Routes.DM_CONVERSATION,
-            arguments = listOf(navArgument("pubkey") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("pubkey") { type = NavType.StringType },
+                navArgument("prefill") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("strictDm") { type = NavType.BoolType; defaultValue = false }
+            )
         ) { backStackEntry ->
             val pubkey = backStackEntry.arguments?.getString("pubkey") ?: return@composable
+            val prefill = backStackEntry.arguments?.getString("prefill")
+            val strictDm = backStackEntry.arguments?.getBoolean("strictDm") ?: false
             val dmConvoViewModel: DmConversationViewModel = viewModel()
             val userPubkey = feedViewModel.getUserPubkey()
-            LaunchedEffect(pubkey) {
+            LaunchedEffect(pubkey, prefill, strictDm) {
                 refreshInboxSubscriptionsIfStale()
                 dmConvoViewModel.init(
                     peerPubkeyHex = pubkey,
@@ -1480,7 +2138,9 @@ fun WispNavHost(
                     relayListRepository = feedViewModel.relayListRepo,
                     relayPool = feedViewModel.relayPool,
                     powPreferences = feedViewModel.powPrefs,
-                    myPubkeyHex = userPubkey
+                    myPubkeyHex = userPubkey,
+                    initialMessage = prefill,
+                    requireRecipientDmRelays = strictDm
                 )
                 activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo, feedViewModel.eventRepo, feedViewModel.notifRepo) }
             }
@@ -1496,6 +2156,7 @@ fun WispNavHost(
                 userProfile = userProfile,
                 userPubkey = userPubkey,
                 eventRepo = feedViewModel.eventRepo,
+                translationRepo = feedViewModel.translationRepo,
                 relayInfoRepo = feedViewModel.relayInfoRepo,
                 onBack = { navController.popBackStack() },
                 onProfileClick = { pk -> navController.navigate("profile/$pk") },
@@ -1510,6 +2171,9 @@ fun WispNavHost(
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
+                        onMarketplaceListingClick = { event ->
+                            navController.navigate(marketplaceAddressRoute(event))
+                        },
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
                         onRemoveEmojiSet = { pk, dTag -> feedViewModel.removeSetFromEmojiList(pk, dTag) },
@@ -1585,6 +2249,7 @@ fun WispNavHost(
                 userProfile = userProfile,
                 userPubkey = userPubkey,
                 eventRepo = feedViewModel.eventRepo,
+                translationRepo = feedViewModel.translationRepo,
                 relayInfoRepo = feedViewModel.relayInfoRepo,
                 onBack = { navController.popBackStack() },
                 onProfileClick = { pk -> navController.navigate("profile/$pk") },
@@ -1600,6 +2265,9 @@ fun WispNavHost(
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
                         nip05Repo = feedViewModel.nip05Repo,
+                        onMarketplaceListingClick = { event ->
+                            navController.navigate(marketplaceAddressRoute(event))
+                        },
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
                         onRemoveEmojiSet = { pk, dTag -> feedViewModel.removeSetFromEmojiList(pk, dTag) },
@@ -1840,6 +2508,7 @@ fun WispNavHost(
                 isFollowing = { pubkey -> feedViewModel.contactRepo.isFollowing(pubkey) },
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
+                        onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                         nip05Repo = feedViewModel.nip05Repo,
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
@@ -2037,6 +2706,7 @@ fun WispNavHost(
                 onNoteClick = { event ->
                     navController.navigate("thread/${event.id}")
                 },
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onQuotedNoteClick = { eventId ->
                     navController.navigate("thread/$eventId")
                 },
@@ -2197,6 +2867,7 @@ fun WispNavHost(
 
             val hashtagNoteActions = remember {
                 com.darkwisp.app.ui.component.NoteActions(
+                    onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                     onReply = { event ->
                         replyTarget = event
                         quoteTarget = null
@@ -2362,6 +3033,7 @@ fun WispNavHost(
 
             val setFeedNoteActions = remember {
                 com.darkwisp.app.ui.component.NoteActions(
+                    onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                     onReply = { event ->
                         replyTarget = event
                         quoteTarget = null
@@ -2541,6 +3213,7 @@ fun WispNavHost(
 
             val articleNoteActions = remember {
                 com.darkwisp.app.ui.component.NoteActions(
+                    onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                     onReply = { event ->
                         replyTarget = event
                         quoteTarget = null
@@ -2606,6 +3279,11 @@ fun WispNavHost(
             ArticleScreen(
                 viewModel = articleViewModel,
                 eventRepo = feedViewModel.eventRepo,
+                translationRepository = feedViewModel.translationRepo,
+                onEditArticle = { event ->
+                    articleComposerViewModel.loadExisting(event)
+                    navController.navigate(Routes.ARTICLE_COMPOSER)
+                },
                 onBack = { navController.popBackStack() },
                 onProfileClick = { pubkey -> navController.navigate("profile/$pubkey") },
                 onHashtagClick = { tag ->
@@ -2854,7 +3532,9 @@ fun WispNavHost(
                 application = app,
                 interfacePrefs = interfacePrefs,
                 onBack = { navController.popBackStack() },
-                onChanged = onInterfaceChanged
+                onChanged = onInterfaceChanged,
+                isDarkTheme = isDarkTheme,
+                onToggleTheme = onToggleTheme
             )
         }
 
@@ -3139,7 +3819,9 @@ fun WispNavHost(
                 } else null,
                 onToggleFollow = { pubkey -> feedViewModel.toggleFollow(pubkey) },
                 onBlockUser = { pubkey -> feedViewModel.blockUser(pubkey) },
-                translationRepo = feedViewModel.translationRepo
+                translationRepo = feedViewModel.translationRepo,
+                 onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
+                priceTracker = marketplaceWatchlistPriceTracker
             )
         }
 
@@ -3391,7 +4073,26 @@ fun WispNavHost(
                 },
                 onBack = { navController.popBackStack() },
                 onNoteClick = { eventId ->
-                    navController.navigate("thread/$eventId")
+                    val referenced = feedViewModel.eventRepo.getEvent(eventId)
+                    val address = when {
+                        Nip99.MARKETPLACE_KINDS.any { eventId.startsWith("$it:") } -> eventId
+                        referenced != null && Nip99.isMarketplaceKind(referenced.kind) -> Nip99.addressTag(referenced)
+                        referenced?.kind == com.darkwisp.app.nostr.Nip22.KIND_COMMENT ->
+                            com.darkwisp.app.nostr.Nip22.getAddressableRootTag(referenced)
+                        else -> null
+                    }
+                    val parts = address?.split(":", limit = 3)
+                    val rootKind = parts?.getOrNull(0)?.toIntOrNull()
+                    if (parts?.size == 3 && rootKind != null && Nip99.isMarketplaceKind(rootKind)) {
+                        val cachedListing = referenced?.takeIf {
+                            Nip99.isMarketplaceKind(it.kind) && it.pubkey == parts[1] && Nip99.dTag(it) == parts[2]
+                        } ?: feedViewModel.eventRepo.findAddressableEvent(rootKind, parts[1], parts[2])
+                        val route = cachedListing?.let(::marketplaceAddressRoute)
+                            ?: "marketplace/address/${parts[1]}/${android.net.Uri.encode(parts[2])}?kind=$rootKind"
+                        navController.navigate(route)
+                    } else {
+                        navController.navigate("thread/$eventId")
+                    }
                 },
                 onProfileClick = { pubkey ->
                     navController.navigate("profile/$pubkey")
@@ -3401,9 +4102,11 @@ fun WispNavHost(
                     val signer = activeSigner ?: return@NotificationsScreen
                     notifReplyScope.launch {
                         val hint = feedViewModel.outboxRouter?.getRelayHint(replyToEvent.pubkey) ?: ""
-                        val tags = com.darkwisp.app.nostr.Nip10.buildReplyTags(replyToEvent, hint) +
-                            com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(content, notifResolvedEmojis) +
-                            if (notifInterfacePrefs.isClientTagEnabled()) listOf(listOf("client", "Dark Wisp")) else emptyList()
+                        val tags = com.darkwisp.app.nostr.NostrClientTag.apply(
+                            com.darkwisp.app.nostr.Nip10.buildReplyTags(replyToEvent, hint) +
+                                com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(content, notifResolvedEmojis),
+                            notifInterfacePrefs.isClientTagEnabled()
+                        )
 
                         // If the parent is a private reply we received, keep the thread encrypted
                         // by gift-wrapping this reply too. Otherwise fall through to the public path.
@@ -3496,6 +4199,7 @@ fun WispNavHost(
                 onOpenEmojiLibrary = { showNotifEmojiLibrary = true },
                 zapError = feedViewModel.zapError,
                 translationRepo = feedViewModel.translationRepo,
+                onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
                 onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                 onUploadMedia = { uris, onUrl ->
                     notifReplyScope.launch {

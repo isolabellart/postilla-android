@@ -16,13 +16,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
 import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.repo.LocaleRepository
 import com.darkwisp.app.ui.component.LocalMediaSettings
 import com.darkwisp.app.ui.component.MediaSettings
 import com.darkwisp.app.ui.component.PipController
-import com.darkwisp.app.ui.theme.WispTheme
+import com.darkwisp.app.ui.theme.PostillaTheme
 
 class MainActivity : FragmentActivity() {
     var deepLinkUri = mutableStateOf<String?>(null)
@@ -44,9 +43,7 @@ class MainActivity : FragmentActivity() {
             val prefs = remember { getSharedPreferences("wisp_settings", Context.MODE_PRIVATE) }
             val interfacePrefs = remember { InterfacePreferences(this@MainActivity) }
             var isDarkTheme by rememberSaveable { mutableStateOf(prefs.getBoolean("dark_theme", true)) }
-            var accentColor by remember { mutableStateOf(Color(interfacePrefs.getAccentColor())) }
             var isLargeText by remember { mutableStateOf(interfacePrefs.isLargeText()) }
-            var themeName by remember { mutableStateOf(interfacePrefs.getTheme()) }
             var mediaSettings by remember {
                 mutableStateOf(MediaSettings(
                     autoLoadMedia = interfacePrefs.isAutoLoadMedia(),
@@ -77,7 +74,7 @@ class MainActivity : FragmentActivity() {
                 mediaSettings
             }
 
-            WispTheme(isDarkTheme = isDarkTheme, accentColor = accentColor, isLargeText = isLargeText, themeName = themeName) {
+            PostillaTheme(isDarkTheme = isDarkTheme, isLargeText = isLargeText) {
                 CompositionLocalProvider(LocalMediaSettings provides effectiveMediaSettings) {
                     WispNavHost(
                         deepLinkUri = deepLinkUri.value,
@@ -87,12 +84,9 @@ class MainActivity : FragmentActivity() {
                             isDarkTheme = !isDarkTheme
                             prefs.edit().putBoolean("dark_theme", isDarkTheme).apply()
                         },
-                        accentColor = accentColor,
                         isLargeText = isLargeText,
                         onInterfaceChanged = {
-                            accentColor = Color(interfacePrefs.getAccentColor())
                             isLargeText = interfacePrefs.isLargeText()
-                            themeName = interfacePrefs.getTheme()
                             mediaSettings = MediaSettings(
                                 autoLoadMedia = interfacePrefs.isAutoLoadMedia(),
                                 videoAutoPlay = interfacePrefs.isVideoAutoPlay(),

@@ -8,6 +8,7 @@ import android.webkit.MimeTypeMap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.graphics.BitmapFactory
+import com.darkwisp.app.R
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.DmMessage
 import com.darkwisp.app.nostr.DmReaction
@@ -96,6 +97,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     val selectedMessageId: StateFlow<String?> = _selectedMessageId
 
     private var peerPubkey: String = ""
+    private var requireRecipientDmRelays: Boolean = false
     private var conversationKey: String = ""
     /** All participants in this conversation, excluding the local user. */
     private var participants: List<String> = emptyList()
@@ -125,9 +127,13 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         relayPool: RelayPool? = null,
         powPreferences: PowPreferences? = null,
         myPubkeyHex: String? = null,
-        participantPubkeys: List<String> = emptyList()
+        participantPubkeys: List<String> = emptyList(),
+        initialMessage: String? = null,
+        requireRecipientDmRelays: Boolean = false
     ) {
         peerPubkey = peerPubkeyHex
+        this.requireRecipientDmRelays = requireRecipientDmRelays
+        if (!initialMessage.isNullOrBlank()) _messageText.value = initialMessage
         participants = participantPubkeys.ifEmpty { listOf(peerPubkeyHex) }
         val myKey = myPubkeyHex ?: keyRepo.getPubkeyHex() ?: ""
         conversationKey = DmRepository.conversationKey(participants + myKey)
@@ -164,6 +170,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val fetched = fetchRecipientDmRelays(relayPool, forceRefresh = true)
                 val primaryRelays = when {
                     fetched.isNotEmpty() -> PeerDeliveryRelays(fetched, DeliveryRelaySource.DM_RELAYS)
+                    requireRecipientDmRelays -> PeerDeliveryRelays(emptyList(), DeliveryRelaySource.DM_RELAYS)
                     cached.isNullOrEmpty() -> resolveRecipientRelaysWithSource(emptyList(), relayPool)
                     else -> _peerDeliveryRelays.value
                 }
@@ -320,6 +327,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
             if (valid) value.substring(0, match.range.first) + "nostr:" + value.substring(match.range.first)
             else value
         } ?: value
+        if (_messageText.value != prefixed) _sendError.value = null
         _messageText.value = prefixed
     }
 
@@ -662,8 +670,13 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
             _sending.value = true
             viewModelScope.launch(Dispatchers.Default) {
                 try {
-                    val recipientDmRelays = fetchRecipientDmRelays(relayPool)
-                    val deliveryRelays = resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                    val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
+                    if (requireRecipientDmRelays && recipientDmRelays.isEmpty()) {
+                        _messageText.value = text
+                        _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
+                        return@launch
+                    }
+                    val deliveryRelays = if (requireRecipientDmRelays) recipientDmRelays else resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
 
                     val dmPowEnabled = powPrefs?.isDmPowEnabled() == true
                     val dmDifficulty = if (dmPowEnabled) powPrefs?.getDmDifficulty() ?: 0 else 0
@@ -709,13 +722,14 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                             val dmRelays = fetchRelaysForParticipant(recipient, relayPool)
                             dmRelays.ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
                         }
-                        val sent = sendToDeliveryRelays(relayPool, recipientRelays, ClientMessage.event(wrap))
+                        val sent = sendGiftWrapToDeliveryRelays(relayPool, recipientRelays, wrap.id, ClientMessage.event(wrap))
                         if (recipient == peerPubkey) firstSentRelayUrls = sent
                     }
 
                     if (firstSentRelayUrls.isEmpty() && participants.size == 1) {
                         _messageText.value = text
-                        _sendError.value = "Failed to deliver — no relays accepted the message"
+                        _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                        return@launch
                     }
 
                     val selfWrap = Nip17.createGiftWrapRemote(
@@ -730,7 +744,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                     val selfMsg = ClientMessage.event(selfWrap)
                     if (relayPool.hasDmRelays()) {
                         relayPool.sendToDmRelays(selfMsg)
-                    } else {
+                    } else if (!requireRecipientDmRelays) {
                         relayPool.sendToWriteRelays(selfMsg)
                     }
 
@@ -767,7 +781,11 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         // Local signer mode
-        val keypair = keyRepo.getKeypair() ?: return
+        val keypair = keyRepo.getKeypair()
+        if (keypair == null) {
+            _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
+            return
+        }
 
         _messageText.value = ""
         _sendError.value = null
@@ -779,8 +797,13 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val emojiTags2 = com.darkwisp.app.nostr.Nip30.buildEmojiTagsForContent(text, resolvedEmojis)
                 val combinedTags = replyTags + allParticipantTags + emojiTags2
 
-                val recipientDmRelays = fetchRecipientDmRelays(relayPool)
-                val deliveryRelays = resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
+                if (requireRecipientDmRelays && recipientDmRelays.isEmpty()) {
+                    _messageText.value = text
+                    _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
+                    return@launch
+                }
+                val deliveryRelays = if (requireRecipientDmRelays) recipientDmRelays else resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
 
                 val dmPowEnabled = powPrefs?.isDmPowEnabled() == true
                 val dmDifficulty = if (dmPowEnabled) powPrefs?.getDmDifficulty() ?: 0 else 0
@@ -830,7 +853,8 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
 
                 if (firstSentRelayUrls.isEmpty() && participants.size == 1) {
                     _messageText.value = text
-                    _sendError.value = "Failed to deliver — no relays accepted the message"
+                    _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                    return@launch
                 }
 
                 val selfWrap = Nip17.createGiftWrap(
@@ -926,40 +950,42 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Fetch kind 10050 DM relays for any participant.
-     * Always goes to the network (no cache short-circuit) and broadcasts to all connected
-     * relays in addition to indexers, matching the aggressiveness of fetchRecipientDmRelays.
+     * Fetch kind 10050 DM relays for any participant using the shared race-safe
+     * lookup and cache semantics.
      */
     private suspend fun fetchRelaysForParticipant(pubkey: String, relayPool: RelayPool): List<String> {
-        val subId = "dm_relay_${pubkey.take(8)}"
-        val filter = Filter(kinds = listOf(Nip51.KIND_DM_RELAYS), authors = listOf(pubkey), limit = 1)
-        val reqMsg = ClientMessage.req(subId, filter)
-        for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) {
-            relayPool.sendToRelayOrEphemeral(url, reqMsg, skipBadCheck = true)
-        }
-        relayPool.sendToAll(reqMsg)
+        val repo = dmRepo ?: return emptyList()
+        return com.darkwisp.app.repo.DmRelayLookup.fetch(
+            pubkey = pubkey,
+            relayPool = relayPool,
+            dmRepo = repo,
+            forceRefresh = true
+        )
+    }
 
-        // Collect all responses within 4s; pick the freshest (highest created_at)
-        val results = mutableListOf<RelayEvent>()
-        withTimeoutOrNull(4000L) {
-            relayPool.relayEvents
-                .filter { it.subscriptionId == subId }
-                .collect { results.add(it) }
+    /**
+     * Publish a gift wrap and wait for at least one relay OK before treating the DM as sent.
+     * A WebSocket enqueue (or an ephemeral relay's pending queue) is not proof of delivery.
+     */
+    private suspend fun sendGiftWrapToDeliveryRelays(
+        relayPool: RelayPool,
+        deliveryRelays: List<String>,
+        eventId: String,
+        message: String
+    ): Set<String> {
+        var sentRelayUrls = emptySet<String>()
+        val outcome = relayPool.publishWithConfirmation(eventId, timeoutMs = 12_000L) {
+            sentRelayUrls = sendToDeliveryRelays(relayPool, deliveryRelays, message)
+            sentRelayUrls.size
         }
-
-        val closeMsg = ClientMessage.close(subId)
-        for (url in RelayConfig.DEFAULT_INDEXER_RELAYS) relayPool.sendToRelay(url, closeMsg)
-        relayPool.sendToAll(closeMsg)
-
-        val best = results.maxByOrNull { it.event.created_at }
-        if (best != null) {
-            val urls = Nip51.parseRelaySet(best.event)
-            if (urls.isNotEmpty()) {
-                dmRepo?.cacheDmRelays(pubkey, urls)
-                return urls
-            }
+        if (!outcome.confirmed) {
+            Log.w(
+                "DmConversation",
+                "Gift wrap ${eventId.take(12)} was not acknowledged by any recipient DM relay"
+            )
+            return emptySet()
         }
-        return emptyList()
+        return sentRelayUrls
     }
 
     /**

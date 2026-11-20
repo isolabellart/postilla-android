@@ -48,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -66,10 +65,12 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Surface
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip13
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.NostrEvent
@@ -199,12 +200,22 @@ fun PostCard(
 
     // Reply-to attribution: resolve the author of the event being replied to.
     // Keyed lookups so only this card recomposes when the reply target/profile arrives.
-    val replyTargetId = remember(event) { Nip10.getReplyTarget(event) }
+    val replyTargetId = remember(event) {
+        if (event.kind == Nip22.KIND_COMMENT) {
+            event.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+        } else {
+            Nip10.getReplyTarget(event)
+        }
+    }
     val replyTarget = rememberObservedEvent(eventRepo, replyTargetId)
 
     val hasReactionDetails = reactionDetails.isNotEmpty() || zapDetails.isNotEmpty() || repostDetails.isNotEmpty()
     var expandedDetails by remember { mutableStateOf(false) }
-    var showTranslation by remember { mutableStateOf(true) }
+    var showTranslation by remember(event.id) { mutableStateOf(true) }
+    val isTranslating =
+        translationState.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+        translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
+        translationState.status == TranslationStatus.TRANSLATING
 
     // Wrap content + divider so the divider can run full-width while the
     // content keeps its 16dp horizontal padding. Tap-to-open lives on the
@@ -280,9 +291,10 @@ fun PostCard(
                 }
             }
         }
-        if (Nip10.isReply(event)) {
+        if (Nip10.isReply(event) || event.kind == Nip22.KIND_COMMENT) {
             val replyToPubkey = replyTarget?.pubkey
                 ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+                ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "P" }?.get(1)
             val replyProfile = rememberProfile(eventRepo, replyToPubkey)
             val replyToName = remember(replyToPubkey, replyProfile) {
                 replyProfile?.displayString ?: replyToPubkey?.let { (it.take(8) + "...") }
@@ -345,7 +357,7 @@ fun PostCard(
                 val userStatus = remember(statusVersion, event.pubkey) {
                     eventRepo?.getUserStatus(event.pubkey)
                 }
-                if (userStatus != null && !Nip10.isReply(event)) {
+                if (userStatus != null && !Nip10.isReply(event) && event.kind != Nip22.KIND_COMMENT) {
                     Text(
                         text = userStatus,
                         style = MaterialTheme.typography.bodySmall,
@@ -370,6 +382,47 @@ fun PostCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
+            if (contentWarning == null || contentRevealed) {
+                IconButton(
+                    onClick = {
+                        if (translationState.status == TranslationStatus.DONE) {
+                            showTranslation = !showTranslation
+                        } else if (!isTranslating && translationState.status != TranslationStatus.SAME_LANGUAGE) {
+                            onTranslate()
+                        }
+                    },
+                    enabled = !isTranslating && translationState.status != TranslationStatus.SAME_LANGUAGE,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    if (isTranslating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 1.5.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Translate,
+                            contentDescription = stringResource(
+                                when {
+                                    translationState.status == TranslationStatus.DONE && showTranslation ->
+                                        R.string.translate_show_original
+                                    translationState.status == TranslationStatus.DONE ->
+                                        R.string.translate_show_translation
+                                    translationState.status == TranslationStatus.SAME_LANGUAGE ->
+                                        R.string.translate_same_language
+                                    else -> R.string.translate_translate
+                                }
+                            ),
+                            tint = if (
+                                translationState.status == TranslationStatus.DONE && showTranslation
+                            ) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
             val powBits = remember(event.id) { Nip13.verifyDifficulty(event) }
             if (powBits >= 16) {
                 Spacer(Modifier.width(4.dp))
@@ -484,6 +537,13 @@ fun PostCard(
                         }
                     )
                         DropdownMenuItem(
+                            text = { Text(stringResource(R.string.btn_copy_note_text)) },
+                        onClick = {
+                            menuExpanded = false
+                            clipboardManager.setText(AnnotatedString(event.content))
+                        }
+                    )
+                    DropdownMenuItem(
                             text = { Text(stringResource(R.string.btn_copy_note_json)) },
                         onClick = {
                             menuExpanded = false
@@ -577,7 +637,15 @@ fun PostCard(
                 }
             }
         } else {
-            // Normal content display
+            // Display one representation of the event content at a time.
+            // The signed Nostr event remains untouched; translation is presentation-only.
+            val displayedContent =
+                if (translationState.status == TranslationStatus.DONE && showTranslation) {
+                    translationState.translatedText
+                } else {
+                    event.content
+                }
+
             val emojiMap = remember(event.id) { Nip30.parseEmojiTags(event) }
             val imetaMap = remember(event.id) { parseImetaTags(event.tags) }
             // Skip collapsible behavior for posts with video/audio — height
@@ -588,7 +656,7 @@ fun PostCard(
 
             if (hasMedia) {
                 RichContent(
-                    content = event.content,
+                    content = displayedContent,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     emojiMap = emojiMap,
@@ -623,7 +691,7 @@ fun PostCard(
                         contentAlignment = Alignment.TopStart
                     ) {
                         RichContent(
-                            content = event.content,
+                            content = displayedContent,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                             emojiMap = emojiMap,
@@ -636,23 +704,6 @@ fun PostCard(
                         )
                     }
 
-                    // Gradient fade overlay when collapsed and content overflows
-                    if (contentExceedsMax && !contentExpanded) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            MaterialTheme.colorScheme.surface
-                                        )
-                                    )
-                                )
-                        )
-                    }
                 }
 
                 if (contentExceedsMax) {
@@ -683,71 +734,14 @@ fun PostCard(
                 }
             }
 
-            // Inline translation display
-            when (translationState.status) {
-                TranslationStatus.IDENTIFYING_LANGUAGE,
-                TranslationStatus.DOWNLOADING_MODEL,
-                TranslationStatus.TRANSLATING -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 1.5.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = when (translationState.status) {
-                                TranslationStatus.IDENTIFYING_LANGUAGE -> stringResource(R.string.translate_detecting_language)
-                                TranslationStatus.DOWNLOADING_MODEL -> stringResource(R.string.translate_downloading_model)
-                                else -> stringResource(R.string.translate_translating)
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                TranslationStatus.DONE -> {
-                    if (showTranslation) {
-                        Column(modifier = Modifier.padding(top = 4.dp)) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                thickness = 0.5.dp
-                            )
-                            Text(
-                                text = stringResource(R.string.translate_translated_from, translationState.sourceLanguage),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                            )
-                            val emojiMap = remember(event.id) { Nip30.parseEmojiTags(event) }
-                            val imetaMap = remember(event.id) { parseImetaTags(event.tags) }
-                            RichContent(
-                                content = translationState.translatedText,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                emojiMap = emojiMap,
-                                imetaMap = imetaMap,
-                                eventRepo = eventRepo,
-                                onProfileClick = onNavigateToProfile,
-                                onNoteClick = onQuotedNoteClick,
-                                noteActions = noteActions,
-                                quoteDepth = quoteDepth
-                            )
-                        }
-                    }
-                }
-                TranslationStatus.ERROR -> {
-                    Text(
-                        text = translationState.errorMessage,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
-                else -> {}
+            // Translation is rendered in place above; show only failures here.
+            if (translationState.status == TranslationStatus.ERROR) {
+                Text(
+                    text = translationState.errorMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
             }
 
             // Poll section
@@ -1382,7 +1376,7 @@ internal fun Nip05Badge(
                 isImpersonator -> Icon(
                     Icons.Default.Cancel,
                     contentDescription = "Impersonator",
-                    tint = Color.Red,
+                    tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -1410,7 +1404,7 @@ internal fun Nip05Badge(
             Icon(
                 Icons.Default.Cancel,
                 contentDescription = "Impersonator",
-                tint = Color.Red,
+                tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(14.dp)
             )
         }

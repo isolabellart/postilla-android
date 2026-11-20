@@ -12,8 +12,11 @@ import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.Nip18
 import com.darkwisp.app.nostr.Nip09
+import com.darkwisp.app.nostr.Nip99
+import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip88
+import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.ContactRepository
@@ -33,6 +36,11 @@ import com.darkwisp.app.repo.ZapSender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Handles user-initiated social actions: follow/block, reactions, reposts, zaps, pins, mutes.
@@ -75,8 +84,14 @@ class SocialActionManager(
     private val _zapError = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val zapError: SharedFlow<String> = _zapError
 
+    // Prevent rapid repeated taps from publishing multiple kind-6 events for one note.
+    private val repostActionsInProgress = ConcurrentHashMap.newKeySet<String>()
+
     private val _reactionSent = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     val reactionSent: SharedFlow<Unit> = _reactionSent
+
+    // Prevent concurrent reaction sends/toggles for the same target and account.
+    private val reactionActionsInProgress = ConcurrentHashMap.newKeySet<String>()
 
     // Non-null while the first-follow confirmation dialog is visible (holds the target pubkey).
     private val _pendingFirstFollow = MutableStateFlow<String?>(null)
@@ -220,21 +235,122 @@ class SocialActionManager(
         }
     }
 
+    /**
+     * Toggle a public repost. The same action becomes "Undo repost" when the user
+     * has already reposted the note: publish one NIP-09 deletion covering all of
+     * the user's known kind-6 repost events for this target.
+     */
     fun sendRepost(event: NostrEvent) {
         val s = getSigner() ?: return
+        if (!repostActionsInProgress.add(event.id)) return
         scope.launch {
             try {
-                val hint = outboxRouter.getRelayHint(event.pubkey)
-                val tags = Nip18.buildRepostTags(event, hint).toMutableList()
-                if (interfacePrefs.isClientTagEnabled()) {
-                    tags.add(listOf("client", "Dark Wisp"))
+                val wasAlreadyMarked = eventRepo.hasUserReposted(event.id)
+                val knownRepostIds = eventRepo.getUserRepostEventIds(event.id)
+                if (wasAlreadyMarked) {
+                    if (knownRepostIds.isEmpty()) return@launch
+
+                    val deletionTags = knownRepostIds.map { listOf("e", it) }.toMutableList()
+                    deletionTags.add(listOf("k", "6"))
+                    val deletionEvent = s.signEvent(kind = 5, content = "", tags = deletionTags)
+                    relayPool.sendToWriteRelays(ClientMessage.event(deletionEvent))
+
+                    // Optimistic local update; later relay copies of the kind-5
+                    // event are idempotent and will reconcile the same records.
+                    knownRepostIds.forEach { deletedEventsRepo.markDeleted(it) }
+                    eventRepo.removeUserRepost(event.id)
+                } else if (knownRepostIds.isNotEmpty()) {
+                    // A pre-existing repost was found in local persistence. Do not
+                    // publish another one: recordRepost() has already updated the
+                    // selected state, so the next action will offer Undo repost.
+                    return@launch
+                } else {
+                    val hint = outboxRouter.getRelayHint(event.pubkey)
+                    val tags = NostrClientTag.apply(
+                        Nip18.buildRepostTags(event, hint),
+                        interfacePrefs.isClientTagEnabled()
+                    )
+                    val repostEvent = s.signEvent(kind = 6, content = event.toJson(), tags = tags)
+                    val msg = ClientMessage.event(repostEvent)
+                    outboxRouter.publishToInbox(msg, event.pubkey)
+                    // addEvent records the signed repost event ID as well as the
+                    // target/author relationship used by Undo and exact counts.
+                    eventRepo.addEvent(repostEvent)
                 }
-                val repostEvent = s.signEvent(kind = 6, content = event.toJson(), tags = tags)
-                val msg = ClientMessage.event(repostEvent)
-                outboxRouter.publishToInbox(msg, event.pubkey)
-                eventRepo.markUserRepost(event.id)
-                eventRepo.addEvent(repostEvent)
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                repostActionsInProgress.remove(event.id)
+            }
+        }
+    }
+
+    /**
+     * Marketplace reactions must reach both the seller's inbox and the public
+     * Marketplace relay set used by other buyers to read listing engagement.
+     * Only report success after at least one relay returns an accepted NIP-20 OK.
+     */
+    private suspend fun publishMarketplaceReaction(event: NostrEvent, targetPubkey: String) {
+        val message = ClientMessage.event(event)
+
+        suspend fun prepareRelays(forceReconnect: Boolean) = coroutineScope {
+            val personal = async {
+                if (forceReconnect) relayPool.cycleWriteRelays(timeoutMs = 2_000)
+                else relayPool.ensureWriteRelaysConnected(timeoutMs = 2_000)
+            }
+            val marketplace = async {
+                relayPool.ensureMarketplaceWriteRelaysConnected(
+                    MarketplaceRelays.WRITE,
+                    timeoutMs = 2_000,
+                    forceReconnect = forceReconnect
+                )
+            }
+            personal.await()
+            marketplace.await()
+        }
+
+        suspend fun publishAndAwaitMarketplaceOk(): Pair<Int, Boolean> = coroutineScope {
+            val acceptedByMarketplaceRelay = CompletableDeferred<Unit>()
+            val marketplaceUrls = MarketplaceRelays.WRITE.toSet()
+            val collector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                relayPool.publishResults
+                    .filter {
+                        it.eventId == event.id &&
+                            it.accepted &&
+                            it.relayUrl in marketplaceUrls
+                    }
+                    .collect {
+                        if (!acceptedByMarketplaceRelay.isCompleted) {
+                            acceptedByMarketplaceRelay.complete(Unit)
+                        }
+                    }
+            }
+            val sentCount = try {
+                outboxRouter.publishToInbox(message, targetPubkey) +
+                    relayPool.sendToMarketplaceWriteRelays(message, MarketplaceRelays.WRITE)
+            } catch (error: Exception) {
+                collector.cancel()
+                throw error
+            }
+            val confirmed = if (sentCount > 0) {
+                withTimeoutOrNull(4_000) {
+                    acceptedByMarketplaceRelay.await()
+                    true
+                } ?: false
+            } else {
+                false
+            }
+            collector.cancel()
+            sentCount to confirmed
+        }
+
+        prepareRelays(forceReconnect = false)
+        var outcome = publishAndAwaitMarketplaceOk()
+        if (outcome.first == 0 || !outcome.second) {
+            prepareRelays(forceReconnect = true)
+            outcome = publishAndAwaitMarketplaceOk()
+        }
+        if (outcome.first == 0 || !outcome.second) {
+            throw IllegalStateException("Marketplace reaction was not confirmed by a public Marketplace relay")
         }
     }
 
@@ -245,21 +361,30 @@ class SocialActionManager(
     fun toggleReaction(event: NostrEvent, emoji: String) {
         val s = getSigner() ?: return
         val myPubkey = s.pubkeyHex
+        // NIP-25 represents a standard like with content "+", while addReaction
+        // indexes it under the canonical heart emoji. Use the same key for Undo.
+        val reactionEmoji = if (emoji.isBlank() || emoji == "+") "❤️" else emoji
+        val actionTarget = event.takeIf { Nip99.isMarketplaceKind(it.kind) }
+            ?.let { Nip99.addressTag(it) }
+            ?: event.id
+        val actionKey = "$actionTarget:$myPubkey"
 
-        // NIP-17 private replies are reacted to with a gift-wrapped kind-7 rumor so
-        // the target rumor id never lands on a public relay. v1 is add-only: if the
-        // user has already reacted with this emoji we no-op rather than publishing a
-        // gift-wrapped NIP-09 deletion (gift-wrapped deletion is a future enhancement).
-        if (eventRepo.isPrivate(event.id)) {
-            val existingEmoji = eventRepo.getUserReactionEmoji(event.id, myPubkey)
-            if (existingEmoji != null) return
-            val shortcodeMatch = Nip30.shortcodeRegex.matchEntire(emoji)
-            val emojiUrl = if (shortcodeMatch != null) {
-                val shortcode = shortcodeMatch.groupValues[1]
-                customEmojiRepo.resolvedEmojis.value[shortcode]
-            } else null
-            scope.launch {
-                try {
+        // A tap can arrive again while the signer/PoW/publish path is still running.
+        // Treat the action as one in-flight operation per target and account.
+        if (!reactionActionsInProgress.add(actionKey)) return
+
+        scope.launch {
+            try {
+                // NIP-17 private replies are reacted to with a gift-wrapped kind-7 rumor
+                // so the target rumor id never lands on a public relay. v1 remains add-only.
+                if (eventRepo.isPrivate(event.id)) {
+                    val existingEmoji = eventRepo.getUserReactionEmoji(event.id, myPubkey)
+                    if (existingEmoji != null) return@launch
+                    val shortcodeMatch = Nip30.shortcodeRegex.matchEntire(emoji)
+                    val emojiUrl = if (shortcodeMatch != null) {
+                        val shortcode = shortcodeMatch.groupValues[1]
+                        customEmojiRepo.resolvedEmojis.value[shortcode]
+                    } else null
                     PrivateReactionPublisher.send(
                         signer = s,
                         relayPool = relayPool,
@@ -272,67 +397,103 @@ class SocialActionManager(
                     )
                     _reactionSent.tryEmit(Unit)
                     customEmojiRepo.recordEmojiUsage(emoji)
-                } catch (_: Exception) {}
-            }
-            return
-        }
+                    return@launch
+                }
 
-        val existingEventId = eventRepo.getUserReactionEventId(event.id, myPubkey, emoji)
+                // If the account already reacted, delete every known matching event,
+                // not just the most recent one. This also cleans up duplicates created
+                // by earlier repeated taps on older app versions.
+                val existingEventIds = (
+                    eventRepo.getUserReactionEventIds(event.id, myPubkey, reactionEmoji) +
+                        listOfNotNull(eventRepo.getUserReactionEventId(event.id, myPubkey, reactionEmoji))
+                    ).toSet()
 
-        scope.launch {
-            try {
-                if (existingEventId != null) {
-                    val tags = Nip09.buildDeletionTags(existingEventId, 7)
-                    val deletionEvent = s.signEvent(kind = 5, content = "", tags = tags)
-                    relayPool.sendToWriteRelays(ClientMessage.event(deletionEvent))
-                    eventRepo.removeReaction(event.id, myPubkey, emoji)
-                } else {
-                    val shortcodeMatch = Nip30.shortcodeRegex.matchEntire(emoji)
-                    var tags: List<List<String>> = if (shortcodeMatch != null) {
-                        val shortcode = shortcodeMatch.groupValues[1]
-                        val url = customEmojiRepo.resolvedEmojis.value[shortcode]
-                        if (url != null) {
-                            Nip25.buildReactionTagsWithEmoji(
-                                event, CustomEmoji(shortcode, url)
-                            )
-                        } else {
-                            Nip25.buildReactionTags(event)
-                        }
+                if (existingEventIds.isNotEmpty()) {
+                    val deletionTags = existingEventIds.map { listOf("e", it) } +
+                        listOf(listOf("k", "7"))
+                    val deletionEvent = s.signEvent(kind = 5, content = "", tags = deletionTags)
+                    // Reactions are routed to both our write relays and the target author's
+                    // inbox relays. Publish the NIP-09 deletion through the same route so
+                    // relays that stored the original Marketplace like also receive its removal.
+                    if (Nip99.isMarketplaceKind(event.kind)) {
+                        publishMarketplaceReaction(deletionEvent, event.pubkey)
+                    } else {
+                        outboxRouter.publishToInbox(ClientMessage.event(deletionEvent), event.pubkey)
+                    }
+                    // Persist local tombstones too, including duplicate IDs whose
+                    // detailed reaction record may already have left the bounded cache.
+                    existingEventIds.forEach { deletedEventsRepo.markDeleted(it) }
+                    // Route our own confirmed NIP-09 through the same repository path
+                    // used for deletions received from other accounts/relays.
+                    eventRepo.addEvent(deletionEvent)
+                    // Also sweep every locally indexed duplicate, including IDs whose
+                    // per-event record may have been evicted from the bounded reaction cache.
+                    eventRepo.removeReaction(event.id, myPubkey, reactionEmoji, existingEventIds)
+                    return@launch
+                }
+
+                val shortcodeMatch = Nip30.shortcodeRegex.matchEntire(emoji)
+                var tags: List<List<String>> = if (shortcodeMatch != null) {
+                    val shortcode = shortcodeMatch.groupValues[1]
+                    val url = customEmojiRepo.resolvedEmojis.value[shortcode]
+                    if (url != null) {
+                        Nip25.buildReactionTagsWithEmoji(
+                            event, CustomEmoji(shortcode, url)
+                        )
                     } else {
                         Nip25.buildReactionTags(event)
                     }
-
-                    if (interfacePrefs.isClientTagEnabled()) {
-                        tags = tags + listOf(listOf("client", "Dark Wisp"))
-                    }
-
-                    val createdAt: Long
-                    if (powPrefs.isReactionPowEnabled()) {
-                        val pinned = System.currentTimeMillis() / 1000
-                        val result = withContext(Dispatchers.Default) {
-                            Nip13.mine(
-                                pubkeyHex = myPubkey,
-                                kind = 7,
-                                content = emoji,
-                                tags = tags,
-                                targetDifficulty = powPrefs.getReactionDifficulty(),
-                                createdAt = pinned
-                            )
-                        }
-                        tags = result.tags
-                        createdAt = result.createdAt
-                    } else {
-                        createdAt = System.currentTimeMillis() / 1000
-                    }
-
-                    val reactionEvent = s.signEvent(kind = 7, content = emoji, tags = tags, createdAt = createdAt)
-                    val msg = ClientMessage.event(reactionEvent)
-                    outboxRouter.publishToInbox(msg, event.pubkey)
-                    eventRepo.addEvent(reactionEvent)
-                    _reactionSent.tryEmit(Unit)
-                    customEmojiRepo.recordEmojiUsage(emoji)
+                } else {
+                    Nip25.buildReactionTags(event)
                 }
-            } catch (_: Exception) {}
+
+                tags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+
+                val createdAt: Long
+                if (powPrefs.isReactionPowEnabled()) {
+                    val pinned = System.currentTimeMillis() / 1000
+                    val result = withContext(Dispatchers.Default) {
+                        Nip13.mine(
+                            pubkeyHex = myPubkey,
+                            kind = 7,
+                            content = emoji,
+                            tags = tags,
+                            targetDifficulty = powPrefs.getReactionDifficulty(),
+                            createdAt = pinned
+                        )
+                    }
+                    tags = result.tags
+                    createdAt = result.createdAt
+                } else {
+                    createdAt = System.currentTimeMillis() / 1000
+                }
+
+                val reactionEvent = s.signEvent(kind = 7, content = emoji, tags = tags, createdAt = createdAt)
+                if (Nip99.isMarketplaceKind(event.kind)) {
+                    // Keep the local card responsive; revert the optimistic state if no
+                    // Marketplace or inbox relay confirms the public reaction.
+                    eventRepo.addEvent(reactionEvent)
+                    try {
+                        publishMarketplaceReaction(reactionEvent, event.pubkey)
+                    } catch (error: Exception) {
+                        eventRepo.removeReaction(event.id, myPubkey, reactionEmoji, setOf(reactionEvent.id))
+                        throw error
+                    }
+                } else {
+                    outboxRouter.publishToInbox(ClientMessage.event(reactionEvent), event.pubkey)
+                    eventRepo.addEvent(reactionEvent)
+                }
+                _reactionSent.tryEmit(Unit)
+                customEmojiRepo.recordEmojiUsage(emoji)
+            } catch (error: Exception) {
+                android.util.Log.w(
+                    "SocialActionManager",
+                    "Reaction toggle failed for target=${actionTarget.take(24)}",
+                    error
+                )
+            } finally {
+                reactionActionsInProgress.remove(actionKey)
+            }
         }
     }
 
@@ -553,10 +714,11 @@ class SocialActionManager(
         scope.launch {
             try {
                 val tags = Nip88.buildResponseTags(pollEventId, optionIds).toMutableList()
-                if (interfacePrefs.isClientTagEnabled()) {
-                    tags.add(listOf("client", "Dark Wisp"))
-                }
-                val event = s.signEvent(kind = Nip88.KIND_POLL_RESPONSE, content = "", tags = tags)
+                val event = s.signEvent(
+                    kind = Nip88.KIND_POLL_RESPONSE,
+                    content = "",
+                    tags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+                )
                 val msg = ClientMessage.event(event)
                 // Send to our write relays
                 relayPool.sendToWriteRelays(msg)

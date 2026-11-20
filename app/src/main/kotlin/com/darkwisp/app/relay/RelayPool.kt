@@ -9,6 +9,7 @@ import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.RelayMessage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,7 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.CopyOnWriteArrayList
 
 data class RelayEvent(val event: NostrEvent, val relayUrl: String, val subscriptionId: String)
+data class RelayEoseSignal(val subscriptionId: String, val relayUrl: String)
 data class PublishResult(val relayUrl: String, val eventId: String, val accepted: Boolean, val message: String)
 data class PublishOutcome(val sentCount: Int, val confirmed: Boolean)
 data class BroadcastState(val accepted: Int, val sent: Int)
@@ -170,7 +172,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
 
     /** Subscription prefixes that bypass event deduplication. */
     private val dedupBypassPrefixes = java.util.concurrent.CopyOnWriteArrayList(
-        listOf("thread-", "user", "quote-", "editprofile", "notif", "dms", "search-", "hashtag-")
+        RelayEventDedupPolicy.defaultBypassPrefixes
     )
 
     private val authLock = Any()
@@ -256,6 +258,11 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
 
     private val _eoseSignals = MutableSharedFlow<String>(extraBufferCapacity = 64)
     val eoseSignals: SharedFlow<String> = _eoseSignals
+
+    // URL-aware EOSE signals let Marketplace count distinct responding relays.
+    // The original subscription-only stream remains unchanged for existing callers.
+    private val _relayEoseSignals = MutableSharedFlow<RelayEoseSignal>(extraBufferCapacity = 256)
+    val relayEoseSignals: SharedFlow<RelayEoseSignal> = _relayEoseSignals
 
     /** Retraction stream for already-delivered invalid events. Verification now precedes delivery,
      * so rejected network payloads MUST NOT emit here: a forged ID could retract a valid event. */
@@ -459,10 +466,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                         }
                         // Some subscriptions bypass dedup since events may already
                         // have been seen during feed loading
-                        val bypassDedup = dedupBypassPrefixes.any {
-                            if (it.endsWith("-")) msg.subscriptionId.startsWith(it)
-                            else msg.subscriptionId == it || msg.subscriptionId.startsWith(it)
-                        }
+                        val bypassDedup = RelayEventDedupPolicy.shouldBypass(msg.subscriptionId, dedupBypassPrefixes)
                         val shouldEmit = if (bypassDedup) {
                             true
                         } else {
@@ -508,6 +512,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                         val elapsed = subStartTimes[msg.subscriptionId]?.let { System.currentTimeMillis() - it } ?: -1L
                         Log.d("SUBLOG", "EOSE sub=${msg.subscriptionId} relay=${relay.config.url}: $count events in ${elapsed}ms")
                         _eoseSignals.tryEmit(msg.subscriptionId)
+                        _relayEoseSignals.tryEmit(RelayEoseSignal(msg.subscriptionId, relay.config.url))
                         unsupportedCounts.remove(relay.config.url) // Relay works, clear counter
                     }
                     is RelayMessage.Ok -> {
@@ -663,6 +668,26 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         return sentCount
     }
 
+    /**
+     * Publish to the curated public NIP-99 relay set, without changing a user's
+     * configured NIP-65 read/write permissions. User write relays are sent separately.
+     */
+    fun sendToMarketplaceWriteRelays(message: String, urls: List<String>): Int {
+        val personalWriteUrls = getWriteRelayUrls().toSet()
+        val isEvent = message.startsWith("[\"EVENT\"")
+        var sentCount = 0
+        for (url in urls.distinct()) {
+            if (url in personalWriteUrls) continue
+            val relay = relayIndex[url] ?: continue
+            if (!relay.config.write || !relay.isConnected) continue
+            if (relay.send(message)) {
+                sentCount++
+                if (isEvent && appIsActive) healthTracker?.onEventSent(url, message.length)
+            }
+        }
+        return sentCount
+    }
+
     /** Send an EVENT message to all relays (read + write) so every relay gets it. */
     fun sendToAllRelays(message: String): Int {
         var sentCount = 0
@@ -673,35 +698,113 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
     }
 
     /**
-     * Triggers connect() on any disconnected write relays and waits briefly
-     * for at least one to become connected. Returns the number of connected
-     * write relays after the wait.
+     * Reconnects every disconnected user-configured write relay and waits for the
+     * full writable set or the timeout. Returns the number actually connected.
      */
-    suspend fun ensureWriteRelaysConnected(timeoutMs: Long = 5000): Int {
+    suspend fun ensureWriteRelaysConnected(timeoutMs: Long = 8000): Int {
         val writeRelays = relays.filter { it.config.write }
-        val alreadyConnected = writeRelays.count { it.isConnected }
-        if (alreadyConnected > 0) return alreadyConnected
+        if (writeRelays.isEmpty()) return 0
 
-        Log.d("RLC", "[Pool] ensureWriteRelaysConnected — 0/${writeRelays.size} connected, triggering reconnect")
-        for (relay in writeRelays) {
-            if (!relay.isConnected) {
+        val disconnected = writeRelays.filterNot { it.isConnected }
+        if (disconnected.isNotEmpty()) {
+            Log.d("RLC", "[Pool] ensureWriteRelaysConnected — reconnecting ${disconnected.size}/${writeRelays.size} write relays")
+            for (relay in disconnected) {
                 relay.resetBackoff()
                 relay.connect()
             }
         }
 
-        // Poll briefly for a write relay to connect
+        // Wait for the full writable set, not merely the first connected relay.
+        // If one relay stays offline, the timeout still allows publishing to those
+        // that are ready instead of blocking the listing indefinitely.
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val connected = writeRelays.count { it.isConnected }
-            if (connected > 0) {
-                Log.d("RLC", "[Pool] ensureWriteRelaysConnected — $connected write relay(s) now connected")
+            if (connected == writeRelays.size) return connected
+            delay(200)
+        }
+        val final = writeRelays.count { it.isConnected }
+        Log.d("RLC", "[Pool] ensureWriteRelaysConnected — timed out, $final/${writeRelays.size} connected")
+        return final
+    }
+
+    /**
+     * Bring up temporary writable connections to the public marketplace relay set.
+     * Existing personal read-only relays are never promoted: only a temporary
+     * connection created specifically for this NIP-99 destination is writable.
+     */
+    suspend fun ensureMarketplaceWriteRelaysConnected(
+        urls: List<String>,
+        timeoutMs: Long = 8000,
+        forceReconnect: Boolean = false
+    ): Int {
+        val requested = urls.distinct().filter {
+            it !in blockedUrls && RelayConfig.isValidUrl(it)
+        }
+
+        for (url in requested) {
+            var existing = relayIndex[url]
+
+            // An earlier lookup may have left a read-only ephemeral connection.
+            // Replace that temporary socket so this marketplace target can be written to.
+            if (existing != null && ephemeralRelays.containsKey(url) && !existing.config.write) {
+                ephemeralRelays.remove(url)
+                ephemeralLastUsed.remove(url)
+                if (relayIndex[url] === existing) relayIndex.remove(url)
+                existing.disconnect()
+                cancelRelayJobs(url)
+                activeSubscriptions.remove(url)
+                subscriptionTracker.untrackRelay(url)
+                existing = null
+            }
+
+            // Do not override an explicit read-only setting on a persistent user relay.
+            // Existing writable marketplace sockets are explicitly reconnected on retry.
+            if (existing != null) {
+                if (ephemeralRelays.containsKey(url) && existing.config.write) {
+                    if (forceReconnect) {
+                        existing.forceDisconnect()
+                        existing.resetBackoff()
+                        existing.connect()
+                    } else if (!existing.isConnected) {
+                        existing.resetBackoff()
+                        existing.connect()
+                    }
+                }
+                continue
+            }
+
+            cleanupEphemeralRelays()
+            if (ephemeralRelays.size >= MAX_EPHEMERAL) {
+                Log.w("RLC", "[Pool] Marketplace write relay skipped: ephemeral capacity reached ($url)")
+                continue
+            }
+
+            val relay = Relay(RelayConfig(url, read = true, write = true), clientProvider, scope)
+            relay.autoReconnect = true
+            wireByteTracking(relay)
+            relayIndex[url] = relay
+            collectMessages(relay)
+            ephemeralRelays[url] = relay
+            ephemeralLastUsed[url] = System.currentTimeMillis()
+            relay.connect()
+        }
+
+        val writableTargets = requested.filter { relayIndex[it]?.config?.write == true }
+        if (writableTargets.isEmpty()) return 0
+
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val connected = writableTargets.count { relayIndex[it]?.isConnected == true }
+            if (connected == writableTargets.size) {
+                updateConnectedCount()
                 return connected
             }
             delay(200)
         }
-        val final = writeRelays.count { it.isConnected }
-        Log.d("RLC", "[Pool] ensureWriteRelaysConnected — timed out, $final write relay(s) connected")
+        val final = writableTargets.count { relayIndex[it]?.isConnected == true }
+        updateConnectedCount()
+        Log.d("RLC", "[Pool] Marketplace write relays ready: $final/${writableTargets.size}")
         return final
     }
 
@@ -770,12 +873,12 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
     suspend fun publishWithConfirmation(
         eventId: String,
         timeoutMs: Long = PUBLISH_OK_TIMEOUT_MS,
-        send: () -> Int
+        send: suspend () -> Int
     ): PublishOutcome {
         val firstAccepted = CompletableDeferred<Unit>()
         var accepted = 0
         var sent = 0
-        val collector = scope.launch {
+        val collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             publishResults
                 .filter { it.eventId == eventId }
                 .collect { result ->
@@ -815,7 +918,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
      * Returns the number of write relays connected after waiting up to
      * [timeoutMs].
      */
-    suspend fun cycleWriteRelays(timeoutMs: Long = 5000): Int {
+    suspend fun cycleWriteRelays(timeoutMs: Long = 8000): Int {
         val writeRelays = relays.filter { it.config.write }
         if (writeRelays.isEmpty()) return 0
         Log.d("RLC", "[Pool] cycleWriteRelays — recycling ${writeRelays.size} write relay socket(s)")
@@ -827,7 +930,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val connected = writeRelays.count { it.isConnected }
-            if (connected > 0) return connected
+            if (connected == writeRelays.size) return connected
             delay(200)
         }
         return writeRelays.count { it.isConnected }

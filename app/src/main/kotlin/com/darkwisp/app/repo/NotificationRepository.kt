@@ -7,6 +7,8 @@ import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip57
+import com.darkwisp.app.nostr.Nip51
+import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.nostr.NostrEvent
@@ -26,6 +28,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
 class NotificationRepository(
     private val context: Context,
@@ -93,6 +97,7 @@ class NotificationRepository(
     val notifReceived: SharedFlow<Int> = _notifReceived
 
     init {
+        loadDurableNotificationItems()
         rebuildScope.launch {
             for (signal in rebuildSignals) {
                 // One frame is enough to coalesce bursts from a single relay
@@ -148,6 +153,7 @@ class NotificationRepository(
                     replyEventId = event.id,
                     groupChatId = groupId
                 ))
+                persistDurableNotificationItemsLocked()
             }
 
             if (event.created_at > lastReadTimestamp) {
@@ -316,9 +322,163 @@ class NotificationRepository(
         }
     }
 
+    /**
+     * Persist the latest public Marketplace watchlist snapshot per author.
+     * On the first observation we establish a quiet baseline; on later starts
+     * or live updates we notify only newly added listings belonging to this seller.
+     */
+    fun processMarketplaceWatchlistSnapshot(
+        watchlistEvent: NostrEvent,
+        myPubkey: String,
+        notifyOnFirstObservation: Boolean = false
+    ) {
+        if (watchlistEvent.pubkey == myPubkey) return
+        if (muteRepo?.isBlocked(watchlistEvent.pubkey) == true) return
+        val parsed = Nip51.parseBookmarkSet(watchlistEvent) ?: return
+        val preferenceKey = "marketplace_watchlist_seen_${watchlistEvent.pubkey}"
+        val addedCoordinates = synchronized(lock) {
+            val previousJson = prefs.getString(preferenceKey, null)
+            val previous = try {
+                previousJson?.let(::JSONObject)
+            } catch (_: Exception) {
+                null
+            }
+            val previousTimestamp = previous?.optLong("createdAt", 0L) ?: 0L
+            if (watchlistEvent.created_at <= previousTimestamp) {
+                return@synchronized emptySet()
+            }
+            val previousCoordinates = previous?.optJSONArray("coordinates")?.let { array ->
+                buildSet {
+                    for (index in 0 until array.length()) {
+                        array.optString(index).takeIf { it.isNotBlank() }?.let { add(it) }
+                    }
+                }
+            }.orEmpty()
+            val newlyAdded = if (previous == null) {
+                if (notifyOnFirstObservation) parsed.coordinates else emptySet()
+            } else {
+                parsed.coordinates - previousCoordinates
+            }
+            val snapshot = JSONObject()
+                .put("createdAt", watchlistEvent.created_at)
+                .put("coordinates", JSONArray(parsed.coordinates.sorted()))
+            prefs.edit().putString(preferenceKey, snapshot.toString()).apply()
+            newlyAdded
+        }
+        addedCoordinates
+            .filter { it.startsWith("${Nip99.KIND_LISTING}:$myPubkey:") }
+            .forEach { coordinate ->
+                addMarketplaceBookmark(watchlistEvent, myPubkey, coordinate)
+            }
+    }
+
+    /** Persist Marketplace bookmark and reply rows independently of relay history. */
+    private fun persistDurableNotificationItemsLocked() {
+        val saved = flatItems.asSequence()
+            .filter { it.type == NotificationType.MARKETPLACE_BOOKMARK || it.type == NotificationType.REPLY }
+            .sortedByDescending { it.timestamp }
+            .take(500)
+        val array = JSONArray()
+        saved.forEach { item ->
+            array.put(
+                JSONObject()
+                    .put("id", item.id)
+                    .put("type", item.type.name)
+                    .put("actorPubkey", item.actorPubkey)
+                    .put("referencedEventId", item.referencedEventId)
+                    .put("timestamp", item.timestamp)
+                    .put("replyEventId", item.replyEventId)
+                    .put("groupChatId", item.groupChatId)
+                    .put("isPrivateReply", item.isPrivateReply)
+            )
+        }
+        prefs.edit().putString(KEY_MARKETPLACE_BOOKMARK_NOTIFICATIONS, array.toString()).apply()
+    }
+
+    /** Restore the account-scoped Marketplace bookmark and reply rows after startup/account reload. */
+    private fun loadDurableNotificationItems() = synchronized(lock) {
+        val raw = prefs.getString(KEY_MARKETPLACE_BOOKMARK_NOTIFICATIONS, null) ?: return@synchronized
+        val array = try { JSONArray(raw) } catch (_: Exception) { return@synchronized }
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val actor = item.optString("actorPubkey").takeIf { it.isNotBlank() } ?: continue
+            val reference = item.optString("referencedEventId").takeIf { it.isNotBlank() } ?: continue
+            // Older saved rows predate the "type" property and are Marketplace bookmarks.
+            val type = runCatching {
+                NotificationType.valueOf(item.optString("type", NotificationType.MARKETPLACE_BOOKMARK.name))
+            }.getOrNull() ?: continue
+            if (type != NotificationType.MARKETPLACE_BOOKMARK && type != NotificationType.REPLY) continue
+            val timestamp = item.optLong("timestamp", 0L)
+            if (timestamp <= 0L || !flatItemIds.add(id)) continue
+            flatItems.add(
+                FlatNotificationItem(
+                    id = id,
+                    type = type,
+                    actorPubkey = actor,
+                    referencedEventId = reference,
+                    timestamp = timestamp,
+                    replyEventId = item.optString("replyEventId").takeIf { it.isNotBlank() },
+                    groupChatId = item.optString("groupChatId").takeIf { it.isNotBlank() },
+                    isPrivateReply = item.optBoolean("isPrivateReply", false)
+                )
+            )
+        }
+        _hasUnread.value = !isViewing && flatItems.any { it.timestamp > lastReadTimestamp }
+        if (flatItems.any { it.type == NotificationType.MARKETPLACE_BOOKMARK || it.type == NotificationType.REPLY }) scheduleRebuildSortedList()
+    }
+
+    /**
+     * Add a notification when someone adds one of the current user's NIP-99
+     * listings to their public Marketplace watchlist (NIP-51 kind 30003).
+     * referencedEventId contains the stable 30402:author:d-tag coordinate,
+     * not a revision-specific event ID.
+     */
+    fun addMarketplaceBookmark(
+        watchlistEvent: NostrEvent,
+        myPubkey: String,
+        listingCoordinate: String
+    ) {
+        if (watchlistEvent.pubkey == myPubkey) return
+        if (muteRepo?.isBlocked(watchlistEvent.pubkey) == true) return
+        synchronized(lock) {
+            val notificationId = "marketplace-bookmark:${watchlistEvent.id}:$listingCoordinate"
+            if (!flatItemIds.add(notificationId)) return
+            flatItems.add(
+                FlatNotificationItem(
+                    id = notificationId,
+                    type = NotificationType.MARKETPLACE_BOOKMARK,
+                    actorPubkey = watchlistEvent.pubkey,
+                    referencedEventId = listingCoordinate,
+                    timestamp = watchlistEvent.created_at
+                )
+            )
+            persistDurableNotificationItemsLocked()
+            if (watchlistEvent.created_at > latestNotifTs) {
+                latestNotifTs = watchlistEvent.created_at
+                prefs.edit().putLong(KEY_LATEST_NOTIF_TS, watchlistEvent.created_at).apply()
+            }
+            if (watchlistEvent.created_at > lastReadTimestamp) {
+                if (isViewing) {
+                    lastReadTimestamp = watchlistEvent.created_at
+                    prefs.edit().putLong(KEY_LAST_READ, watchlistEvent.created_at).apply()
+                } else {
+                    _hasUnread.value = true
+                }
+                if (watchlistEvent.created_at >= soundEligibleAfter && appIsActive) {
+                    _notifReceived.tryEmit(Nip51.KIND_BOOKMARK_SET)
+                }
+            }
+            scheduleRebuildSortedList()
+        }
+    }
+
     fun markRead() {
         _hasUnread.value = false
-        val latestTimestamp = _notifications.value.firstOrNull()?.latestTimestamp ?: return
+        val latestGroupTimestamp = _notifications.value.firstOrNull()?.latestTimestamp ?: 0L
+        val latestFlatTimestamp = synchronized(lock) { flatItems.maxOfOrNull { it.timestamp } ?: 0L }
+        val latestTimestamp = maxOf(latestGroupTimestamp, latestFlatTimestamp)
+        if (latestTimestamp <= 0L) return
         if (latestTimestamp > lastReadTimestamp) {
             lastReadTimestamp = latestTimestamp
             prefs.edit().putLong(KEY_LAST_READ, latestTimestamp).apply()
@@ -361,6 +521,7 @@ class NotificationRepository(
             @Suppress("ktlint:standard:property-naming")
             latestNotifTs = prefs.getLong("latest_notif_ts", 0L)
         }
+        loadDurableNotificationItems()
     }
 
     fun purgeUser(pubkey: String) = synchronized(lock) {
@@ -394,10 +555,11 @@ class NotificationRepository(
 
         toRemove.forEach { groupMap.remove(it) }
         toUpdate.forEach { (k, v) -> groupMap[k] = v }
-        flatItems.removeAll { item ->
+        val removedFlat = flatItems.removeAll { item ->
             if (item.actorPubkey == pubkey) { flatItemIds.remove(item.id); true } else false
         }
-        if (toRemove.isNotEmpty() || toUpdate.isNotEmpty()) {
+        if (removedFlat) persistDurableNotificationItemsLocked()
+        if (removedFlat || toRemove.isNotEmpty() || toUpdate.isNotEmpty()) {
             scheduleRebuildSortedList()
         }
     }
@@ -546,7 +708,12 @@ class NotificationRepository(
     private fun mergeReaction(event: NostrEvent): Boolean {
         val emoji = event.content.ifBlank { "❤️" }
         val eTag = event.tags.lastOrNull { it.size >= 2 && it[0] == "e" } ?: return false
-        val referencedId = eTag[1]
+        val addressTag = event.tags.lastOrNull { it.size >= 2 && it[0] == "a" }
+            ?.get(1)
+            ?.takeIf { it.startsWith("30402:") }
+        // NIP-99 listings are addressable: use the stable coordinate in the
+        // notification so previews and taps can resolve the newest revision.
+        val referencedId = addressTag ?: eTag[1]
         val eTagHint = eTag.getOrNull(2)?.takeIf { it.startsWith("wss://") || it.startsWith("ws://") }
         val key = "reactions:$referencedId"
         val existing = groupMap[key] as? NotificationGroup.ReactionGroup
@@ -696,6 +863,11 @@ class NotificationRepository(
         val quotedId = event.tags.firstOrNull { it.size >= 2 && it[0] == "q" }?.get(1)
         if (quotedId != null) return mergeQuote(event, quotedId)
 
+        if (event.kind == Nip22.KIND_COMMENT) {
+            val addressableRoot = Nip22.getAddressableRootTag(event)
+            if (addressableRoot != null) return mergeReply(event, addressableRoot, null)
+        }
+
         val replyResult = Nip10.getReplyTargetWithHint(event)
         if (replyResult != null) return mergeReply(event, replyResult.first, replyResult.second)
 
@@ -716,7 +888,12 @@ class NotificationRepository(
         if (safetyPrefs?.isSpamSafelisted(event.pubkey) == true) return
         // Only replies are spam-scored (see mergeReply); skip quotes/mentions
         if (event.tags.any { it.size >= 2 && it[0] == "q" }) return
-        if (Nip10.getReplyTargetWithHint(event) == null) return
+        val isReply = if (event.kind == Nip22.KIND_COMMENT) {
+            Nip22.getAddressableRootTag(event) != null
+        } else {
+            Nip10.getReplyTargetWithHint(event) != null
+        }
+        if (!isReply) return
         val classifier = spamClassifier ?: return
         val cache = spamAuthorCache ?: return
         val repo = eventRepo ?: return
@@ -731,15 +908,19 @@ class NotificationRepository(
     }
 
     private fun mergeReply(event: NostrEvent, replyTarget: String, replyTargetHint: String?): Boolean {
-        if (safetyPrefs?.spamFilterEnabled?.value == true &&
-            contactRepo?.isFollowing(event.pubkey) != true &&
-            safetyPrefs?.isSpamSafelisted(event.pubkey) != true
-        ) {
-            // Score was computed off-lock in warmSpamScore; only consult the cache here
-            val noteCount = eventRepo?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
-            val cached = spamAuthorCache?.get(event.pubkey, noteCount)
-            if (cached != null && cached >= 0.7f) return false
-        }
+        // Score was computed off-lock in warmSpamScore; use the same decision rule as
+        // the feed thread and Marketplace comment views.
+        val noteCount = eventRepo?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
+        val cached = spamAuthorCache?.get(event.pubkey, noteCount)
+        if (shouldHideSpamAuthor(
+                pubkey = event.pubkey,
+                currentUserPubkey = currentPubkeyHex,
+                isFollowing = contactRepo?.isFollowing(event.pubkey) == true,
+                isSafelisted = safetyPrefs?.isSpamSafelisted(event.pubkey) == true,
+                spamFilterEnabled = safetyPrefs?.spamFilterEnabled?.value == true,
+                score = cached
+            )
+        ) return false
         val key = "reply:${event.id}"
         val hints = listOfNotNull(replyTargetHint)
         groupMap[key] = NotificationGroup.ReplyNotification(
@@ -764,6 +945,7 @@ class NotificationRepository(
                 isPrivateReply = eventRepo?.isPrivate(event.id) == true,
                 groupChatId = groupChatId
             ))
+            persistDurableNotificationItemsLocked()
         }
 
         return true
@@ -937,7 +1119,8 @@ class NotificationRepository(
             1 -> Nip10.getRootId(event) ?: Nip10.getReplyTarget(event)
             // NIP-22 replies-to-comments reference the thread root only via
             // uppercase E scope (lowercase e names the parent comment).
-            Nip22.KIND_COMMENT -> Nip22.getRootScopeId(event)
+            Nip22.KIND_COMMENT -> Nip22.getAddressableRootTag(event)
+                ?: Nip22.getRootScopeId(event)
                 ?: Nip10.getRootId(event) ?: Nip10.getReplyTarget(event)
             7 -> {
                 val refId = event.tags.lastOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
@@ -965,6 +1148,7 @@ class NotificationRepository(
     companion object {
         private const val KEY_LAST_READ = "last_read_timestamp"
         private const val KEY_LATEST_NOTIF_TS = "latest_notif_ts"
+        private const val KEY_MARKETPLACE_BOOKMARK_NOTIFICATIONS = "marketplace_bookmark_notifications"
         private const val RECENT_WINDOW_SECONDS = 600L // 10 minutes
         private const val SUMMARY_WINDOW_SECONDS = 86400L // 24 hours
     }

@@ -9,11 +9,15 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -64,6 +68,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -77,13 +82,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.LayoutDirection
 import com.darkwisp.app.nostr.FollowSet
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.R
@@ -99,6 +109,7 @@ import com.darkwisp.app.ui.component.RelayIcon
 import com.darkwisp.app.ui.component.WispDrawerContent
 import com.darkwisp.app.ui.component.ZapDialog
 import com.darkwisp.app.repo.RelayInfoRepository
+import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.relay.ScoredRelay
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
@@ -106,6 +117,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import com.darkwisp.app.nostr.RelaySet
 import com.darkwisp.app.relay.BroadcastState
@@ -122,6 +134,14 @@ import com.darkwisp.app.viewmodel.buildTrendingRelayUrl
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.darkwisp.app.ui.theme.WispThemeColors
@@ -136,6 +156,11 @@ import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Search
+import com.darkwisp.app.ui.component.PostillaBrandMark
+import com.darkwisp.app.ui.component.PostillaWordmark
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ButtonDefaults
@@ -162,6 +187,11 @@ fun FeedScreen(
     onRelays: () -> Unit,
     onProfileEdit: () -> Unit = {},
     onProfileClick: (String) -> Unit = {},
+    onMarketplace: () -> Unit = {},
+    onMyStorefront: () -> Unit = {},
+    onMarketplaceWatchlist: () -> Unit = {},
+    marketplaceWatchlistPriceTracker: com.darkwisp.app.repo.MarketplaceWatchlistPriceTracker? = null,
+    onListingClick: (NostrEvent) -> Unit = {},
     onDms: () -> Unit = {},
     onReact: (NostrEvent, String) -> Unit = { _, _ -> },
     onRepost: (NostrEvent) -> Unit = {},
@@ -210,6 +240,22 @@ fun FeedScreen(
     val feed by viewModel.feed.collectAsState()
     val feedType by viewModel.feedType.collectAsState()
     val contentFilter by viewModel.feedContentFilter.collectAsState()
+
+    val drawerPrefsContext = LocalContext.current.applicationContext
+    val interfacePrefs = remember(drawerPrefsContext) { InterfacePreferences(drawerPrefsContext) }
+    var drawerOnRight by remember { mutableStateOf(interfacePrefs.isDrawerOnRight()) }
+    val drawerSharedPreferences = remember(drawerPrefsContext) {
+        drawerPrefsContext.getSharedPreferences("wisp_settings", android.content.Context.MODE_PRIVATE)
+    }
+    DisposableEffect(drawerSharedPreferences) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == InterfacePreferences.KEY_DRAWER_ON_RIGHT) {
+                drawerOnRight = interfacePrefs.isDrawerOnRight()
+            }
+        }
+        drawerSharedPreferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { drawerSharedPreferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     val selectedRelay by viewModel.selectedRelay.collectAsState()
     val selectedRelaySet by viewModel.selectedRelaySet.collectAsState()
     // Engagement/profile/metadata versions are collected per feed item (against the
@@ -267,6 +313,48 @@ fun FeedScreen(
         }
     }
     val ownLists by viewModel.listRepo.ownLists.collectAsState()
+    val ownBookmarkSets by viewModel.bookmarkSetRepo.ownSets.collectAsState()
+    val marketplaceWatchlist = remember(ownBookmarkSets) {
+        ownBookmarkSets.firstOrNull { it.dTag == "dark-wisp-marketplace-watchlist" }
+    }
+    val watchlistCoordinates = remember(marketplaceWatchlist) {
+        marketplaceWatchlist?.coordinates.orEmpty().filter { it.startsWith("30402:") }.toSet()
+    }
+    val watchlistEventIds = remember(marketplaceWatchlist) {
+        marketplaceWatchlist?.eventIds.orEmpty()
+    }
+    val watchlistCacheVersion by viewModel.eventRepo.eventCacheVersion.collectAsState()
+    val emptyWatchlistPriceChanges = remember {
+        mutableStateOf<Map<String, com.darkwisp.app.repo.MarketplaceWatchlistPriceTracker.PriceChange>>(emptyMap())
+    }
+    val marketplaceWatchlistPriceChanges by (
+        marketplaceWatchlistPriceTracker?.priceChanges?.collectAsState() ?: emptyWatchlistPriceChanges
+    )
+    LaunchedEffect(watchlistCoordinates) {
+        watchlistCoordinates.forEach { address ->
+            val parts = address.split(":", limit = 3)
+            if (parts.size == 3) {
+                parts[0].toIntOrNull()?.let { kind ->
+                    viewModel.eventRepo.requestAddressableEvent(kind, parts[1], parts[2])
+                }
+            }
+        }
+    }
+    LaunchedEffect(watchlistCoordinates, watchlistEventIds, watchlistCacheVersion) {
+        watchlistCoordinates.forEach { address ->
+            val parts = address.split(":", limit = 3)
+            if (parts.size == 3) {
+                val kind = parts[0].toIntOrNull() ?: return@forEach
+                viewModel.eventRepo.findAddressableEvent(kind, parts[1], parts[2])?.let {
+                    marketplaceWatchlistPriceTracker?.inspect(it)
+                }
+            }
+        }
+        watchlistEventIds.forEach { id ->
+            viewModel.eventRepo.getEvent(id)?.let { marketplaceWatchlistPriceTracker?.inspect(it) }
+        }
+    }
+    val marketplaceWatchlistCount = watchlistCoordinates.size + watchlistEventIds.size
     var showRelayPicker by remember { mutableStateOf(false) }
     var showListPicker by remember { mutableStateOf(false) }
     val interestSets by viewModel.interestRepo.sets.collectAsState()
@@ -283,6 +371,7 @@ fun FeedScreen(
     val onlinePubkeys by viewModel.eventRepo.onlinePubkeys.collectAsState()
     val globalOnlineCount by viewModel.globalOnlineCount.collectAsState()
     var showFeedTypeDropdown by remember { mutableStateOf(false) }
+    var showContentFilterDropdown by remember { mutableStateOf(false) }
     var showSocialGraphDialog by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -342,7 +431,7 @@ fun FeedScreen(
 
     val noteActions = remember(
         viewModel, userPubkey, followList, onReply, onReact, onRepost, onQuote,
-        onProfileClick, onQuotedNoteClick, onAddToList, onHashtagClick,
+        onProfileClick, onQuotedNoteClick, onListingClick, onAddToList, onHashtagClick,
         onArticleClick, onGroupRoom, onLiveStreamClick, fetchGroupPreview
     ) {
         NoteActions(
@@ -362,6 +451,7 @@ fun FeedScreen(
             },
             onProfileClick = onProfileClick,
             onNoteClick = { eventId -> onQuotedNoteClick?.invoke(eventId) },
+            onMarketplaceListingClick = onListingClick,
             onAddToList = onAddToList,
             onFollowAuthor = { pubkey -> viewModel.toggleFollow(pubkey) },
             onBlockAuthor = { pubkey -> viewModel.blockUser(pubkey) },
@@ -741,6 +831,9 @@ fun FeedScreen(
         onExitAnonMode()
     }
 
+    CompositionLocalProvider(
+        LocalLayoutDirection provides if (drawerOnRight) LayoutDirection.Rtl else LayoutDirection.Ltr
+    ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -751,6 +844,7 @@ fun FeedScreen(
             val notifPermLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
             ) {}
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             WispDrawerContent(
                 profile = userProfile,
                 pubkey = userPubkey,
@@ -777,6 +871,21 @@ fun FeedScreen(
                 onFeed = {
                     scope.launch { drawerState.close() }
                 },
+                onMarketplace = {
+                    scope.launch { drawerState.close() }
+                    onMarketplace()
+                },
+                onMyStorefront = {
+                    scope.launch { drawerState.close() }
+                    onMyStorefront()
+                },
+                onMarketplaceWatchlist = {
+                    scope.launch { drawerState.close() }
+                    onMarketplaceWatchlist()
+                },
+                marketplaceWatchlistExists = marketplaceWatchlist != null,
+                marketplaceWatchlistCount = marketplaceWatchlistCount,
+                marketplaceWatchlistAlertCount = marketplaceWatchlistPriceChanges.size,
                 onSearch = {
                     scope.launch { drawerState.close() }
                     onSearch()
@@ -861,6 +970,53 @@ fun FeedScreen(
                 walletConfigured = walletConfigured,
                 walletBalanceMsats = walletBalanceMsats,
                 isWatchOnly = isWatchOnly,
+                onlineCount = onlinePubkeys.size,
+                connectedRelayCount = connectedCount,
+                onOnlineClick = {
+                    scope.launch {
+                        drawerState.close()
+                        showOnlineSheet = true
+                    }
+                },
+                onConnectedRelaysClick = { showRelayDropdown = true },
+                connectedRelayMenu = {
+                    DropdownMenu(
+                        expanded = showRelayDropdown,
+                        onDismissRequest = { showRelayDropdown = false }
+                    ) {
+                        val connectedUrls = viewModel.relayPool.getAllConnectedUrls()
+                        if (connectedUrls.isEmpty()) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "No relays connected",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                onClick = {}
+                            )
+                        } else {
+                            val coverageCounts = viewModel.getRelayCoverageCounts()
+                            connectedUrls.forEach { url ->
+                                val count = coverageCounts[url]
+                                val label = buildString {
+                                    append(url.removePrefix("wss://").removeSuffix("/"))
+                                    if (count != null && count > 0) append(" ($count)")
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                                    },
+                                    onClick = {
+                                        showRelayDropdown = false
+                                        viewModel.setSelectedRelay(url)
+                                        viewModel.setFeedType(FeedType.RELAY)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 userStatus = statusVersion.let { userPubkey?.let { viewModel.eventRepo.getUserStatus(it) } },
                 onUpdateStatus = { status ->
                     viewModel.publishUserStatus(status)
@@ -870,267 +1026,237 @@ fun FeedScreen(
                     onScanResult(route)
                 }
             )
+            }
         }
     ) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
-                CenterAlignedTopAppBar(
-                    // Compact: reserve the status-bar inset via
-                    // `windowInsetsPadding` (layout-time, no first-frame
-                    // snap) and clamp the content area to 48dp (was
-                    // Material's default 64dp). Disable the bar's
-                    // internal inset handling to avoid double-padding.
+                Column(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .height(48.dp),
-                    windowInsets = WindowInsets(0),
-                    title = {
-                                Box {
-                                    Surface(
-                                        onClick = { showFeedTypeDropdown = true },
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            val feedLabel = when (feedType) {
-                                                FeedType.FOR_YOU -> stringResource(R.string.tab_for_you)
-                                                FeedType.FOLLOWS -> stringResource(R.string.tab_follows)
-                                                FeedType.EXTENDED_FOLLOWS -> stringResource(R.string.tab_extended)
-                                                FeedType.RELAY -> if (selectedRelay != null) {
-                                                    selectedRelay!!.removePrefix("wss://").removeSuffix("/")
-                                                } else stringResource(R.string.tab_relay)
-                                                FeedType.LIST -> if (selectedList != null) {
-                                                    selectedList!!.name
-                                                } else stringResource(R.string.tab_list)
-                                                FeedType.TRENDING -> stringResource(R.string.tab_trending)
-                                            }
-                                            Text(
-                                                feedLabel,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                modifier = Modifier.widthIn(max = 140.dp)
-                                            )
-                                            Spacer(Modifier.width(4.dp))
-                                            Icon(
-                                                Icons.Default.ArrowDropDown,
-                                                contentDescription = "Change feed",
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-                                DropdownMenu(
-                                    expanded = showFeedTypeDropdown,
-                                    onDismissRequest = { showFeedTypeDropdown = false },
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_for_you)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            viewModel.setFeedType(FeedType.FOR_YOU)
-                                        },
-                                        trailingIcon = if (feedType == FeedType.FOR_YOU) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_follows)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            viewModel.setFeedType(FeedType.FOLLOWS)
-                                        },
-                                        trailingIcon = if (feedType == FeedType.FOLLOWS) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_extended)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            if (viewModel.extendedNetworkRepo.cachedNetwork.value == null) {
-                                                showSocialGraphDialog = true
-                                            } else {
-                                                viewModel.setFeedType(FeedType.EXTENDED_FOLLOWS)
-                                            }
-                                        },
-                                        trailingIcon = if (feedType == FeedType.EXTENDED_FOLLOWS) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_trending)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            viewModel.setFeedType(FeedType.TRENDING)
-                                        },
-                                        trailingIcon = if (feedType == FeedType.TRENDING) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_relay)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showRelayPicker = true
-                                        },
-                                        trailingIcon = if (feedType == FeedType.RELAY) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_list)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showListPicker = true
-                                        },
-                                        trailingIcon = if (feedType == FeedType.LIST) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_hashtags)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showHashtagPicker = true
-                                        }
-                                    )
-                                }
-                                }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
-                    ),
-                    navigationIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                ProfilePicture(url = userProfile?.picture, size = 32)
-                            }
-                            // Content type filter toggle — rotates through All → Notes → Gallery → Polls
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!drawerOnRight) {
                             IconButton(
-                                onClick = {
-                                    val next = when (contentFilter) {
-                                        FeedContentFilter.ALL -> FeedContentFilter.TEXT_ONLY
-                                        FeedContentFilter.TEXT_ONLY -> FeedContentFilter.GALLERY_ONLY
-                                        FeedContentFilter.GALLERY_ONLY -> FeedContentFilter.POLLS_ONLY
-                                        FeedContentFilter.POLLS_ONLY -> FeedContentFilter.ALL
-                                    }
-                                    viewModel.setFeedContentFilter(next)
-                                },
-                                modifier = Modifier.size(36.dp)
+                                onClick = { scope.launch { drawerState.open() } },
+                                modifier = Modifier.size(48.dp)
                             ) {
-                                val (icon, tint) = when (contentFilter) {
-                                    // GridView = 2x2 of equal squares (matches iOS).
-                                    // Dashboard was 1 large + 3 small panels.
-                                    FeedContentFilter.ALL -> Icons.Outlined.GridView to MaterialTheme.colorScheme.onSurfaceVariant
-                                    FeedContentFilter.TEXT_ONLY -> Icons.AutoMirrored.Outlined.Article to MaterialTheme.colorScheme.primary
-                                    FeedContentFilter.GALLERY_ONLY -> Icons.Outlined.Photo to MaterialTheme.colorScheme.primary
-                                    FeedContentFilter.POLLS_ONLY -> Icons.Outlined.HowToVote to MaterialTheme.colorScheme.primary
-                                }
-                                Icon(icon, contentDescription = "Filter: ${contentFilter.name}", tint = tint, modifier = Modifier.size(22.dp))
+                                ProfilePicture(url = userProfile?.picture, size = 34)
                             }
+                            Spacer(Modifier.width(10.dp))
                         }
-                    },
-                    actions = {
-                        if (onlinePubkeys.isNotEmpty()) {
-                            Surface(
-                                onClick = { showOnlineSheet = true },
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = WispThemeColors.repostColor
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        "${onlinePubkeys.size}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(4.dp))
+
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            PostillaBrandMark(size = 32.dp)
+                            Spacer(Modifier.width(10.dp))
+                            PostillaWordmark(fontSize = 23.sp)
                         }
+
+                        IconButton(
+                            onClick = onSearch,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = stringResource(R.string.nav_search),
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         Box {
-                            Surface(
-                                onClick = { showRelayDropdown = true },
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
+                            IconButton(
+                                onClick = { showContentFilterDropdown = true },
+                                modifier = Modifier.size(48.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Hub,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = if (connectedCount > 0)
-                                            WispThemeColors.repostColor
-                                        else
-                                            androidx.compose.ui.graphics.Color(0xFFFF5252)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        "$connectedCount",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.FilterList,
+                                    contentDescription = stringResource(R.string.tab_all),
+                                    modifier = Modifier.size(24.dp),
+                                    tint = if (contentFilter == FeedContentFilter.ALL) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
                             }
                             DropdownMenu(
-                                expanded = showRelayDropdown,
-                                onDismissRequest = { showRelayDropdown = false }
+                                expanded = showContentFilterDropdown,
+                                onDismissRequest = { showContentFilterDropdown = false },
+                                containerColor = MaterialTheme.colorScheme.surface
                             ) {
-                                val connectedUrls = viewModel.relayPool.getAllConnectedUrls()
-                                if (connectedUrls.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_all)) },
+                                    onClick = {
+                                        viewModel.setFeedContentFilter(FeedContentFilter.ALL)
+                                        showContentFilterDropdown = false
+                                    },
+                                    trailingIcon = if (contentFilter == FeedContentFilter.ALL) {{
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_text)) },
+                                    onClick = {
+                                        viewModel.setFeedContentFilter(FeedContentFilter.TEXT_ONLY)
+                                        showContentFilterDropdown = false
+                                    },
+                                    trailingIcon = if (contentFilter == FeedContentFilter.TEXT_ONLY) {{
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    }} else null
+                                )
+                                if (feedType != FeedType.WITH_REPLIES) {
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                "No relays connected",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                        text = { Text(stringResource(R.string.tab_gallery)) },
+                                        onClick = {
+                                            viewModel.setFeedContentFilter(FeedContentFilter.GALLERY_ONLY)
+                                            showContentFilterDropdown = false
                                         },
-                                        onClick = {}
+                                        trailingIcon = if (contentFilter == FeedContentFilter.GALLERY_ONLY) {{
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        }} else null
                                     )
-                                } else {
-                                    val coverageCounts = viewModel.getRelayCoverageCounts()
-                                    connectedUrls.forEach { url ->
-                                        val count = coverageCounts[url]
-                                        val label = buildString {
-                                            append(url.removePrefix("wss://").removeSuffix("/"))
-                                            if (count != null && count > 0) append(" ($count)")
-                                        }
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    label,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            },
-                                            onClick = {
-                                                showRelayDropdown = false
-                                                viewModel.setSelectedRelay(url)
-                                                viewModel.setFeedType(FeedType.RELAY)
-                                            }
-                                        )
-                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.tab_polls)) },
+                                        onClick = {
+                                            viewModel.setFeedContentFilter(FeedContentFilter.POLLS_ONLY)
+                                            showContentFilterDropdown = false
+                                        },
+                                        trailingIcon = if (contentFilter == FeedContentFilter.POLLS_ONLY) {{
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        }} else null
+                                    )
                                 }
+                            }
+                        }
+
+                        if (drawerOnRight) {
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(
+                                onClick = { scope.launch { drawerState.open() } },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                ProfilePicture(url = userProfile?.picture, size = 34)
                             }
                         }
                     }
-                )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(76.dp)
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PostillaFeedModeTab(
+                            label = stringResource(R.string.tab_for_you),
+                            glyph = PostillaFeedGlyph.PERSON,
+                            selected = feedType == FeedType.FOR_YOU,
+                            onClick = { viewModel.setFeedType(FeedType.FOR_YOU) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        PostillaFeedModeTab(
+                            label = stringResource(R.string.tab_following),
+                            glyph = PostillaFeedGlyph.FOLLOWING,
+                            selected = feedType == FeedType.FOLLOWS,
+                            onClick = { viewModel.setFeedType(FeedType.FOLLOWS) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        PostillaFeedModeTab(
+                            label = stringResource(R.string.tab_conversations),
+                            glyph = PostillaFeedGlyph.CONVERSATIONS,
+                            selected = feedType == FeedType.WITH_REPLIES,
+                            onClick = { viewModel.setFeedType(FeedType.WITH_REPLIES) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        Box(modifier = Modifier.weight(1f)) {
+                            PostillaFeedModeTab(
+                                label = stringResource(R.string.tab_more),
+                                glyph = PostillaFeedGlyph.GRID,
+                                selected = feedType == FeedType.RELAY ||
+                                    feedType == FeedType.LIST || feedType == FeedType.TRENDING ||
+                                    feedType == FeedType.EXTENDED_FOLLOWS,
+                                onClick = { showFeedTypeDropdown = true },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            DropdownMenu(
+                                expanded = showFeedTypeDropdown,
+                                onDismissRequest = { showFeedTypeDropdown = false },
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_trending)) },
+                                    onClick = {
+                                        showFeedTypeDropdown = false
+                                        viewModel.setFeedType(FeedType.TRENDING)
+                                    },
+                                    trailingIcon = if (feedType == FeedType.TRENDING) {{
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_relay)) },
+                                    onClick = {
+                                        showFeedTypeDropdown = false
+                                        showRelayPicker = true
+                                    },
+                                    trailingIcon = if (feedType == FeedType.RELAY) {{
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_list)) },
+                                    onClick = {
+                                        showFeedTypeDropdown = false
+                                        showListPicker = true
+                                    },
+                                    trailingIcon = if (feedType == FeedType.LIST) {{
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    }} else null
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_hashtags)) },
+                                    onClick = {
+                                        showFeedTypeDropdown = false
+                                        showHashtagPicker = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tab_extended)) },
+                                    onClick = {
+                                        showFeedTypeDropdown = false
+                                        if (viewModel.extendedNetworkRepo.cachedNetwork.value == null) {
+                                            showSocialGraphDialog = true
+                                        } else {
+                                            viewModel.setFeedType(FeedType.EXTENDED_FOLLOWS)
+                                        }
+                                    },
+                                    trailingIcon = if (feedType == FeedType.EXTENDED_FOLLOWS) {{
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    }} else null
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
             },
             floatingActionButton = {
                 val isScrolling = listState.isScrollInProgress
@@ -1288,11 +1414,11 @@ fun FeedScreen(
                         ) {
                             if (anonMode != null) {
                                 item(key = "anon-banner", contentType = "anon-banner") {
-                                    val anonGreen = androidx.compose.ui.graphics.Color(0xFF00C853)
+                                    val anonAccent = MaterialTheme.colorScheme.primary
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(anonGreen.copy(alpha = 0.12f))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
                                             .clickable { onExitAnonMode() }
                                             .padding(horizontal = 16.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -1303,7 +1429,7 @@ fun FeedScreen(
                                             Text(
                                                 text = "Anon Mode",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = anonGreen
+                                                color = anonAccent
                                             )
                                             val anonName = anonMode?.name ?: ""
                                             Text(
@@ -1315,7 +1441,7 @@ fun FeedScreen(
                                         TextButton(onClick = {
                                             onExitAnonMode()
                                         }) {
-                                            Text("Exit", color = anonGreen)
+                                            Text("Exit", color = anonAccent)
                                         }
                                     }
                                 }
@@ -1329,7 +1455,13 @@ fun FeedScreen(
                                     )
                                 }
                             }
-                            items(items = feed, key = { it.id }, contentType = { if (it.kind == 30023) "article" else "post" }) { event ->
+                            items(items = feed, key = { it.id }, contentType = {
+                                when (it.kind) {
+                                    30023 -> "article"
+                                    Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> "marketplace-listing"
+                                    else -> "post"
+                                }
+                            }) { event ->
                                 val itemOnReply = { onReply(event) }
                                 val itemOnProfileClick = { onProfileClick(event.pubkey) }
                                 val itemOnNoteClick = { onNoteClick(event) }
@@ -1339,7 +1471,14 @@ fun FeedScreen(
                                 val itemOnZap = { zapTargetEvent = event }
                                 val itemOnAddToList = { onAddToList(event.id) }
                                 val itemOnOpenEmojiLibrary = { showEmojiLibrary = true }
-                                if (event.kind == 30023) {
+                                if (Nip99.isMarketplaceKind(event.kind)) {
+                                    MarketplaceFeedItem(
+                                        event = event,
+                                        eventRepository = viewModel.eventRepo,
+                                        onOpen = { onListingClick(event) },
+                                        onProfileClick = onProfileClick
+                                    )
+                                } else if (event.kind == 30023) {
                                     FeedArticleItem(
                                         event = event,
                                         viewModel = viewModel,
@@ -1399,8 +1538,16 @@ fun FeedScreen(
                                             .padding(vertical = 16.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        TextButton(onClick = { viewModel.loadMore() }) {
-                                            Text(stringResource(R.string.btn_load_more))
+                                        if (feedType == FeedType.WITH_REPLIES) {
+                                            Text(
+                                                text = stringResource(R.string.feed_conversations_end),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        } else {
+                                            TextButton(onClick = { viewModel.loadMore() }) {
+                                                Text(stringResource(R.string.btn_load_more))
+                                            }
                                         }
                                     }
                                 }
@@ -1451,7 +1598,9 @@ fun FeedScreen(
             }
             } // Column
         }
+        } // Scaffold layout-direction provider
     }
+    } // Drawer layout-direction provider
 
     if (showEmojiLibrary) {
         val sheetUnicodeEmojis by viewModel.customEmojiRepo.unicodeEmojis.collectAsState()
@@ -1697,6 +1846,88 @@ private fun FeedItem(
             translationState = translationState,
             onTranslate = onTranslateCb
         )
+    }
+}
+
+
+@Composable
+private fun MarketplaceFeedItem(
+    event: NostrEvent,
+    eventRepository: com.darkwisp.app.repo.EventRepository,
+    onOpen: () -> Unit,
+    onProfileClick: (String) -> Unit
+) {
+    val profileVersion by eventRepository.profileVersionFor(event.pubkey).collectAsState(initial = 0)
+    val sellerProfile = remember(event.pubkey, profileVersion) {
+        eventRepository.getProfileData(event.pubkey)
+    }
+    LaunchedEffect(event.pubkey) {
+        eventRepository.requestProfileIfMissing(event.pubkey)
+    }
+    val image = Nip99.images(event).firstOrNull()
+    val title = Nip99.title(event)
+    val summary = Nip99.summary(event)
+    val price = Nip99.priceLabel(event)
+    val location = Nip99.location(event)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ProfilePicture(
+                    url = sellerProfile?.picture,
+                    size = 30,
+                    onClick = { onProfileClick(event.pubkey) }
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        sellerProfile?.displayString ?: event.pubkey.take(8) + "…" + event.pubkey.takeLast(4),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        stringResource(R.string.marketplace_seller_label),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (Nip99.isSold(event)) {
+                    Text(
+                        stringResource(R.string.marketplace_sold),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            if (image != null) {
+                AsyncImage(
+                    model = image,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (!price.isNullOrBlank()) {
+                Text(price, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
+            if (summary.isNotBlank()) {
+                Text(summary, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            if (location.isNotBlank()) {
+                Text(location, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -3034,7 +3265,7 @@ private fun RelayFeedBar(
         is RelayFeedStatus.Streaming -> WispThemeColors.repostColor
         is RelayFeedStatus.Connecting, is RelayFeedStatus.Subscribing -> WispThemeColors.paidColor
         is RelayFeedStatus.Disconnected, is RelayFeedStatus.ConnectionFailed,
-        is RelayFeedStatus.TimedOut -> androidx.compose.ui.graphics.Color(0xFFFF5252)
+        is RelayFeedStatus.TimedOut -> MaterialTheme.colorScheme.error
         is RelayFeedStatus.RateLimited, is RelayFeedStatus.BadRelay,
         is RelayFeedStatus.Cooldown -> WispThemeColors.zapColor
         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -3471,6 +3702,216 @@ fun BroadcastStatusBar(
                     }
                 }
             }
+        }
+    }
+}
+
+private enum class PostillaFeedGlyph {
+    PERSON,
+    FOLLOWING,
+    CONVERSATIONS,
+    GRID
+}
+
+@Composable
+private fun PostillaFeedModeTab(
+    label: String,
+    glyph: PostillaFeedGlyph,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tint = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Column(
+        modifier = modifier
+            .height(72.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Canvas(Modifier.size(28.dp)) {
+            val u = size.minDimension / 28f
+            val stroke = Stroke(
+                width = 1.9f * u,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+
+            when (glyph) {
+                PostillaFeedGlyph.PERSON -> {
+                    drawCircle(
+                        color = tint,
+                        radius = 3.4f * u,
+                        center = Offset(9f * u, 8f * u),
+                        style = stroke
+                    )
+                    val shoulders = Path().apply {
+                        moveTo(2.5f * u, 23f * u)
+                        cubicTo(2.5f * u, 17.6f * u, 5.4f * u, 15f * u, 9f * u, 15f * u)
+                        cubicTo(12.8f * u, 15f * u, 15.8f * u, 17.7f * u, 15.8f * u, 23f * u)
+                    }
+                    drawPath(shoulders, tint, style = stroke)
+
+                    val sparkle = Path().apply {
+                        moveTo(22f * u, 1.5f * u)
+                        lineTo(23.5f * u, 5f * u)
+                        lineTo(27f * u, 6.5f * u)
+                        lineTo(23.5f * u, 8f * u)
+                        lineTo(22f * u, 11.5f * u)
+                        lineTo(20.5f * u, 8f * u)
+                        lineTo(17f * u, 6.5f * u)
+                        lineTo(20.5f * u, 5f * u)
+                        close()
+                    }
+                    drawPath(sparkle, tint)
+                }
+
+                PostillaFeedGlyph.FOLLOWING -> {
+                    drawCircle(tint, 3f * u, Offset(7.2f * u, 6.7f * u), style = stroke)
+                    drawCircle(tint, 3f * u, Offset(20.2f * u, 6.7f * u), style = stroke)
+
+                    val leftPerson = Path().apply {
+                        moveTo(1.2f * u, 22f * u)
+                        cubicTo(1.2f * u, 17.1f * u, 3.8f * u, 14.7f * u, 7.2f * u, 14.7f * u)
+                        cubicTo(10.6f * u, 14.7f * u, 12.4f * u, 17f * u, 12.4f * u, 21.4f * u)
+                    }
+                    val rightPerson = Path().apply {
+                        moveTo(15.2f * u, 21.4f * u)
+                        cubicTo(15.2f * u, 17f * u, 17f * u, 14.7f * u, 20.2f * u, 14.7f * u)
+                        cubicTo(23.5f * u, 14.7f * u, 26f * u, 17.2f * u, 26f * u, 22f * u)
+                    }
+                    drawPath(leftPerson, tint, style = stroke)
+                    drawPath(rightPerson, tint, style = stroke)
+
+                    val connection = Path().apply {
+                        moveTo(9.2f * u, 18f * u)
+                        cubicTo(11.4f * u, 21f * u, 15f * u, 21f * u, 17.7f * u, 18f * u)
+                    }
+                    drawPath(connection, tint, style = stroke)
+                }
+
+                PostillaFeedGlyph.CONVERSATIONS -> {
+                    drawRoundRect(
+                        color = tint.copy(alpha = 0.8f),
+                        topLeft = Offset(1.8f * u, 2f * u),
+                        size = Size(16f * u, 11.5f * u),
+                        cornerRadius = CornerRadius(4f * u),
+                        style = stroke
+                    )
+                    val rearTail = Path().apply {
+                        moveTo(5f * u, 13.4f * u)
+                        lineTo(3.2f * u, 17f * u)
+                        lineTo(9f * u, 13.4f * u)
+                    }
+                    drawPath(rearTail, tint.copy(alpha = 0.8f), style = stroke)
+
+                    drawRoundRect(
+                        color = tint,
+                        topLeft = Offset(9.5f * u, 10f * u),
+                        size = Size(16.5f * u, 12.5f * u),
+                        cornerRadius = CornerRadius(4.5f * u),
+                        style = stroke
+                    )
+                    val frontTail = Path().apply {
+                        moveTo(20f * u, 22.1f * u)
+                        lineTo(22.6f * u, 26f * u)
+                        lineTo(22.2f * u, 22f * u)
+                    }
+                    drawPath(frontTail, tint, style = stroke)
+
+                    listOf(5.4f, 9.6f, 13.8f).forEach { x ->
+                        drawCircle(tint, 0.9f * u, Offset(x * u, 7.8f * u))
+                    }
+                    listOf(14f, 18f, 22f).forEach { x ->
+                        drawCircle(tint, 0.95f * u, Offset(x * u, 16.1f * u))
+                    }
+                }
+
+                PostillaFeedGlyph.GRID -> {
+                    val positions = listOf(
+                        Offset(2.1f * u, 2.1f * u),
+                        Offset(14.4f * u, 2.1f * u),
+                        Offset(2.1f * u, 14.4f * u),
+                        Offset(14.4f * u, 14.4f * u)
+                    )
+                    positions.forEach { topLeft ->
+                        drawRoundRect(
+                            color = tint,
+                            topLeft = topLeft,
+                            size = Size(9.4f * u, 9.4f * u),
+                            cornerRadius = CornerRadius(2.4f * u),
+                            style = stroke
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+            ),
+            color = tint,
+            maxLines = 1,
+            softWrap = false
+        )
+        if (selected) {
+            Spacer(Modifier.height(2.dp))
+            Box(
+                modifier = Modifier
+                    .width(28.dp)
+                    .height(2.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeedContentFilterIconTab(
+    filter: FeedContentFilter,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (icon, description) = when (filter) {
+        FeedContentFilter.ALL -> Icons.Outlined.GridView to stringResource(R.string.tab_all)
+        FeedContentFilter.TEXT_ONLY -> Icons.AutoMirrored.Outlined.Article to stringResource(R.string.tab_text)
+        FeedContentFilter.GALLERY_ONLY -> Icons.Outlined.Photo to stringResource(R.string.tab_gallery)
+        FeedContentFilter.POLLS_ONLY -> Icons.Outlined.HowToVote to stringResource(R.string.tab_polls)
+    }
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            modifier = Modifier.size(22.dp),
+            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (selected) {
+            Spacer(Modifier.height(3.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+            )
         }
     }
 }

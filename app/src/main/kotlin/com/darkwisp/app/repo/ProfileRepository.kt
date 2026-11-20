@@ -58,13 +58,10 @@ class ProfileRepository internal constructor(prefs: SharedPreferences, val avata
     fun has(pubkey: String): Boolean = get(pubkey) != null
 
     fun search(query: String, limit: Int = 10): List<ProfileData> {
-        if (query.isBlank()) return emptyList()
-        val lowerQuery = query.lowercase()
-        return cache.values().filter { profile ->
-            profile.name?.lowercase()?.contains(lowerQuery) == true ||
-            profile.displayName?.lowercase()?.contains(lowerQuery) == true ||
-            profile.nip05?.lowercase()?.contains(lowerQuery) == true
-        }.take(limit)
+        if (query.isBlank() || limit <= 0) return emptyList()
+        return rankProfileSearchResults(cache.values(), query)
+            .filter { profileSearchScore(it, query) > 0 }
+            .take(limit)
     }
 
     suspend fun flush() = cache.flush()

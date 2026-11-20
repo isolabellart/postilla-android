@@ -26,6 +26,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Router
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.WifiTethering
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.EmojiEmotions
@@ -42,12 +46,11 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Hub
-import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Visibility
@@ -55,10 +58,12 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
@@ -83,8 +88,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.nostr.toNpub
 import com.darkwisp.app.relay.TorManager
@@ -92,12 +99,24 @@ import com.darkwisp.app.repo.AccountInfo
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.WalletBalanceDisplayMode
 import com.darkwisp.app.ui.util.AmountFormatter
+import com.darkwisp.app.ui.theme.WispThemeColors
 
-private val TorPurple = Color(0xFF9C59D1)
-private val TorAmber = Color(0xFFFFB74D)
-private val TorGreen = Color(0xFF4CAF50)
-private val AnonGreen = Color(0xFF00C853)
+private val TorPurple = Color(0xFFF08A32)
+private val TorAmber = Color(0xFFF08A32)
+private val TorGreen = Color(0xFFB8AEA1)
+private val AnonGreen = Color(0xFFF08A32)
 
+/** Shared optical size for Postilla's restrained outline navigation icons. */
+@Composable
+private fun PostillaDrawerIcon(imageVector: ImageVector) {
+    Icon(
+        imageVector = imageVector,
+        contentDescription = null,
+        modifier = Modifier.size(22.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WispDrawerContent(
     profile: ProfileData?,
@@ -113,9 +132,15 @@ fun WispDrawerContent(
     onEnterAnonMode: () -> Unit = {},
     onExitAnonMode: () -> Unit = {},
     onProfile: () -> Unit,
+    onMyStorefront: () -> Unit = {},
     onFeed: () -> Unit,
     onSearch: () -> Unit,
     onMessages: () -> Unit,
+    onMarketplace: () -> Unit = {},
+    onMarketplaceWatchlist: () -> Unit = {},
+    marketplaceWatchlistExists: Boolean = false,
+    marketplaceWatchlistCount: Int = 0,
+    marketplaceWatchlistAlertCount: Int = 0,
     onWallet: () -> Unit,
     onLists: () -> Unit = {},
     onDrafts: () -> Unit = {},
@@ -137,6 +162,11 @@ fun WispDrawerContent(
     userStatus: String? = null,
     onUpdateStatus: ((String) -> Unit)? = null,
     onScanResult: (String) -> Unit = {},
+    onlineCount: Int = 0,
+    connectedRelayCount: Int = 0,
+    onOnlineClick: () -> Unit = {},
+    onConnectedRelaysClick: () -> Unit = {},
+    connectedRelayMenu: @Composable () -> Unit = {},
     // Mini-wallet widget (wisp-ios #474 port). `walletConfigured` is the
     // active wallet's mode != NONE; `walletBalanceMsats` is null whenever
     // the balance is unknown (never fetched / connecting / errored).
@@ -155,6 +185,17 @@ fun WispDrawerContent(
             .statusBarsPadding()
             .verticalScroll(scrollState)
         ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PostillaBrandMark(size = 32.dp)
+            Spacer(Modifier.width(10.dp))
+            PostillaWordmark(fontSize = 22.sp)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         var showProfileQr by remember { mutableStateOf(false) }
         var showAccountSwitcher by remember { mutableStateOf(false) }
 
@@ -209,6 +250,60 @@ fun WispDrawerContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+                if (onlineCount > 0) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                    onClick = onOnlineClick,
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = WispThemeColors.repostColor
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            onlineCount.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Box {
+                    Surface(
+                        onClick = onConnectedRelaysClick,
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.Hub,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = if (connectedRelayCount > 0) WispThemeColors.repostColor
+                                    else Color(0xFFF08A32)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                connectedRelayCount.toString(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    connectedRelayMenu()
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 IconButton(onClick = onToggleTheme) {
@@ -463,10 +558,9 @@ fun WispDrawerContent(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Mini-wallet stripe — replaces the plain Wallet menu row with a
-        // live-balance card (hide/show toggle sharing the dashboard's
-        // per-pubkey hidden state, or a "Set up wallet" CTA). Skipped for
-        // watch-only accounts, mirroring wisp-ios #474.
+        // Restore the compact wallet entry in the drawer. It shows
+        // "Set up wallet" until a wallet is configured, then the live
+        // balance and visibility control, matching the original 1.3.0 UX.
         if (!isWatchOnly) {
             DrawerMiniWalletRow(
                 pubkey = pubkey,
@@ -477,44 +571,71 @@ fun WispDrawerContent(
         }
 
         NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Person, contentDescription = null) },
+            icon = { PostillaDrawerIcon(Icons.Outlined.Person) },
             label = { Text(stringResource(R.string.drawer_my_profile)) },
             selected = false,
             onClick = onProfile,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
+        if (pubkey != null && !anonModeActive) {
+            NavigationDrawerItem(
+                icon = { PostillaDrawerIcon(Icons.Outlined.Storefront) },
+                label = { Text(stringResource(R.string.drawer_my_storefront)) },
+                selected = false,
+                onClick = onMyStorefront,
+                modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
+            )
+        }
         NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-            label = { Text(stringResource(R.string.drawer_feeds)) },
+            icon = { PostillaDrawerIcon(Icons.Outlined.Storefront) },
+            label = { Text(stringResource(R.string.marketplace_title)) },
             selected = false,
-            onClick = onFeed,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-            label = { Text(stringResource(R.string.title_search)) },
-            selected = false,
-            onClick = onSearch,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Email, contentDescription = null) },
-            label = { Text(stringResource(R.string.nav_messages)) },
-            selected = false,
-            onClick = onMessages,
+            onClick = onMarketplace,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
         // Wallet lives in the mini-wallet widget near the top of the
         // drawer now.
+        if (marketplaceWatchlistExists) {
+            NavigationDrawerItem(
+                icon = { PostillaDrawerIcon(Icons.Outlined.BookmarkBorder) },
+                label = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.marketplace_watchlist_title),
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            marketplaceWatchlistCount.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (marketplaceWatchlistAlertCount > 0) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                marketplaceWatchlistAlertCount.toString(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                },
+                selected = false,
+                onClick = onMarketplaceWatchlist,
+                modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
+            )
+        }
         NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.FormatListBulleted, contentDescription = null) },
+            icon = { PostillaDrawerIcon(Icons.Outlined.FormatListBulleted) },
             label = { Text(stringResource(R.string.drawer_lists)) },
             selected = false,
             onClick = onLists,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
         NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+            icon = { PostillaDrawerIcon(Icons.Outlined.Edit) },
             label = { Text(stringResource(R.string.drawer_drafts)) },
             selected = false,
             onClick = onDrafts,
@@ -525,7 +646,7 @@ fun WispDrawerContent(
                 Icon(
                     painter = painterResource(R.drawable.ic_onion),
                     contentDescription = stringResource(R.string.cd_tor_toggle),
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                     tint = when (torState) {
                         is TorManager.State.On -> TorPurple
                         is TorManager.State.Starting, TorManager.State.Stopping -> TorAmber
@@ -566,7 +687,7 @@ fun WispDrawerContent(
             }
         }
         NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+            icon = { PostillaDrawerIcon(Icons.Outlined.Settings) },
             label = { Text(stringResource(R.string.drawer_settings)) },
             badge = {
                 Icon(
@@ -582,77 +703,77 @@ fun WispDrawerContent(
         AnimatedVisibility(visible = settingsExpanded) {
             Column {
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Palette, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Tune) },
                     label = { Text(stringResource(R.string.drawer_interface)) },
                     selected = false,
                     onClick = onInterfaceSettings,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.WifiTethering) },
                     label = { Text(stringResource(R.string.drawer_relays)) },
                     selected = false,
                     onClick = onRelaySettings,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Cloud, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Cloud) },
                     label = { Text(stringResource(R.string.drawer_media_servers)) },
                     selected = false,
                     onClick = onMediaServers,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Key, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Key) },
                     label = { Text(stringResource(R.string.drawer_keys)) },
                     selected = false,
                     onClick = onKeys,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Block) },
                     label = { Text(stringResource(R.string.drawer_safety)) },
                     selected = false,
                     onClick = onSafety,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Shield, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Shield) },
                     label = { Text(stringResource(R.string.drawer_proof_of_work)) },
                     selected = false,
                     onClick = onPowSettings,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Hub, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Hub) },
                     label = { Text(stringResource(R.string.drawer_social_graph)) },
                     selected = false,
                     onClick = onSocialGraph,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.EmojiEmotions, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.EmojiEmotions) },
                     label = { Text(stringResource(R.string.drawer_custom_emojis)) },
                     selected = false,
                     onClick = onCustomEmojis,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.TrackChanges, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.TrackChanges) },
                     label = { Text(stringResource(R.string.drawer_payment_targets)) },
                     selected = false,
                     onClick = onPaymentTargets,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.FavoriteBorder, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Router) },
                     label = { Text(stringResource(R.string.drawer_relay_health)) },
                     selected = false,
                     onClick = onRelayHealth,
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
                 NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.BugReport, contentDescription = null) },
+                    icon = { PostillaDrawerIcon(Icons.Outlined.BugReport) },
                     label = { Text(stringResource(R.string.drawer_console)) },
                     selected = false,
                     onClick = onConsole,
@@ -752,15 +873,10 @@ fun WispDrawerContent(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_wisp_logo),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                modifier = Modifier.size(16.dp)
-            )
+            PostillaBrandMark(size = 18.dp)
             Spacer(Modifier.width(6.dp))
             Text(
-                text = "wisp v$versionName",
+                text = "Postilla v$versionName",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
             )

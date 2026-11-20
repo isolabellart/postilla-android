@@ -1,0 +1,2232 @@
+package com.darkwisp.app.ui.screen
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import com.darkwisp.app.ui.component.ProfilePicture
+import com.darkwisp.app.ui.component.MarketplaceAvailabilityBadge
+import com.darkwisp.app.ui.component.MarketplaceVisibilityBadge
+import com.darkwisp.app.ui.component.MarketplaceFormatBadge
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import java.util.concurrent.ConcurrentHashMap
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.text.DateFormat
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Date
+import java.util.Locale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil3.compose.AsyncImage
+import com.darkwisp.app.R
+import com.darkwisp.app.nostr.MarketplaceRelays
+import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.Nip99
+import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip13
+import com.darkwisp.app.nostr.Nip51
+import com.darkwisp.app.nostr.Filter
+import com.darkwisp.app.nostr.ClientMessage
+import com.darkwisp.app.nostr.NostrSigner
+import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.ui.component.ZapDialog
+import com.darkwisp.app.relay.RelayPool
+import com.darkwisp.app.relay.RelayConfig
+import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.ContactRepository
+import com.darkwisp.app.repo.InterfacePreferences
+import com.darkwisp.app.repo.PowPreferences
+import com.darkwisp.app.repo.SafetyPreferences
+import com.darkwisp.app.repo.SpamAuthorCache
+import com.darkwisp.app.repo.shouldHideSpamAuthor
+import com.darkwisp.app.ml.NSpamClassifier
+import com.darkwisp.app.ml.NoteInput
+import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.TranslationState
+import com.darkwisp.app.repo.TranslationStatus
+import com.darkwisp.app.repo.MarketplaceReviewRepository
+import com.darkwisp.app.repo.RelayListRepository
+import com.darkwisp.app.nostr.SellerReviewSummary
+import com.darkwisp.app.repo.BookmarkSetRepository
+import com.darkwisp.app.viewmodel.MarketplaceNaddrLookupState
+import com.darkwisp.app.viewmodel.MarketplaceScope
+import com.darkwisp.app.viewmodel.MarketplaceViewModel
+import com.darkwisp.app.ui.component.CollapsedRepliesRow
+import com.darkwisp.app.ui.component.SpamToggle
+import com.darkwisp.app.ui.component.threadConnector
+import com.darkwisp.app.ui.component.threadIndentDp
+import com.darkwisp.app.viewmodel.thread.ThreadItem
+
+private const val MARKETPLACE_WATCHLIST_DTAG = "dark-wisp-marketplace-watchlist"
+
+private data class MarketplaceWatchlistSnapshot(
+    val createdAt: Long,
+    val coordinates: Set<String>
+)
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun MarketplaceScreen(
+    viewModel: MarketplaceViewModel,
+    relayPool: RelayPool,
+    eventRepository: EventRepository,
+    relayListRepository: RelayListRepository,
+    followedPubkeys: List<String>,
+    userPubkey: String?,
+    onBack: () -> Unit,
+    onOpenListing: (NostrEvent) -> Unit,
+    onCreateListing: () -> Unit,
+    sellerPubkey: String? = null,
+    sellerName: String? = null,
+    canCreateListing: Boolean = true
+) {
+    val listings by viewModel.listings.collectAsState()
+    val sellerInventory by viewModel.sellerInventory.collectAsState()
+    val sellerInventoryLoaded by viewModel.sellerInventoryLoaded.collectAsState()
+    val selectedScope by viewModel.scope.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val categories by viewModel.availableCategories.collectAsState()
+    val hideSold by viewModel.hideSold.collectAsState()
+    val selectedLocation by viewModel.selectedLocation.collectAsState()
+    val locations by viewModel.availableLocations.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val naddrLookup by viewModel.naddrLookupState.collectAsState()
+    val sellerProfileVersion by remember(eventRepository, sellerPubkey) {
+        eventRepository.profileVersionFor(sellerPubkey.orEmpty())
+    }.collectAsState(initial = 0)
+    val sellerProfile = remember(eventRepository, sellerPubkey, sellerProfileVersion) {
+        sellerPubkey?.let { eventRepository.getProfileData(it) }
+    }
+    LaunchedEffect(sellerPubkey) {
+        sellerPubkey?.let { eventRepository.requestProfileIfMissing(it) }
+    }
+    val storefrontDisplayName = sellerProfile?.displayString?.takeIf { it.isNotBlank() } ?: sellerName
+    var storefrontRating by remember(sellerPubkey) { mutableStateOf<SellerReviewSummary?>(null) }
+
+    LaunchedEffect(sellerPubkey, sellerInventory, relayPool, eventRepository) {
+        if (sellerPubkey == null) {
+            storefrontRating = null
+            return@LaunchedEffect
+        }
+        // Seller-level reviews are discoverable through their #p tag even when the
+        // storefront inventory is partial or empty. Do not gate this lookup on EOSE quorum.
+        // Inventory arrives in batches from local persistence and relays. Debounce
+        // changes so a stable address set is queried once, while #p reviews are still
+        // discoverable when the inventory is empty or incomplete.
+        delay(700)
+        storefrontRating = try {
+            withContext(Dispatchers.IO) {
+                MarketplaceReviewRepository(relayPool, eventRepository)
+                    .fetchSellerReviews(sellerPubkey, sellerInventory)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    LaunchedEffect(searchQuery, eventRepository) {
+        viewModel.resolveMarketplaceNaddrQuery(searchQuery, eventRepository)
+    }
+
+    LaunchedEffect(selectedScope, followedPubkeys, userPubkey, sellerPubkey, relayListRepository) {
+        viewModel.load(selectedScope, relayPool, eventRepository, followedPubkeys, userPubkey, relayListRepository, sellerPubkey)
+    }
+
+    var storefrontWatchlists by remember(sellerPubkey, userPubkey) {
+        mutableStateOf<Map<String, MarketplaceWatchlistSnapshot>>(emptyMap())
+    }
+    LaunchedEffect(sellerPubkey, userPubkey, eventRepository, relayPool) {
+        if (sellerPubkey == null || userPubkey == null || sellerPubkey != userPubkey) {
+            storefrontWatchlists = emptyMap()
+            return@LaunchedEffect
+        }
+
+        val cachedEvents = withContext(Dispatchers.IO) {
+            eventRepository.getRecentMarketplaceWatchlistEvents(limit = 5000)
+        }
+        val latestByAuthor = mutableMapOf<String, MarketplaceWatchlistSnapshot>()
+        cachedEvents.forEach { candidate ->
+            val set = Nip51.parseBookmarkSet(candidate) ?: return@forEach
+            val previous = latestByAuthor[candidate.pubkey]
+            if (previous == null || candidate.created_at > previous.createdAt) {
+                latestByAuthor[candidate.pubkey] = MarketplaceWatchlistSnapshot(
+                    createdAt = candidate.created_at,
+                    coordinates = set.coordinates
+                )
+            }
+        }
+        storefrontWatchlists = latestByAuthor
+
+        val marketplaceRelayUrls = (MarketplaceRelays.READ + MarketplaceRelays.WRITE).distinct()
+        val targets = (
+            relayPool.getReadRelayUrls() +
+                RelayConfig.DEFAULT_INDEXER_RELAYS +
+                marketplaceRelayUrls
+            ).distinct()
+        val subId = "marketplace-storefront-interests-" + sellerPubkey.take(12)
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents
+                .filter { it.subscriptionId == subId }
+                .collect { frame ->
+                    val candidate = frame.event
+                    val dTag = candidate.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
+                    if (candidate.kind != Nip51.KIND_BOOKMARK_SET || dTag != MARKETPLACE_WATCHLIST_DTAG) {
+                        return@collect
+                    }
+                    val set = Nip51.parseBookmarkSet(candidate) ?: return@collect
+                    val previous = storefrontWatchlists[candidate.pubkey]?.createdAt ?: 0L
+                    if (candidate.created_at > previous) {
+                        storefrontWatchlists = storefrontWatchlists.toMutableMap().apply {
+                            put(
+                                candidate.pubkey,
+                                MarketplaceWatchlistSnapshot(candidate.created_at, set.coordinates)
+                            )
+                        }
+                    }
+                }
+        }
+        val request = ClientMessage.req(
+            subId,
+            Filter(
+                kinds = listOf(Nip51.KIND_BOOKMARK_SET),
+                dTags = listOf(MARKETPLACE_WATCHLIST_DTAG),
+                limit = 1000
+            )
+        )
+        targets.forEach { relay ->
+            relayPool.sendToRelayOrEphemeral(
+                relay,
+                request,
+                skipBadCheck = true,
+                autoReconnect = relay in marketplaceRelayUrls
+            )
+        }
+        try {
+            awaitCancellation()
+        } finally {
+            collector.cancel()
+            relayPool.closeOnAllRelays(subId)
+        }
+    }
+
+    val storefrontSoldCount = remember(sellerInventory, sellerPubkey, sellerInventoryLoaded) {
+        if (!sellerInventoryLoaded && sellerInventory.isEmpty()) null else
+            sellerInventory.count { event ->
+                sellerPubkey != null &&
+                    event.pubkey == sellerPubkey &&
+                    Nip99.status(event) != "hidden" &&
+                    Nip99.availability(event).state == Nip99.AvailabilityState.SOLD_OUT
+            }
+    }
+    val storefrontFirstListingYear = remember(sellerInventory, sellerPubkey) {
+        firstMarketplaceListingYear(sellerInventory, sellerPubkey)
+    }
+
+    val storefrontBookmarkCounts = remember(listings, storefrontWatchlists, sellerPubkey, userPubkey) {
+        if (sellerPubkey == null || userPubkey == null || sellerPubkey != userPubkey) {
+            emptyMap()
+        } else {
+            listings.associate { listing ->
+                val address = Nip99.addressTag(listing)
+                address to storefrontWatchlists.count { (author, snapshot) ->
+                    author != listing.pubkey && address in snapshot.coordinates
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Storefront, contentDescription = null)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            if (sellerPubkey != null) storefrontDisplayName?.takeIf { it.isNotBlank() }?.let {
+                                stringResource(R.string.marketplace_storefront_title, it)
+                            } ?: stringResource(R.string.marketplace_storefront)
+                            else stringResource(R.string.marketplace_title)
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            viewModel.load(selectedScope, relayPool, eventRepository, followedPubkeys, userPubkey, relayListRepository, sellerPubkey)
+                        },
+                        enabled = !loading
+                    ) {
+                        if (loading) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.marketplace_refresh))
+                        }
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            if (canCreateListing) FloatingActionButton(onClick = onCreateListing) {
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.marketplace_new))
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(bottom = 96.dp)
+        ) {
+            if (sellerPubkey != null) {
+                item(key = "storefront-header") {
+                    StorefrontHeader(
+                        bannerUrl = sellerProfile?.banner,
+                        pictureUrl = sellerProfile?.picture,
+                        soldCount = storefrontSoldCount,
+                        firstListingYear = storefrontFirstListingYear,
+                        rating = storefrontRating
+                    )
+                }
+            }
+            if (loading && listings.isNotEmpty()) {
+                item(key = "marketplace-loading-progress") {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+            item(key = "marketplace-scope-filters") {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (sellerPubkey == null) {
+                        FilterChip(selected = selectedScope == MarketplaceScope.ALL, onClick = { viewModel.setScope(MarketplaceScope.ALL) }, label = { Text(stringResource(R.string.marketplace_all)) })
+                        FilterChip(selected = selectedScope == MarketplaceScope.FOLLOWING, onClick = { viewModel.setScope(MarketplaceScope.FOLLOWING) }, label = { Text(stringResource(R.string.marketplace_following)) })
+                        FilterChip(selected = selectedScope == MarketplaceScope.MINE, onClick = { viewModel.setScope(MarketplaceScope.MINE) }, label = { Text(stringResource(R.string.marketplace_mine)) })
+                    }
+                    FilterChip(
+                        selected = hideSold,
+                        onClick = { viewModel.setHideSold(!hideSold) },
+                        label = { Text(stringResource(R.string.marketplace_hide_sold)) }
+                    )
+                }
+            }
+            item(key = "marketplace-search") {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = viewModel::setSearchQuery,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).height(56.dp),
+                    singleLine = true,
+                    maxLines = 1,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                            Icon(Icons.Default.Close, contentDescription = null)
+                        }
+                    },
+                    placeholder = {
+                        Text(
+                            stringResource(R.string.marketplace_search_hint),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    shape = RoundedCornerShape(18.dp)
+                )
+            }
+            if (categories.isNotEmpty()) {
+                stickyHeader(key = "marketplace-categories") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.background)
+                            .padding(top = 8.dp, bottom = 8.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.marketplace_categories),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                        )
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedCategory == null,
+                                onClick = { viewModel.setSelectedCategory(null) },
+                                label = { Text(stringResource(R.string.marketplace_all)) }
+                            )
+                            categories.forEach { category ->
+                                FilterChip(
+                                    selected = selectedCategory.equals(category, true),
+                                    onClick = { viewModel.setSelectedCategory(if (selectedCategory.equals(category, true)) null else category) },
+                                    label = { Text(category.replaceFirstChar { it.uppercase() }, maxLines = 1) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (locations.isNotEmpty()) {
+                item(key = "marketplace-location-filter") {
+                    Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)) {
+                        Text(
+                            stringResource(R.string.marketplace_locations),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                        )
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedLocation == null,
+                                onClick = { viewModel.setSelectedLocation(null) },
+                                label = { Text(stringResource(R.string.marketplace_all)) }
+                            )
+                            locations.forEach { place ->
+                                val selected = selectedLocation.equals(place, true)
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.setSelectedLocation(if (selected) null else place) },
+                                    label = { Text(place, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            when (val lookup = naddrLookup) {
+                MarketplaceNaddrLookupState.Loading -> item(key = "marketplace-naddr-loading") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 64.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                            Text(
+                                stringResource(R.string.marketplace_naddr_loading),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                is MarketplaceNaddrLookupState.Found -> {
+                    if (Nip99.matchesSoldFilter(lookup.event, hideSold)) {
+                        item(key = Nip99.addressTag(lookup.event)) {
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                MarketplaceListingCard(
+                                    event = lookup.event,
+                                    eventRepository = eventRepository,
+                                    onClick = { onOpenListing(lookup.event) }
+                                )
+                            }
+                        }
+                    } else {
+                        item(key = "marketplace-naddr-sold-hidden") {
+                            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                Text(stringResource(R.string.marketplace_no_results), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                MarketplaceNaddrLookupState.Invalid -> item(key = "marketplace-naddr-invalid") {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.marketplace_naddr_invalid),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                MarketplaceNaddrLookupState.Unsupported -> item(key = "marketplace-naddr-unsupported") {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.marketplace_naddr_unsupported),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                MarketplaceNaddrLookupState.NotFound -> item(key = "marketplace-naddr-not-found") {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.marketplace_naddr_not_found),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                MarketplaceNaddrLookupState.Idle -> when {
+                    loading && listings.isEmpty() -> item(key = "marketplace-initial-loading") {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 64.dp), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                        }
+                    }
+                    error != null && listings.isEmpty() -> item(key = "marketplace-load-error") {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.marketplace_load_error, error ?: ""))
+                        }
+                    }
+                    listings.isEmpty() -> item(key = "marketplace-empty") {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (searchQuery.isNotBlank() || selectedCategory != null || selectedLocation != null) stringResource(R.string.marketplace_no_results)
+                                    else stringResource(R.string.marketplace_empty),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (sellerPubkey != null && canCreateListing && searchQuery.isBlank() && selectedCategory == null) {
+                                    OutlinedButton(onClick = onCreateListing) {
+                                        Icon(Icons.Default.Add, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.marketplace_add_listing))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> items(listings, key = { Nip99.addressTag(it) }) { event ->
+                        val bookmarkCount = storefrontBookmarkCounts[Nip99.addressTag(event)]
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp)) {
+                            MarketplaceListingCard(
+                                event = event,
+                                eventRepository = eventRepository,
+                                bookmarkCount = bookmarkCount,
+                                onClick = { onOpenListing(event) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun firstMarketplaceListingYear(listings: List<NostrEvent>, sellerPubkey: String?): String? {
+    if (sellerPubkey.isNullOrBlank()) return null
+    val firstYear = listings.asSequence()
+        .filter { it.pubkey == sellerPubkey }
+        .mapNotNull { event ->
+            val publishedAt = Nip99.publishedAt(event).trim()
+            val epochSeconds = publishedAt.toLongOrNull()
+            if (epochSeconds != null) {
+                runCatching {
+                    Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).year
+                }.getOrNull()
+            } else {
+                runCatching { LocalDate.parse(publishedAt.take(10)).year }.getOrNull()
+                    ?: runCatching {
+                        Instant.parse(publishedAt).atZone(ZoneId.systemDefault()).year
+                    }.getOrNull()
+            }
+        }
+        .minOrNull()
+    return firstYear?.toString()
+}
+
+@Composable
+private fun StorefrontHeader(
+    bannerUrl: String?,
+    pictureUrl: String?,
+    soldCount: Int?,
+    firstListingYear: String?,
+    rating: SellerReviewSummary?
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(184.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(126.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (!bannerUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = bannerUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.Storefront,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.align(Alignment.Center).size(38.dp)
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp),
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 4.dp
+        ) {
+            ProfilePicture(
+                url = pictureUrl,
+                modifier = Modifier.padding(4.dp),
+                size = 68
+            )
+        }
+        StorefrontStatsStrip(
+            soldCount = soldCount,
+            firstListingYear = firstListingYear,
+            rating = rating,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .padding(start = 88.dp, end = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun StorefrontStatsStrip(
+    soldCount: Int?,
+    firstListingYear: String?,
+    rating: SellerReviewSummary?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.height(42.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(soldCount?.toString() ?: "—", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(
+                    stringResource(R.string.marketplace_storefront_sold),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text("★", color = Color(0xFFFF9800), style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        rating?.averageStars?.let { String.format(java.util.Locale.getDefault(), "%.1f", it) } ?: "—",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    when {
+                        rating == null -> stringResource(R.string.marketplace_storefront_rating)
+                        rating.reviewCount > 0 -> stringResource(R.string.marketplace_storefront_reviews, rating.reviewCount)
+                        else -> stringResource(R.string.marketplace_storefront_no_reviews)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(firstListingYear ?: "—", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(
+                    stringResource(R.string.marketplace_storefront_since),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MarketplaceListingCard(event: NostrEvent, eventRepository: EventRepository, bookmarkCount: Int? = null, onClick: () -> Unit) {
+    val image = Nip99.images(event).firstOrNull()
+    val availability = Nip99.availability(event)
+    val profileVersion by eventRepository.profileVersionFor(event.pubkey).collectAsState(initial = 0)
+    val sellerProfile = remember(eventRepository, event.pubkey, profileVersion) {
+        eventRepository.getProfileData(event.pubkey)
+    }
+    LaunchedEffect(event.pubkey) { eventRepository.requestProfileIfMissing(event.pubkey) }
+
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(width = 108.dp, height = 140.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                if (image != null) {
+                    ZoomableMarketplaceImage(
+                        imageUrl = image,
+                        contentDescription = Nip99.displayTitle(
+                            event,
+                            stringResource(R.string.marketplace_preview_untitled)
+                        ),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(34.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    Nip99.displayTitle(event, stringResource(R.string.marketplace_preview_untitled)),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2
+                )
+                val visibility = Nip99.visibility(event)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MarketplaceVisibilityBadge(visibility, compact = true)
+                    MarketplaceFormatBadge(Nip99.productFormat(event), compact = true)
+                    if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
+                        MarketplaceAvailabilityBadge(availability, compact = true)
+                    }
+                }
+                Nip99.summary(event).takeIf { it.isNotBlank() }?.let { summary ->
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Nip99.price(event)?.let { price ->
+                    Text(Nip99.priceLabel(event).orEmpty(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
+                }
+                val location = Nip99.location(event)
+                if (location.isNotBlank()) {
+                    Text(location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    ProfilePicture(url = sellerProfile?.picture, size = 24)
+                    Text(
+                        sellerProfile?.displayString ?: event.pubkey.take(8) + "…" + event.pubkey.takeLast(4),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                    if (bookmarkCount != null && bookmarkCount > 0) {
+                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant, shape = RoundedCornerShape(6.dp)) {
+                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Filled.Bookmark, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Text(bookmarkCount.toString(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun MarketplaceDetailScreen(
+    event: NostrEvent,
+    userPubkey: String?,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onContactSeller: (String) -> Unit,
+    eventRepository: EventRepository,
+    relayPool: RelayPool,
+    signer: NostrSigner?,
+    onReact: () -> Unit,
+    onZap: (Long, String, Boolean, Boolean) -> Unit,
+    isWalletConnected: Boolean,
+    zapPrefsRepo: com.darkwisp.app.repo.ZapPreferences,
+    onGoToWallet: () -> Unit,
+    recipientHasLud16: Boolean,
+    profileLookup: (String) -> com.darkwisp.app.nostr.ProfileData?,
+    fetchPaymentTargets: (suspend (String) -> List<com.darkwisp.app.nostr.NipA3.PaymentTarget>)?,
+    onOpenProfile: (String) -> Unit = {},
+    onBookmarkSetChanged: (NostrEvent) -> Unit = {},
+    bookmarkSetRepository: BookmarkSetRepository,
+    spamClassifier: NSpamClassifier?,
+    spamAuthorCache: SpamAuthorCache,
+    safetyPrefs: SafetyPreferences,
+    contactRepo: ContactRepository,
+    powPrefs: PowPreferences,
+    interfacePrefs: InterfacePreferences,
+    translationRepository: TranslationRepository? = null,
+    onBoostListing: (String) -> Unit = {},
+    onReactComment: (NostrEvent) -> Unit = {}
+) {
+    val profileVersion by eventRepository.profileVersionFor(event.pubkey).collectAsState(initial = 0)
+    val sellerProfile = remember(eventRepository, event.pubkey, profileVersion) {
+        eventRepository.getProfileData(event.pubkey)
+    }
+    LaunchedEffect(event.pubkey) { eventRepository.requestProfileIfMissing(event.pubkey) }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val detailScope = rememberCoroutineScope()
+    val title = Nip99.displayTitle(event, stringResource(R.string.marketplace_preview_untitled))
+    val images = Nip99.images(event)
+    val summary = Nip99.summary(event)
+    val description = Nip99.description(event)
+    val translationVersion by translationRepository?.version?.collectAsState()
+        ?: remember { mutableIntStateOf(0) }
+    val titleToTranslate = Nip99.title(event).takeIf(String::isNotBlank)
+    val translationCacheNamespace = translationRepository?.getCacheNamespace() ?: "unavailable"
+    val titleTranslationKey = "marketplace:$translationCacheNamespace:${event.id}:title"
+    val summaryTranslationKey = "marketplace:$translationCacheNamespace:${event.id}:summary"
+    val descriptionTranslationKey = "marketplace:$translationCacheNamespace:${event.id}:description"
+    val titleTranslationState = remember(translationVersion, titleTranslationKey) {
+        translationRepository?.getState(titleTranslationKey) ?: TranslationState()
+    }
+    val summaryTranslationState = remember(translationVersion, summaryTranslationKey) {
+        translationRepository?.getState(summaryTranslationKey) ?: TranslationState()
+    }
+    val descriptionTranslationState = remember(translationVersion, descriptionTranslationKey) {
+        translationRepository?.getState(descriptionTranslationKey) ?: TranslationState()
+    }
+    var showOriginalListingContent by remember(event.id) { mutableStateOf(false) }
+    val listingTranslationStates = listOfNotNull(
+        titleToTranslate?.let { titleTranslationState },
+        summary.takeIf(String::isNotBlank)?.let { summaryTranslationState },
+        description.takeIf(String::isNotBlank)?.let { descriptionTranslationState }
+    )
+    val listingTranslationLoading = listingTranslationStates.any { state ->
+        state.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+            state.status == TranslationStatus.DOWNLOADING_MODEL ||
+            state.status == TranslationStatus.TRANSLATING
+    }
+    val listingHasTranslation = listingTranslationStates.any {
+        it.status == TranslationStatus.DONE && it.translatedText.isNotBlank()
+    }
+    val listingTranslationsComplete = listingTranslationStates.isNotEmpty() &&
+        listingTranslationStates.all {
+            it.status == TranslationStatus.DONE || it.status == TranslationStatus.SAME_LANGUAGE
+        }
+    val listingTranslationFailed = listingTranslationStates.any { it.status == TranslationStatus.ERROR }
+    val formattedPublishedAt = remember(event.id) {
+        Nip99.publishedAtTimestamp(event)?.let(::formatMarketplacePublishedDate)
+    }
+    val availability = Nip99.availability(event)
+    val sold = availability.state == Nip99.AvailabilityState.SOLD_OUT
+    var message by remember(event.id) {
+        mutableStateOf("")
+    }
+    var contactExpanded by remember(event.id) { mutableStateOf(false) }
+    var showZapDialog by remember(event.id) { mutableStateOf(false) }
+    val comments = remember(event.id) { mutableStateListOf<NostrEvent>() }
+    var commentText by remember(event.id) { mutableStateOf("") }
+    var commentSending by remember(event.id) { mutableStateOf(false) }
+    var commentError by remember(event.id) { mutableStateOf<String?>(null) }
+    var replyingToComment by remember(event.id) { mutableStateOf<NostrEvent?>(null) }
+    var spamAuthorPubkeys by remember(event.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var spamExpanded by remember(event.id) { mutableStateOf(false) }
+    var expandedCommentIds by remember(event.id) { mutableStateOf<Set<String>>(emptySet()) }
+    val commentAddress = remember(event.pubkey, event.id) { Nip22.addressableRootTag(event) }
+    val listingAddress = remember(event.pubkey, Nip99.dTag(event)) { Nip99.addressTag(event) }
+    val reactionVersion by eventRepository.reactionVersion.collectAsState(initial = 0)
+    val spamFilterEnabled by safetyPrefs.spamFilterEnabled.collectAsState()
+    val commentIds = comments.map { it.id }
+    val reactionCount = remember(listingAddress, reactionVersion) { eventRepository.getReactionCount(listingAddress) }
+    val zapVersion by eventRepository.zapVersion.collectAsState(initial = 0)
+    val zapSats = remember(event.id, zapVersion) { eventRepository.getZapSats(event.id) }
+    val userHasReacted = userPubkey?.let { eventRepository.hasUserReacted(listingAddress, it) } ?: false
+    val isOwnListing = Nip99.isOwnedListing(event, userPubkey)
+    var watchlistEvent by remember(userPubkey) { mutableStateOf<NostrEvent?>(null) }
+    var bookmarkReady by remember(userPubkey, event.id) { mutableStateOf(userPubkey == null || isOwnListing) }
+    var isBookmarked by remember(userPubkey, event.id) { mutableStateOf(false) }
+    var bookmarkBusy by remember(userPubkey, event.id) { mutableStateOf(false) }
+    var bookmarkError by remember(userPubkey, event.id) { mutableStateOf<String?>(null) }
+    var publicInterestByPubkey by remember(event.id) {
+        mutableStateOf<Map<String, MarketplaceWatchlistSnapshot>>(emptyMap())
+    }
+    val publicInterestCount = publicInterestByPubkey.count { (pubkey, entry) ->
+        pubkey != event.pubkey && listingAddress in entry.coordinates
+    }
+    val interestedAuthors = remember(publicInterestByPubkey, event.pubkey, listingAddress) {
+        publicInterestByPubkey.filter { (pubkey, entry) ->
+            pubkey != event.pubkey && listingAddress in entry.coordinates
+        }.keys.sorted()
+    }
+    val suggestedMessage = stringResource(R.string.marketplace_message_intro, title)
+    val watchlistTitle = stringResource(R.string.marketplace_watchlist_title)
+    val context = LocalContext.current
+    val listingNaddr = remember(event.pubkey, event.id) {
+        Nip19.naddrEncode(
+            dTag = Nip99.dTag(event),
+            authorHex = event.pubkey,
+            kind = event.kind,
+            relays = MarketplaceRelays.READ.take(3)
+        )
+    }
+
+    LaunchedEffect(event.id, commentAddress) {
+        // Hydrate the discussion from ObjectBox first; relay replies then merge into
+        // the same list instead of making locally persisted comments disappear.
+        val cachedComments = withContext(Dispatchers.IO) {
+            eventRepository.getRecentCommentsForAddressableRoot(commentAddress, limit = 100)
+        }
+        cachedComments.forEach { comment ->
+            if (eventRepository.isEventVisibleToUser(comment) && comments.none { it.id == comment.id }) {
+                comments.add(comment)
+                eventRepository.requestProfileIfMissing(comment.pubkey)
+            }
+        }
+        comments.sortBy { it.created_at }
+
+        val subId = "marketplace-comments-${event.id.take(12)}"
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents.filter { it.subscriptionId == subId }.collect { frame ->
+                val comment = frame.event
+                if (Nip22.referencesAddressableRoot(comment, commentAddress) &&
+                    eventRepository.isEventVisibleToUser(comment) && comments.none { it.id == comment.id }) {
+                    eventRepository.addEvent(comment)
+                    comments.add(comment)
+                    comments.sortBy { it.created_at }
+                    eventRepository.requestProfileIfMissing(comment.pubkey)
+                }
+            }
+        }
+        val commentRequest = ClientMessage.req(
+            subId,
+            Filter(kinds = listOf(Nip22.KIND_COMMENT), bigATags = listOf(commentAddress), limit = 100)
+        )
+        val marketplaceReadRelays = (MarketplaceRelays.READ + MarketplaceRelays.WRITE).distinct()
+        (
+            relayPool.getReadRelayUrls() +
+                marketplaceReadRelays +
+                RelayConfig.DEFAULT_INDEXER_RELAYS
+            ).distinct().forEach { relay ->
+                relayPool.sendToRelayOrEphemeral(
+                    relay,
+                    commentRequest,
+                    skipBadCheck = true,
+                    autoReconnect = relay in marketplaceReadRelays
+                )
+            }
+        try { awaitCancellation() } finally {
+            collector.cancel()
+            relayPool.closeOnAllRelays(subId)
+        }
+    }
+
+    LaunchedEffect(event.id, commentIds, spamFilterEnabled, spamClassifier, userPubkey) {
+        if (!spamFilterEnabled || spamClassifier == null) {
+            spamAuthorPubkeys = emptySet()
+            return@LaunchedEffect
+        }
+        val authors = comments.map { it.pubkey }.distinct()
+        val detected = withContext(Dispatchers.Default) {
+            authors.filter { author ->
+                val notes = eventRepository.getCachedEventsByAuthor(author, 1, 10)
+                val noteCount = notes.size
+                val cachedScore = spamAuthorCache.get(author, noteCount)
+                val score = cachedScore ?: if (notes.isNotEmpty()) {
+                    spamClassifier.score(notes.map { note ->
+                        NoteInput(note.content, note.tags, note.created_at)
+                    })?.also { spamAuthorCache.put(author, it, noteCount) }
+                } else null
+                shouldHideSpamAuthor(
+                    pubkey = author,
+                    currentUserPubkey = userPubkey,
+                    isFollowing = contactRepo.isFollowing(author),
+                    isSafelisted = safetyPrefs.isSpamSafelisted(author),
+                    spamFilterEnabled = spamFilterEnabled,
+                    score = score
+                )
+            }.toSet()
+        }
+        spamAuthorPubkeys = detected
+    }
+
+    LaunchedEffect(event.id, listingAddress) {
+        val subId = "marketplace-reactions-${event.id.take(12)}"
+        val subscriptions = mutableListOf(subId)
+        val pendingDeletionIds = Channel<String>(Channel.UNLIMITED)
+        val knownReactionIds = mutableSetOf<String>()
+        val knownCommentIds = ConcurrentHashMap.newKeySet<String>()
+        val marketplaceReadRelays = (MarketplaceRelays.READ + MarketplaceRelays.WRITE).distinct()
+        val targets = (
+            relayPool.getReadRelayUrls() +
+                marketplaceReadRelays +
+                RelayConfig.DEFAULT_INDEXER_RELAYS
+            ).distinct()
+
+        val deletionFetchJob = launch {
+            var batchIndex = 0
+            for (firstId in pendingDeletionIds) {
+                val batch = linkedSetOf(firstId)
+                delay(150)
+                while (batch.size < 50) {
+                    val nextId = pendingDeletionIds.tryReceive().getOrNull() ?: break
+                    batch.add(nextId)
+                }
+                val deletionSubId = "marketplace-reactions-deletions-${event.id.take(8)}-${++batchIndex}"
+                subscriptions.add(deletionSubId)
+                val deletionRequest = ClientMessage.req(
+                    deletionSubId,
+                    Filter(kinds = listOf(5), eTags = batch.toList(), limit = 500)
+                )
+                targets.forEach { relay ->
+                    relayPool.sendToRelayOrEphemeral(
+                        relay, deletionRequest, skipBadCheck = true,
+                        autoReconnect = relay in marketplaceReadRelays
+                    )
+                }
+            }
+        }
+
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents
+                .filter { it.subscriptionId == subId }
+                .collect { frame ->
+                    val reaction = frame.event
+                    val targetsRevision = reaction.tags.any {
+                        it.size >= 2 && it[0] == "e" && it[1] == event.id
+                    }
+                    val targetsListing = reaction.tags.any {
+                        it.size >= 2 && it[0] == "a" && it[1] == listingAddress
+                    }
+                    val targetsComment = reaction.tags.any {
+                        it.size >= 2 && it[0] == "e" && it[1] in knownCommentIds
+                    }
+                    if (reaction.kind == 7 && (targetsRevision || targetsListing || targetsComment)) {
+                        eventRepository.addEvent(reaction)
+                        eventRepository.requestProfileIfMissing(reaction.pubkey)
+                        if (knownReactionIds.add(reaction.id)) pendingDeletionIds.trySend(reaction.id)
+                    }
+                }
+        }
+
+        val requestJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            snapshotFlow { comments.map { it.id }.distinct() }
+                .distinctUntilChanged()
+                .collect { ids ->
+                    knownCommentIds.clear()
+                    knownCommentIds.addAll(ids)
+                    val request = ClientMessage.req(
+                        subId,
+                        buildMarketplaceCommentReactionFilters(event.id, listingAddress, ids)
+                    )
+                    targets.forEach { relay ->
+                        relayPool.sendToRelayOrEphemeral(
+                            relay, request, skipBadCheck = true,
+                            autoReconnect = relay in marketplaceReadRelays
+                        )
+                    }
+                }
+        }
+
+        try {
+            awaitCancellation()
+        } finally {
+            pendingDeletionIds.close()
+            requestJob.cancel()
+            collector.cancel()
+            deletionFetchJob.cancel()
+            subscriptions.forEach { relayPool.closeOnAllRelays(it) }
+        }
+    }
+
+    LaunchedEffect(event.id, listingAddress, userPubkey) {
+        // Hydrate the latest public snapshot per author from ObjectBox/cache first.
+        // The live relay subscription below then replaces these entries only with newer revisions.
+        val cachedWatchlists = withContext(Dispatchers.IO) {
+            eventRepository.getRecentMarketplaceWatchlistEvents(limit = 5000)
+        }
+        val cachedByAuthor = mutableMapOf<String, MarketplaceWatchlistSnapshot>()
+        cachedWatchlists.forEach { candidate ->
+            val set = Nip51.parseBookmarkSet(candidate) ?: return@forEach
+            val previous = cachedByAuthor[candidate.pubkey]
+            if (previous == null || candidate.created_at > previous.createdAt) {
+                cachedByAuthor[candidate.pubkey] = MarketplaceWatchlistSnapshot(
+                    createdAt = candidate.created_at,
+                    coordinates = set.coordinates
+                )
+            }
+        }
+        publicInterestByPubkey = cachedByAuthor
+
+        // Watchlists are written to both the curated Marketplace destinations and
+        // the user's own relays. Read all public Marketplace write destinations too,
+        // otherwise sellers miss interested buyers whose relays are not in READ.
+        val marketplaceRelayUrls = (MarketplaceRelays.READ + MarketplaceRelays.WRITE).distinct()
+        val targets = (
+            relayPool.getReadRelayUrls() +
+                RelayConfig.DEFAULT_INDEXER_RELAYS +
+                marketplaceRelayUrls
+            ).distinct()
+        val savedWatchlist = userPubkey?.let { bookmarkSetRepository.getSet(it, MARKETPLACE_WATCHLIST_DTAG) }
+        if (savedWatchlist != null && !isOwnListing) {
+            isBookmarked = listingAddress in savedWatchlist.coordinates
+            bookmarkReady = true
+            bookmarkError = null
+            val updatedInterests = publicInterestByPubkey.toMutableMap()
+            val previousTimestamp = updatedInterests[savedWatchlist.pubkey]?.createdAt ?: 0L
+            if (savedWatchlist.createdAt > previousTimestamp || savedWatchlist.pubkey !in updatedInterests) {
+                updatedInterests[savedWatchlist.pubkey] = MarketplaceWatchlistSnapshot(
+                    savedWatchlist.createdAt,
+                    savedWatchlist.coordinates
+                )
+                publicInterestByPubkey = updatedInterests
+            }
+        }
+        val subscriptions = mutableListOf<String>()
+        val collectors = mutableListOf<kotlinx.coroutines.Job>()
+
+        try {
+            if (userPubkey != null && !isOwnListing) {
+                val watchlistSubId = "marketplace-watchlist-" + event.id.take(10) + "-" + userPubkey.take(8)
+                subscriptions.add(watchlistSubId)
+                var eoseCount = 0
+
+                collectors.add(launch(start = CoroutineStart.UNDISPATCHED) {
+                    relayPool.relayEvents
+                        .filter { it.subscriptionId == watchlistSubId }
+                        .collect { frame ->
+                            val candidate = frame.event
+                            val dTag = candidate.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
+                            if (candidate.kind != Nip51.KIND_BOOKMARK_SET ||
+                                candidate.pubkey != userPubkey ||
+                                dTag != MARKETPLACE_WATCHLIST_DTAG) return@collect
+
+                            val set = Nip51.parseBookmarkSet(candidate) ?: return@collect
+                            // This personal subscription can receive the user's set before the
+                            // broad interest subscription. Count it here too; relay-wide event
+                            // deduplication may suppress a second delivery to the other collector.
+                            val previousInterestTimestamp = publicInterestByPubkey[userPubkey]?.createdAt ?: 0L
+                            if (candidate.created_at > previousInterestTimestamp) {
+                                val updatedInterests = publicInterestByPubkey.toMutableMap()
+                                updatedInterests[userPubkey] = MarketplaceWatchlistSnapshot(
+                                    candidate.created_at,
+                                    set.coordinates
+                                )
+                                publicInterestByPubkey = updatedInterests
+                            }
+                            val localTimestamp = bookmarkSetRepository.getSet(userPubkey, MARKETPLACE_WATCHLIST_DTAG)?.createdAt ?: 0L
+                            val latestTimestamp = maxOf(localTimestamp, watchlistEvent?.created_at ?: 0L)
+                            if (candidate.created_at > latestTimestamp) {
+                                watchlistEvent = candidate
+                                isBookmarked = listingAddress in set.coordinates
+                                bookmarkReady = true
+                                bookmarkError = null
+                                eventRepository.addEvent(candidate)
+                                bookmarkSetRepository.setOwner(userPubkey)
+                                bookmarkSetRepository.updateFromEvent(candidate)
+                                onBookmarkSetChanged(candidate)
+                            }
+                        }
+                })
+
+                val eoseWaiter = launch(start = CoroutineStart.UNDISPATCHED) {
+                    withTimeoutOrNull(5_000L) {
+                        relayPool.eoseSignals
+                            .filter { it == watchlistSubId }
+                            .take(3)
+                            .collect { eoseCount++ }
+                    }
+                }
+
+                val request = ClientMessage.req(
+                    watchlistSubId,
+                    Filter(
+                        kinds = listOf(Nip51.KIND_BOOKMARK_SET),
+                        authors = listOf(userPubkey),
+                        dTags = listOf(MARKETPLACE_WATCHLIST_DTAG),
+                        limit = 10
+                    )
+                )
+                targets.forEach { relay ->
+                    relayPool.sendToRelayOrEphemeral(
+                        relay,
+                        request,
+                        skipBadCheck = true,
+                        autoReconnect = relay in marketplaceRelayUrls
+                    )
+                }
+                eoseWaiter.join()
+                val localSetAfterFetch = bookmarkSetRepository.getSet(userPubkey, MARKETPLACE_WATCHLIST_DTAG)
+                bookmarkReady = eoseCount > 0 || localSetAfterFetch != null
+                if (localSetAfterFetch != null) {
+                    isBookmarked = listingAddress in localSetAfterFetch.coordinates
+                }
+                if (!bookmarkReady) {
+                    bookmarkError = context.getString(R.string.marketplace_watchlist_load_failed)
+                }
+            }
+
+            val interestSubId = "marketplace-interests-" + event.id.take(12)
+            subscriptions.add(interestSubId)
+            collectors.add(launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEvents
+                    .filter { it.subscriptionId == interestSubId }
+                    .collect { frame ->
+                        val candidate = frame.event
+                        val dTag = candidate.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
+                        if (candidate.kind != Nip51.KIND_BOOKMARK_SET || dTag != MARKETPLACE_WATCHLIST_DTAG) {
+                            return@collect
+                        }
+
+                        val set = Nip51.parseBookmarkSet(candidate) ?: return@collect
+                        val previous = publicInterestByPubkey[candidate.pubkey]?.createdAt ?: 0L
+                        if (candidate.created_at > previous) {
+                            val interested = candidate.pubkey != event.pubkey && listingAddress in set.coordinates
+                            val updated = publicInterestByPubkey.toMutableMap()
+                            updated[candidate.pubkey] = MarketplaceWatchlistSnapshot(candidate.created_at, set.coordinates)
+                            if (interested) eventRepository.requestProfileIfMissing(candidate.pubkey)
+                            publicInterestByPubkey = updated
+                            if (candidate.pubkey == userPubkey && !isOwnListing) {
+                                val localTimestamp = bookmarkSetRepository.getSet(userPubkey, MARKETPLACE_WATCHLIST_DTAG)?.createdAt ?: 0L
+                                if (candidate.created_at > maxOf(localTimestamp, watchlistEvent?.created_at ?: 0L)) {
+                                    watchlistEvent = candidate
+                                    isBookmarked = listingAddress in set.coordinates
+                                    bookmarkReady = true
+                                    bookmarkSetRepository.setOwner(userPubkey)
+                                    bookmarkSetRepository.updateFromEvent(candidate)
+                                    onBookmarkSetChanged(candidate)
+                                }
+                            }
+                            eventRepository.addEvent(candidate)
+                        }
+                    }
+            })
+
+            val interestRequest = ClientMessage.req(
+                interestSubId,
+                Filter(
+                    kinds = listOf(Nip51.KIND_BOOKMARK_SET),
+                    dTags = listOf(MARKETPLACE_WATCHLIST_DTAG),
+                    limit = 1000
+                )
+            )
+            targets.forEach { relay ->
+                relayPool.sendToRelayOrEphemeral(
+                    relay,
+                    interestRequest,
+                    skipBadCheck = true,
+                    autoReconnect = relay in marketplaceRelayUrls
+                )
+            }
+
+            awaitCancellation()
+        } finally {
+            collectors.forEach { it.cancel() }
+            subscriptions.forEach { relayPool.closeOnAllRelays(it) }
+        }
+    }
+
+    LaunchedEffect(event.id, suggestedMessage) {
+        if (message.isBlank()) message = suggestedMessage
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.marketplace_listing_details)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
+                    }
+                },
+                actions = {
+                    if (isOwnListing) {
+                        Text(
+                            text = stringResource(R.string.marketplace_edit),
+                            modifier = Modifier.clickable(onClick = onEdit).padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).clip(RoundedCornerShape(0.dp))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).imePadding().verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (event.pubkey != userPubkey) {
+                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.marketplace_contact_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(stringResource(R.string.marketplace_contact_explainer), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                IconButton(onClick = { contactExpanded = !contactExpanded }) {
+                                    Icon(if (contactExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = stringResource(R.string.marketplace_contact_expand))
+                                }
+                            }
+                            if (contactExpanded) {
+                                OutlinedTextField(value = message, onValueChange = { message = it },
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoViewRequester).onFocusChanged { state ->
+                                        if (state.isFocused) detailScope.launch { delay(250); bringIntoViewRequester.bringIntoView() }
+                                    }, minLines = 3, label = { Text(stringResource(R.string.marketplace_message_label)) })
+                                Button(onClick = { onContactSeller(message.trim()) }, enabled = !sold && message.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.marketplace_contact_button)) }
+                                Text(stringResource(R.string.marketplace_dm_privacy), style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenProfile(event.pubkey) }
+                        .padding(vertical = 4.dp)
+                ) {
+                    ProfilePicture(url = sellerProfile?.picture, size = 38)
+                    Column {
+                        Text(
+                            sellerProfile?.displayString ?: event.pubkey.take(8) + "…" + event.pubkey.takeLast(4),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(stringResource(R.string.marketplace_seller_label), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (images.isNotEmpty()) {
+                    MarketplaceImageGallery(
+                        images = images,
+                        contentDescription = title
+                    )
+                }
+                Text(
+                    if (
+                        !showOriginalListingContent &&
+                        titleTranslationState.status == TranslationStatus.DONE &&
+                        titleTranslationState.translatedText.isNotBlank()
+                    ) titleTranslationState.translatedText else title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                formattedPublishedAt?.let { date ->
+                    Text(
+                        stringResource(R.string.marketplace_published_at, date),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Nip99.price(event)?.let { price ->
+                    Text(
+                        Nip99.priceLabel(event).orEmpty(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    MarketplaceLightningEstimate(amount = price.amount, currency = price.currency)
+                }
+                val visibility = Nip99.visibility(event)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MarketplaceVisibilityBadge(visibility)
+                    MarketplaceFormatBadge(Nip99.productFormat(event))
+                    if (visibility != "hidden" && !(visibility == "pre-order" && availability.state == Nip99.AvailabilityState.UNKNOWN)) {
+                        MarketplaceAvailabilityBadge(availability)
+                    }
+                }
+                if (summary.isNotBlank()) {
+                    Text(
+                        if (
+                            !showOriginalListingContent &&
+                            summaryTranslationState.status == TranslationStatus.DONE &&
+                            summaryTranslationState.translatedText.isNotBlank()
+                        ) summaryTranslationState.translatedText else summary,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                val location = Nip99.location(event)
+                if (location.isNotBlank()) {
+                    Text(stringResource(R.string.marketplace_location_value, location), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (description.isNotBlank()) {
+                    Text(
+                        if (
+                            !showOriginalListingContent &&
+                            descriptionTranslationState.status == TranslationStatus.DONE &&
+                            descriptionTranslationState.translatedText.isNotBlank()
+                        ) descriptionTranslationState.translatedText else description,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+                if (translationRepository != null && listingTranslationStates.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (listingTranslationFailed) {
+                            Text(
+                                stringResource(R.string.marketplace_translation_failed),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else if (listingTranslationsComplete && !listingHasTranslation) {
+                            Text(
+                                stringResource(R.string.marketplace_translation_same_language),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (!listingTranslationsComplete || listingHasTranslation) {
+                            IconButton(
+                                onClick = {
+                                    if (listingTranslationsComplete && listingHasTranslation) {
+                                        showOriginalListingContent = !showOriginalListingContent
+                                    } else {
+                                        if (titleToTranslate != null &&
+                                            titleTranslationState.status != TranslationStatus.DONE &&
+                                            titleTranslationState.status != TranslationStatus.SAME_LANGUAGE
+                                        ) translationRepository.translate(titleTranslationKey, titleToTranslate)
+                                        if (summary.isNotBlank() &&
+                                            summaryTranslationState.status != TranslationStatus.DONE &&
+                                            summaryTranslationState.status != TranslationStatus.SAME_LANGUAGE
+                                        ) translationRepository.translate(summaryTranslationKey, summary)
+                                        if (description.isNotBlank() &&
+                                            descriptionTranslationState.status != TranslationStatus.DONE &&
+                                            descriptionTranslationState.status != TranslationStatus.SAME_LANGUAGE
+                                        ) translationRepository.translate(descriptionTranslationKey, description)
+                                    }
+                                },
+                                enabled = !listingTranslationLoading
+                            ) {
+                                if (listingTranslationLoading) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.Translate,
+                                        contentDescription = stringResource(
+                                            if (listingTranslationsComplete && listingHasTranslation) {
+                                                if (showOriginalListingContent) R.string.marketplace_show_translation
+                                                else R.string.marketplace_show_original
+                                            } else R.string.marketplace_translate
+                                        ),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (isOwnListing) {
+                    Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.marketplace_edit)) }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.marketplace_feedback_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onReact, enabled = signer != null) {
+                                Icon(
+                                    imageVector = if (userHasReacted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                    contentDescription = stringResource(if (userHasReacted) R.string.marketplace_unlike else R.string.marketplace_like),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Text(reactionCount.toString(), style = MaterialTheme.typography.labelLarge)
+                        }
+                        OutlinedButton(onClick = { showZapDialog = true }, enabled = !sold) {
+                            Text(stringResource(R.string.marketplace_zap_count, zapSats))
+                        }
+                        if (!isOwnListing) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val activeSigner = signer ?: return@IconButton
+                                    if (!bookmarkReady || bookmarkBusy || isOwnListing) return@IconButton
+                                    detailScope.launch {
+                                        bookmarkBusy = true
+                                        bookmarkError = null
+                                        try {
+                                            // All detail routes share this repository. Keep the complete
+                                            // read-modify-sign-write sequence serialized so two screens
+                                            // (or a remote signer round-trip) cannot publish competing snapshots.
+                                            val (updatedEvent, coordinates) = bookmarkSetRepository.withUpdateLock {
+                                                val repositorySet = bookmarkSetRepository.getSet(
+                                                    activeSigner.pubkeyHex,
+                                                    MARKETPLACE_WATCHLIST_DTAG
+                                                )
+                                                val screenSet = watchlistEvent?.let { Nip51.parseBookmarkSet(it) }
+                                                val currentSet = when {
+                                                    repositorySet == null -> screenSet
+                                                    screenSet == null -> repositorySet
+                                                    repositorySet.createdAt >= screenSet.createdAt -> repositorySet
+                                                    else -> screenSet
+                                                }
+                                                val nextCoordinates = currentSet?.coordinates?.toMutableSet() ?: mutableSetOf()
+                                                if (listingAddress in nextCoordinates) nextCoordinates.remove(listingAddress)
+                                                else nextCoordinates.add(listingAddress)
+
+                                                val tags = Nip51.buildBookmarkSetTags(
+                                                    dTag = MARKETPLACE_WATCHLIST_DTAG,
+                                                    eventIds = currentSet?.eventIds ?: emptySet(),
+                                                    coordinates = nextCoordinates,
+                                                    hashtags = currentSet?.hashtags ?: emptySet(),
+                                                    title = currentSet?.name ?: watchlistTitle
+                                                )
+                                                val signedEvent = activeSigner.signEvent(
+                                                    kind = Nip51.KIND_BOOKMARK_SET,
+                                                    content = "",
+                                                    tags = tags,
+                                                    createdAt = maxOf(
+                                                        System.currentTimeMillis() / 1000,
+                                                        (currentSet?.createdAt ?: 0L) + 1L,
+                                                        (watchlistEvent?.created_at ?: 0L) + 1L
+                                                    )
+                                                )
+                                                // Persist the complete snapshot before releasing the shared lock.
+                                                eventRepository.addEvent(signedEvent)
+                                                bookmarkSetRepository.setOwner(activeSigner.pubkeyHex)
+                                                bookmarkSetRepository.updateFromEvent(signedEvent)
+                                                onBookmarkSetChanged(signedEvent)
+                                                signedEvent to nextCoordinates.toSet()
+                                            }
+
+                                            watchlistEvent = updatedEvent
+                                            isBookmarked = listingAddress in coordinates
+                                            bookmarkReady = true
+
+                                            val updatedInterests = publicInterestByPubkey.toMutableMap()
+                                            val activePubkey = userPubkey
+                                            if (activePubkey != null && activePubkey != event.pubkey) {
+                                                updatedInterests[activePubkey] = MarketplaceWatchlistSnapshot(
+                                                    updatedEvent.created_at,
+                                                    coordinates
+                                                )
+                                            }
+                                            publicInterestByPubkey = updatedInterests
+                                            publishMarketplaceEvent(relayPool, updatedEvent, context)
+                                        } catch (error: Exception) {
+                                            bookmarkError = error.localizedMessage
+                                                ?: context.getString(R.string.marketplace_watchlist_update_failed)
+                                        } finally {
+                                            bookmarkBusy = false
+                                        }
+                                    }
+                                },
+                                enabled = signer != null && bookmarkReady && !bookmarkBusy && !isOwnListing
+                            ) {
+                                Icon(
+                                    imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                                    contentDescription = stringResource(if (isBookmarked) R.string.marketplace_unbookmark else R.string.marketplace_bookmark),
+                                    tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(publicInterestCount.toString(), style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
+                    if (!isOwnListing && userPubkey != null) {
+                        Text(
+                            stringResource(R.string.marketplace_watchlist_public_notice),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (bookmarkError != null) {
+                        Text(bookmarkError.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    if (isOwnListing) {
+                        Text(
+                            stringResource(R.string.marketplace_interested_buyers, publicInterestCount),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (interestedAuthors.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                interestedAuthors.forEach { pubkey ->
+                                    MarketplaceInterestChip(
+                                        pubkey = pubkey,
+                                        eventRepository = eventRepository,
+                                        onClick = { onOpenProfile(pubkey) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(stringResource(R.string.marketplace_comment_count, comments.size), style = MaterialTheme.typography.titleMedium)
+                    val visibleComments = comments.sortedBy { it.created_at }.takeLast(40)
+                    val spamComments = if (spamFilterEnabled) {
+                        visibleComments.filter { it.pubkey in spamAuthorPubkeys }
+                    } else emptyList()
+                    if (spamComments.isNotEmpty()) {
+                        SpamToggle(
+                            count = spamComments.size,
+                            expanded = spamExpanded,
+                            onToggle = { spamExpanded = !spamExpanded }
+                        )
+                    }
+                    val commentsToRender = if (spamExpanded) visibleComments
+                        else visibleComments.filterNot { it.pubkey in spamAuthorPubkeys }
+                    if (comments.isEmpty()) {
+                        Text(stringResource(R.string.marketplace_comment_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (commentsToRender.isNotEmpty()) {
+                        val threadItems = buildMarketplaceCommentThread(
+                            listingEventId = event.id,
+                            comments = commentsToRender,
+                            expandedIds = expandedCommentIds
+                        )
+                        threadItems.forEach { item ->
+                            when (item) {
+                                is ThreadItem.Post -> MarketplaceCommentRow(
+                                    comment = item.event,
+                                    eventRepository = eventRepository,
+                                    userPubkey = userPubkey,
+                                    signerAvailable = signer != null,
+                                    translationRepository = translationRepository,
+                                    depth = item.depth,
+                                    connectorStartsMidAir = item.connectorStartsMidAir,
+                                    onProfileClick = onOpenProfile,
+                                    onReply = { replyingToComment = item.event },
+                                    onReact = { onReactComment(item.event) }
+                                )
+                                is ThreadItem.CollapsedReplies -> CollapsedRepliesRow(
+                                    item = item,
+                                    onExpand = { expandedCommentIds = expandedCommentIds + item.anchor.id }
+                                )
+                                is ThreadItem.ShowMoreReplies -> Unit
+                            }
+                        }
+                    }
+                    replyingToComment?.let { parent ->
+                        val parentName = eventRepository.getProfileData(parent.pubkey)?.displayString
+                            ?: parent.pubkey.take(8) + "…"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                stringResource(R.string.marketplace_comment_replying_to, parentName),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                stringResource(R.string.marketplace_comment_cancel_reply),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { replyingToComment = null }.padding(8.dp)
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = commentText,
+                        onValueChange = { commentText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        label = {
+                            Text(
+                                if (replyingToComment == null) stringResource(R.string.marketplace_comment_hint)
+                                else stringResource(R.string.marketplace_comment_reply)
+                            )
+                        },
+                        enabled = signer != null && !commentSending
+                    )
+                    if (commentError != null) Text(commentError.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = {
+                        val activeSigner = signer ?: return@Button
+                        val body = commentText.trim()
+                        if (body.isBlank() || commentSending) return@Button
+                        detailScope.launch {
+                            commentSending = true
+                            commentError = null
+                            try {
+                                val tags = buildMarketplaceCommentTags(
+                                    listing = event,
+                                    parentComment = replyingToComment,
+                                    includeClientTag = interfacePrefs.isClientTagEnabled()
+                                )
+                                val comment = if (powPrefs.isNotePowEnabled()) {
+                                    val createdAt = System.currentTimeMillis() / 1000
+                                    val mined = withContext(Dispatchers.Default) {
+                                        Nip13.mine(
+                                            pubkeyHex = activeSigner.pubkeyHex,
+                                            kind = Nip22.KIND_COMMENT,
+                                            content = body,
+                                            tags = tags,
+                                            targetDifficulty = powPrefs.getNoteDifficulty(),
+                                            createdAt = createdAt
+                                        )
+                                    }
+                                    activeSigner.signEvent(
+                                        kind = Nip22.KIND_COMMENT,
+                                        content = body,
+                                        tags = mined.tags,
+                                        createdAt = mined.createdAt
+                                    )
+                                } else {
+                                    activeSigner.signEvent(Nip22.KIND_COMMENT, body, tags)
+                                }
+                                // Relay confirmation precedes local insertion to avoid ghost comments.
+                                publishMarketplaceEvent(relayPool, comment, context)
+                                eventRepository.addEvent(comment)
+                                if (comments.none { it.id == comment.id }) {
+                                    comments.add(comment)
+                                    comments.sortBy { it.created_at }
+                                }
+                                commentText = ""
+                                replyingToComment = null
+                            } catch (e: Exception) {
+                                commentError = e.localizedMessage ?: e.message
+                                    ?: context.getString(R.string.marketplace_comment_publish_failed)
+                            } finally { commentSending = false }
+                        }
+                    }, enabled = signer != null && commentText.isNotBlank() && !commentSending, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.marketplace_comment_send))
+                    }
+                    if (signer == null) Text(stringResource(R.string.marketplace_comment_signin), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OutlinedButton(
+                    onClick = { onBoostListing("nostr:$listingNaddr") },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.marketplace_boost))
+                }
+            }
+        }
+    }
+    if (showZapDialog) {
+        ZapDialog(
+            isWalletConnected = isWalletConnected,
+            onDismiss = { showZapDialog = false },
+            onZap = { amount, zapMessage, anonymous, isPrivate ->
+                onZap(amount, zapMessage, anonymous, isPrivate)
+                showZapDialog = false
+            },
+            onGoToWallet = onGoToWallet,
+            zapPrefsRepo = zapPrefsRepo,
+            canPrivateZap = false,
+            recipientPubkey = event.pubkey,
+            profileLookup = profileLookup,
+            recipientHasLud16 = recipientHasLud16,
+            fetchPaymentTargets = fetchPaymentTargets
+        )
+    }
+
+}
+
+
+@Composable
+private fun MarketplaceCommentRow(
+    comment: NostrEvent,
+    eventRepository: EventRepository,
+    userPubkey: String?,
+    signerAvailable: Boolean,
+    translationRepository: TranslationRepository?,
+    depth: Int,
+    connectorStartsMidAir: Boolean,
+    onProfileClick: (String) -> Unit,
+    onReply: () -> Unit,
+    onReact: () -> Unit
+) {
+    val profileVersion by eventRepository.profileVersionFor(comment.pubkey).collectAsState(initial = 0)
+    val profile = remember(eventRepository, comment.pubkey, profileVersion) {
+        eventRepository.getProfileData(comment.pubkey)
+    }
+    LaunchedEffect(comment.pubkey) { eventRepository.requestProfileIfMissing(comment.pubkey) }
+    val reactionVersion by eventRepository.reactionVersion.collectAsState(initial = 0)
+    val reactionCount = remember(comment.id, reactionVersion) { eventRepository.getReactionCount(comment.id) }
+    val hasReacted = userPubkey?.let { eventRepository.hasUserReacted(comment.id, it) } ?: false
+    val translationVersion by translationRepository?.version?.collectAsState()
+        ?: remember { mutableIntStateOf(0) }
+    val translationKey = "marketplace-comment:${translationRepository?.getCacheNamespace() ?: "unavailable"}:${comment.id}"
+    val translationState = remember(translationVersion, translationKey) {
+        translationRepository?.getState(translationKey) ?: TranslationState()
+    }
+    var showOriginal by remember(comment.id) { mutableStateOf(false) }
+    val hasTranslation = translationState.status == TranslationStatus.DONE &&
+        translationState.translatedText.isNotBlank()
+    val translating = translationState.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+        translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
+        translationState.status == TranslationStatus.TRANSLATING
+
+    val indent = threadIndentDp(depth)
+    val lineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .threadConnector(
+                show = depth > 0,
+                indent = indent,
+                lineColor = lineColor,
+                dashedTop = connectorStartsMidAir
+            )
+    ) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = indent)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onProfileClick(comment.pubkey) }
+            .padding(10.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        ProfilePicture(url = profile?.picture, size = 34)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+            Text(
+                profile?.displayString ?: comment.pubkey.take(8) + "…" + comment.pubkey.takeLast(4),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                if (hasTranslation && !showOriginal) translationState.translatedText else comment.content,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    stringResource(R.string.marketplace_comment_reply),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable(onClick = onReply).padding(end = 6.dp)
+                )
+                IconButton(onClick = onReact, enabled = signerAvailable, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        if (hasReacted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = stringResource(
+                            if (hasReacted) R.string.marketplace_comment_unlike else R.string.marketplace_comment_like
+                        ),
+                        tint = if (hasReacted) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                if (reactionCount > 0) Text(reactionCount.toString(), style = MaterialTheme.typography.labelSmall)
+                if (translationRepository != null) {
+                    IconButton(
+                        onClick = {
+                            if (hasTranslation) showOriginal = !showOriginal
+                            else translationRepository.translate(translationKey, comment.content)
+                        },
+                        enabled = !translating,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (translating) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Outlined.Translate,
+                                contentDescription = stringResource(
+                                    if (hasTranslation) {
+                                        if (showOriginal) R.string.marketplace_show_translation else R.string.marketplace_show_original
+                                    } else R.string.marketplace_translate
+                                ),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            if (translationState.status == TranslationStatus.ERROR) {
+                Text(
+                    stringResource(R.string.marketplace_translation_failed),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun MarketplaceInterestChip(
+    pubkey: String,
+    eventRepository: EventRepository,
+    onClick: () -> Unit
+) {
+    val profileVersion by eventRepository.profileVersionFor(pubkey).collectAsState(initial = 0)
+    val profile = remember(eventRepository, pubkey, profileVersion) {
+        eventRepository.getProfileData(pubkey)
+    }
+    LaunchedEffect(pubkey) { eventRepository.requestProfileIfMissing(pubkey) }
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        ProfilePicture(url = profile?.picture, size = 30)
+        Text(
+            profile?.displayString ?: pubkey.take(8) + "…" + pubkey.takeLast(4),
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ZoomableMarketplaceImage(
+    imageUrl: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    var showZoom by remember(imageUrl) { mutableStateOf(false) }
+
+    AsyncImage(
+        model = imageUrl,
+        contentDescription = contentDescription,
+        modifier = modifier.clickable { showZoom = true },
+        contentScale = contentScale
+    )
+
+    if (showZoom) {
+        Dialog(
+            onDismissRequest = { showZoom = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            var zoom by remember(imageUrl) { mutableStateOf(1f) }
+            var pan by remember(imageUrl) { mutableStateOf(Offset.Zero) }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = contentDescription,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(imageUrl) {
+                            detectTransformGestures { _, panChange, zoomChange, _ ->
+                                val nextZoom = (zoom * zoomChange).coerceIn(1f, 6f)
+                                zoom = nextZoom
+                                pan = if (nextZoom <= 1.001f) Offset.Zero else pan + panChange
+                            }
+                        }
+                        .graphicsLayer {
+                            scaleX = zoom
+                            scaleY = zoom
+                            val maxX = (size.width * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            val maxY = (size.height * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            translationX = pan.x.coerceIn(-maxX, maxX)
+                            translationY = pan.y.coerceIn(-maxY, maxY)
+                        },
+                    contentScale = ContentScale.Fit
+                )
+
+                IconButton(
+                    onClick = { showZoom = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Close image",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarketplaceImageGallery(
+    images: List<String>,
+    contentDescription: String
+) {
+    if (images.isEmpty()) return
+    var zoomedIndex by remember(images) { mutableIntStateOf(-1) }
+
+    if (images.size == 1) {
+        Box(Modifier.fillMaxWidth().height(280.dp), contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = images.first(),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize().clickable { zoomedIndex = 0 },
+                contentScale = ContentScale.Fit
+            )
+        }
+    } else {
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(images.size) { index ->
+                AsyncImage(
+                    model = images[index],
+                    contentDescription = contentDescription,
+                    modifier = Modifier.width(280.dp).height(280.dp)
+                        .clip(RoundedCornerShape(8.dp)).clickable { zoomedIndex = index },
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+    }
+
+    if (zoomedIndex >= 0) {
+        var activeImageIndex by remember(images, zoomedIndex) { mutableIntStateOf(zoomedIndex) }
+        var zoom by remember(activeImageIndex) { mutableStateOf(1f) }
+        var pan by remember(activeImageIndex) { mutableStateOf(Offset.Zero) }
+        var swipeDistance by remember(activeImageIndex) { mutableStateOf(0f) }
+
+        Dialog(onDismissRequest = { zoomedIndex = -1 }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                AsyncImage(
+                    model = images[activeImageIndex],
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize()
+                        .pointerInput(activeImageIndex) {
+                            detectTransformGestures { _, panChange, zoomChange, _ ->
+                                val nextZoom = (zoom * zoomChange).coerceIn(1f, 6f)
+                                if (zoom <= 1.001f && nextZoom <= 1.001f) {
+                                    swipeDistance += panChange.x
+                                    if (swipeDistance < -100f && activeImageIndex < images.lastIndex) {
+                                        activeImageIndex++
+                                        swipeDistance = 0f
+                                    } else if (swipeDistance > 100f && activeImageIndex > 0) {
+                                        activeImageIndex--
+                                        swipeDistance = 0f
+                                    }
+                                } else {
+                                    zoom = nextZoom
+                                    pan = if (nextZoom <= 1.001f) Offset.Zero else pan + panChange
+                                }
+                            }
+                        }
+                        .graphicsLayer {
+                            scaleX = zoom
+                            scaleY = zoom
+                            val maxX = (size.width * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            val maxY = (size.height * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            translationX = pan.x.coerceIn(-maxX, maxX)
+                            translationY = pan.y.coerceIn(-maxY, maxY)
+                        },
+                    contentScale = ContentScale.Fit
+                )
+                if (images.size > 1) {
+                    if (activeImageIndex > 0) {
+                        IconButton(
+                            onClick = { activeImageIndex-- },
+                            modifier = Modifier.align(Alignment.CenterStart).padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.marketplace_image_previous),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    if (activeImageIndex < images.lastIndex) {
+                        IconButton(
+                            onClick = { activeImageIndex++ },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.marketplace_image_next),
+                                tint = Color.White,
+                                modifier = Modifier.graphicsLayer { scaleX = -1f }
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.marketplace_image_counter, activeImageIndex + 1, images.size),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                IconButton(
+                    onClick = { zoomedIndex = -1 },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_back), tint = Color.White)
+                }
+            }
+        }
+    }
+}
+
+private fun formatMarketplacePublishedDate(timestampSeconds: Long): String? = runCatching {
+    val milliseconds = Math.multiplyExact(timestampSeconds, 1_000L)
+    DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(Date(milliseconds))
+}.getOrNull()
+

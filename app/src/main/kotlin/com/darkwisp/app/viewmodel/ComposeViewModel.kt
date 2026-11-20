@@ -16,6 +16,8 @@ import com.madebyevan.thumbhash.ThumbHash
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Keys
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip18
 import com.darkwisp.app.nostr.Nip19
@@ -27,6 +29,7 @@ import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.toHex
+import com.darkwisp.app.nostr.NostrClientTag
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.BlossomRepository
@@ -52,7 +55,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-private val NOSTR_URI_REGEX = Regex("nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+)")
+private val NOSTR_URI_REGEX = Regex("nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)")
 // Matches bare bech32 IDs not already preceded by "nostr:" or embedded in a URL
 private val BARE_BECH32_REGEX = Regex("(?<!nostr:)(?<![a-z0-9/.:#])((note1|nevent1|npub1|nprofile1|naddr1)[a-z0-9]{10,})")
 private val HASHTAG_REGEX = Regex("(?:^|(?<=\\s))#([\\p{L}\\p{M}0-9_]+)")
@@ -679,16 +682,38 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (_explicit.value) {
             tags.add(listOf("content-warning", ""))
         }
+        val isLongFormArticleReply = replyTo != null &&
+            (replyTo.kind == Nip23.KIND_LONG_FORM || Nip22.longFormRootCoordinate(replyTo) != null)
         if (replyTo != null) {
-            val hint = outboxRouter?.getRelayHint(replyTo.pubkey) ?: ""
-            tags.addAll(Nip10.buildReplyTags(replyTo, hint))
+            when {
+                replyTo.kind == Nip23.KIND_LONG_FORM ->
+                    tags.addAll(Nip22.buildAddressableRootCommentTags(replyTo))
+                isLongFormArticleReply ->
+                    tags.addAll(Nip22.buildAddressableCommentReplyTags(replyTo))
+                else -> {
+                    val hint = outboxRouter?.getRelayHint(replyTo.pubkey) ?: ""
+                    tags.addAll(Nip10.buildReplyTags(replyTo, hint))
+                }
+            }
         }
 
-        val (mentionedPubkeys, _) = extractNostrRefs(content)
-        val existingPubkeys = tags.filter { it.firstOrNull() == "p" }.map { it[1] }.toSet()
+        val (mentionedPubkeys, _, mentionedAddresses) = extractNostrRefs(content)
+        val existingPubkeys = tags.filter { it.firstOrNull() == "p" }.mapNotNull { it.getOrNull(1) }.toSet()
         for (pubkey in mentionedPubkeys) {
             if (pubkey !in existingPubkeys) {
                 tags.add(listOf("p", pubkey))
+            }
+        }
+        // NIP-27 addressable references carry an "a" tag. Preserve an optional
+        // relay hint from naddr so readers can retrieve listings from their source.
+        val existingAddresses = tags.filter { it.firstOrNull() == "a" }.mapNotNull { it.getOrNull(1) }.toSet()
+        for (address in mentionedAddresses) {
+            val kind = address.kind ?: continue
+            val author = address.author ?: continue
+            val coordinate = "$kind:$author:${address.dTag}"
+            if (coordinate !in existingAddresses) {
+                val relayHint = address.relays.firstOrNull { it.startsWith("wss://") }
+                tags.add(if (relayHint != null) listOf("a", coordinate, relayHint) else listOf("a", coordinate))
             }
         }
 
@@ -696,11 +721,11 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         // publicly. The compose UI hides the toggle in gallery/poll/schedule/quote modes, so we
         // branch before those tag-building paths and emit just the reply + mentions + hashtags
         // + emojis inside the encrypted rumor.
-        if (replyTo != null && _privateReply.value) {
+        if (replyTo != null && _privateReply.value && !isLongFormArticleReply) {
             for (hashtag in _hashtags.value) tags.add(listOf("t", hashtag))
             tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
-            if (interfacePrefs.isClientTagEnabled()) tags.add(listOf("client", "Dark Wisp"))
-            return publishPrivateReply(content, replyTo, tags, signer, relayPool, powPrefs)
+            val privateReplyTags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+            return publishPrivateReply(content, replyTo, privateReplyTags, signer, relayPool, powPrefs)
         }
 
         val finalContent = if (quoteTo != null) {
@@ -785,7 +810,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 eventKind = Nip88.KIND_POLL
             }
         } else {
-            eventKind = 1
+            eventKind = if (isLongFormArticleReply) Nip22.KIND_COMMENT else 1
         }
 
         if (!_galleryMode.value) {
@@ -809,9 +834,11 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         // Add emoji tags for any :shortcode: references in the content
         tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
 
-        if (interfacePrefs.isClientTagEnabled()) {
-            tags.add(listOf("client", "Dark Wisp"))
-        }
+        // Normalize at the final event boundary: a legacy or duplicated client tag
+        // must never survive into a newly signed public post or reply.
+        val canonicalTags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
+        tags.clear()
+        tags.addAll(canonicalTags)
 
         // Scheduled post — sign with future created_at and send to scheduler relays
         if (_scheduleEnabled.value && _scheduleTimestamp.value != null) {
@@ -1028,21 +1055,27 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         return out to pubkeys
     }
 
-    private fun extractNostrRefs(content: String): Pair<Set<String>, Set<String>> {
+    private fun extractNostrRefs(
+        content: String
+    ): Triple<Set<String>, Set<String>, List<com.darkwisp.app.nostr.NostrUriData.AddressRef>> {
         val pubkeys = mutableSetOf<String>()
         val eventIds = mutableSetOf<String>()
+        val addresses = mutableListOf<com.darkwisp.app.nostr.NostrUriData.AddressRef>()
         for (match in NOSTR_URI_REGEX.findAll(content)) {
             val bech32 = match.groupValues[1]
             try {
                 when (val data = Nip19.decodeNostrUri("nostr:$bech32")) {
                     is com.darkwisp.app.nostr.NostrUriData.ProfileRef -> pubkeys.add(data.pubkey)
                     is com.darkwisp.app.nostr.NostrUriData.NoteRef -> eventIds.add(data.eventId)
-                    is com.darkwisp.app.nostr.NostrUriData.AddressRef -> {}
+                    is com.darkwisp.app.nostr.NostrUriData.AddressRef -> {
+                        data.author?.let(pubkeys::add)
+                        addresses.add(data)
+                    }
                     null -> {}
                 }
             } catch (_: Exception) {}
         }
-        return pubkeys to eventIds
+        return Triple(pubkeys, eventIds, addresses.distinctBy { "${it.kind}:${it.author}:${it.dTag}" })
     }
 
     private fun readFileFromUri(
@@ -1221,6 +1254,24 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 // Best effort
             }
         }
+    }
+
+    /** Sets a one-time composer prefill and leaves two new lines for the user's text. */
+    fun setInitialContent(value: String) {
+        val reference = value.trimEnd()
+        if (reference.isBlank() || _content.value.text.isNotBlank()) return
+        val prepared = "$reference\n\n"
+        updateContent(TextFieldValue(prepared, TextRange(prepared.length)))
+    }
+
+    /** Appends a reference to the current composer without discarding an existing draft. */
+    fun appendContent(value: String) {
+        val addition = value.trim()
+        if (addition.isBlank()) return
+        val current = _content.value.text
+        if (current.contains(addition)) return
+        val merged = if (current.isBlank()) addition else "${current.trimEnd()}\n\n$addition"
+        updateContent(TextFieldValue(merged, TextRange(merged.length)))
     }
 
     fun clear() {

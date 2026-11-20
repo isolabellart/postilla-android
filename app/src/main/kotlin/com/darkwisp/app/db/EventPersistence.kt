@@ -2,6 +2,7 @@ package com.darkwisp.app.db
 
 import android.util.Log
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.NostrEvent
 import io.objectbox.Box
 import io.objectbox.query.QueryBuilder.StringOrder
@@ -151,6 +152,42 @@ class EventPersistence(
         }
     }
 
+    /** Query a bounded, newest-first slice for a single event kind. */
+    fun getRecentEventsByKind(kind: Int, limit: Int = 500): List<NostrEvent> {
+        if (limit <= 0) return emptyList()
+        return try {
+            val entities = box.query(EventEntity_.kind.equal(kind))
+                .order(EventEntity_.createdAt, io.objectbox.query.QueryBuilder.DESCENDING)
+                .build()
+                .use { it.find(0, limit.toLong()) }
+            entities.mapNotNull { it.toNostrEvent() }
+        } catch (e: Exception) {
+            Log.w("EventPersistence", "getRecentEventsByKind($kind) failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Read a bounded history slice for one author across several event kinds.
+     * Used to paint profile timelines from local storage before relay responses arrive.
+     */
+    fun getEventsByAuthorAndKinds(pubkey: String, kinds: Set<Int>, limit: Int = 200): List<NostrEvent> {
+        if (pubkey.isBlank() || kinds.isEmpty() || limit <= 0) return emptyList()
+        return try {
+            val entities = box.query(
+                EventEntity_.pubkey.equal(pubkey)
+                    .and(EventEntity_.kind.oneOf(kinds.toIntArray()))
+            )
+                .order(EventEntity_.createdAt, io.objectbox.query.QueryBuilder.DESCENDING)
+                .build()
+                .use { it.find(0, limit.toLong()) }
+            entities.mapNotNull { it.toNostrEvent() }
+        } catch (e: Exception) {
+            Log.w("EventPersistence", "getEventsByAuthorAndKinds failed: ${e.message}")
+            emptyList()
+        }
+    }
+
     /** Query recent notification-relevant events (kinds 1, 6, 7, 1111, 9735) for seeding NotificationRepository. */
     fun getRecentNotificationEvents(limit: Int = 500): List<NostrEvent> {
         return try {
@@ -240,6 +277,6 @@ class EventPersistence(
     companion object {
         private val DISPLAY_KINDS = intArrayOf(1, 6, 20, 21, 22, 1068, 6969, Nip22.KIND_COMMENT, 30023)
         // 1111 = NIP-22 comments — persisted so thread replies and notifications survive restarts
-        private val PERSISTED_KINDS = setOf(0, 1, 6, 7, 9735, 20, 21, 22, 1068, 6969, Nip22.KIND_COMMENT, 30023)
+        private val PERSISTED_KINDS = setOf(0, 1, 6, 7, 9735, 20, 21, 22, 1068, 6969, Nip22.KIND_COMMENT, 30023, Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT)
     }
 }

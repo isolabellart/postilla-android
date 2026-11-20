@@ -3,16 +3,30 @@ package com.darkwisp.app.repo
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.MarketplaceRelays
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip99
+import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.nostr.NostrUriData
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.SubscriptionManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.CoroutineContext
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Handles batched fetching of profiles, reply counts, zap counts, and quoted events.
@@ -24,6 +38,7 @@ class MetadataFetcher(
     private val subManager: SubscriptionManager,
     private val profileRepo: ProfileRepository,
     private val eventRepo: EventRepository,
+    private val relayListRepo: RelayListRepository,
     private val scope: CoroutineScope,
     private val processingContext: CoroutineContext
 ) {
@@ -58,6 +73,10 @@ class MetadataFetcher(
     companion object {
         private const val MAX_PROFILE_ATTEMPTS = 2
         private const val QUOTE_RETRY_MS = 30_000L // retry failed quotes after 30s
+        private const val ADDRESSABLE_EOSE_TIMEOUT_MS = 15_000L
+        private const val ADDRESSABLE_EOSE_DRAIN_GRACE_MS = 3_000L
+        private const val ADDRESSABLE_HISTORY_PAGE_EOSE_TIMEOUT_MS = 5_000L
+        private const val ADDRESSABLE_HISTORY_TOTAL_TIMEOUT_MS = 25_000L
     }
 
     // Batched quote fetching (unified queue for inline + on-demand)
@@ -69,7 +88,7 @@ class MetadataFetcher(
 
     // Addressable event fetching
     private val inFlightAddressables = mutableSetOf<String>()
-    private var addressableBatchCounter = 0
+    private val addressableBatchCounter = AtomicLong()
 
     // Poll vote fetching for quoted polls
     private val fetchedPollVotes = mutableSetOf<String>()
@@ -98,6 +117,7 @@ class MetadataFetcher(
             pendingOnDemandQuotes.clear()
             inFlightQuotes.clear()
             pendingRelayHints.clear()
+            inFlightAddressables.clear()
         }
         profileAttempts.clear()
         exhaustedProfiles.clear()
@@ -284,26 +304,396 @@ class MetadataFetcher(
             if (coordKey in inFlightAddressables) return
             inFlightAddressables.add(coordKey)
         }
-        val subId = "addr-${addressableBatchCounter++}"
-        val filter = Filter(kinds = listOf(kind), authors = listOf(author), dTags = listOf(dTag), limit = 1)
-        val msg = ClientMessage.req(subId, filter)
-
-        val topRelays = quoteRelayProvider?.invoke() ?: emptyList()
-        val targetUrls = (topRelays + relayHints).distinct()
-        if (targetUrls.isNotEmpty()) {
-            for (url in targetUrls) {
-                relayPool.sendToRelayOrEphemeral(url, msg)
-            }
-        } else {
-            relayPool.sendToTopRelays(msg, maxRelays = 10)
-        }
 
         scope.launch(processingContext) {
-            subManager.awaitEoseWithTimeout(subId)
-            subManager.closeSubscription(subId)
-            synchronized(pendingOnDemandQuotes) {
-                inFlightAddressables.remove(coordKey)
+            var relayListDiscoveryJob: Job? = null
+            try {
+                val isMarketplaceListing = Nip99.isMarketplaceKind(kind)
+                val safeHints = relayHints
+                    .map { it.trim() }
+                    .filter { RelayConfig.isValidUrl(it) }
+                    .distinct()
+
+                var sellerWriteRelays = if (isMarketplaceListing) {
+                    relayListRepo.getWriteRelays(author).orEmpty()
+                        .filter { RelayConfig.isValidUrl(it) }
+                        .distinct()
+                } else {
+                    emptyList()
+                }
+
+                // NIP-65 discovery runs alongside the direct coordinate read. The
+                // naddr relay hints are immediately queried; we do not make the user
+                // wait for relay-list discovery before attempting the event itself.
+                if (isMarketplaceListing && sellerWriteRelays.isEmpty()) {
+                    relayListDiscoveryJob = launch(processingContext) {
+                        try {
+                            PeerRelayListLookup.fetch(author, relayPool, relayListRepo, safeHints)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                "MetadataFetcher",
+                                "NIP-65 lookup failed for NIP-99 author ${author.take(12)}",
+                                error
+                            )
+                        }
+                    }
+                }
+
+                val topRelays = quoteRelayProvider?.invoke().orEmpty()
+                val marketplaceRelays = if (isMarketplaceListing) {
+                    (MarketplaceRelays.READ + MarketplaceRelays.WRITE).distinct()
+                } else {
+                    emptyList()
+                }
+                val accountReadRelays = if (isMarketplaceListing) {
+                    (relayPool.getReadRelayUrls() + RelayConfig.DEFAULT_INDEXER_RELAYS).distinct()
+                } else {
+                    emptyList()
+                }
+
+                val directRelayPlan = buildAddressableRelayPlan(
+                    priorityRelays = safeHints + sellerWriteRelays,
+                    topRelays = topRelays,
+                    accountReadRelays = accountReadRelays,
+                    marketplaceRelays = marketplaceRelays
+                )
+                val directTargets = directRelayPlan.targetUrls.filter { RelayConfig.isValidUrl(it) }
+                val directPriority = directRelayPlan.priorityRelayUrls.filter { it in directTargets }
+
+                // Local memory is observed by the detail route. Hydrate a previously
+                // persisted listing first so a known coordinate is visible without waiting
+                // for network discovery; keep the relay refresh running for newer revisions.
+                if (isMarketplaceListing && eventRepo.findAddressableEvent(kind, author, dTag) == null) {
+                    val persisted = eventRepo.findPersistedMarketplaceListing(kind, author, dTag)
+                    if (persisted != null) {
+                        eventRepo.cacheEvent(persisted)
+                        android.util.Log.i(
+                            "MetadataFetcher",
+                            "NIP-99 coordinate restored from local persistence author=${author.take(12)} dTag=$dTag"
+                        )
+                    }
+                }
+
+                val queryStages = buildAddressableEventQueryStages(kind, author, dTag)
+                val directResult = fetchAddressableEventStage(
+                    kind = kind,
+                    author = author,
+                    dTag = dTag,
+                    stage = queryStages.first(),
+                    targetUrls = directTargets,
+                    priorityRelayUrls = directPriority
+                )
+
+                if (directResult.matched) {
+                    android.util.Log.i(
+                        "MetadataFetcher",
+                        "Addressable resolved by exact coordinate kind=$kind author=${author.take(12)} " +
+                            "dTag=$dTag relays=${directResult.respondingRelays}"
+                    )
+                    relayListDiscoveryJob?.cancelAndJoin()
+                } else if (isMarketplaceListing && queryStages.size > 1) {
+                    // Some relays/indexers do not reliably honor #d. Query the
+                    // seller storefront in bounded, per-relay pages, moving the
+                    // created_at cursor independently for each relay. This avoids
+                    // stopping at one 250-item window and missing older listings.
+                    relayListDiscoveryJob?.join()
+                    sellerWriteRelays = relayListRepo.getWriteRelays(author)
+                        .orEmpty()
+                        .filter { RelayConfig.isValidUrl(it) }
+                        .distinct()
+
+                    val storefrontRelayPlan = buildAddressableRelayPlan(
+                        priorityRelays = safeHints + sellerWriteRelays,
+                        topRelays = topRelays,
+                        accountReadRelays = accountReadRelays,
+                        marketplaceRelays = marketplaceRelays
+                    )
+                    val storefrontTargets = storefrontRelayPlan.targetUrls
+                        .filter { RelayConfig.isValidUrl(it) }
+                    val storefrontPriority = storefrontRelayPlan.priorityRelayUrls
+                        .filter { it in storefrontTargets }
+                    val historyTargets = (storefrontPriority + MarketplaceRelays.READ)
+                        .filter { it in storefrontTargets }
+                        .distinct()
+
+                    android.util.Log.w(
+                        "MetadataFetcher",
+                        "Exact Marketplace coordinate not returned; paged seller history fallback " +
+                            "author=${author.take(12)} dTag=$dTag relays=${historyTargets.size}"
+                    )
+                    val fallbackResult = fetchAddressableEventHistoryPages(
+                        author = author,
+                        dTag = dTag,
+                        targetUrls = historyTargets,
+                        kind = kind
+                    )
+                    android.util.Log.i(
+                        "MetadataFetcher",
+                        "Marketplace paged storefront fallback finished author=${author.take(12)} dTag=$dTag " +
+                            "matched=${fallbackResult.matched} pages=${fallbackResult.pagesFetched} " +
+                            "respondingRelays=${fallbackResult.respondingRelays}/${fallbackResult.targetRelayCount} " +
+                            "timeout=${fallbackResult.timedOut}"
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w(
+                    "MetadataFetcher",
+                    "Addressable fetch failed kind=$kind author=${author.take(12)} dTag=$dTag",
+                    error
+                )
+            } finally {
+                relayListDiscoveryJob?.cancelAndJoin()
+                synchronized(pendingOnDemandQuotes) {
+                    inFlightAddressables.remove(coordKey)
+                }
             }
+        }
+    }
+
+    private suspend fun fetchAddressableEventStage(
+        kind: Int,
+        author: String,
+        dTag: String,
+        stage: AddressableEventQueryStage,
+        targetUrls: List<String>,
+        priorityRelayUrls: List<String>
+    ): AddressableFetchOutcome = kotlinx.coroutines.coroutineScope {
+        val subId = "addr-${addressableBatchCounter.incrementAndGet()}"
+        val request = ClientMessage.req(subId, stage.filter)
+        val tracker = AddressableRelayEoseTracker(targetUrls)
+        val matchedEventsById = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        // Start both collectors before sending REQ. A response arriving immediately
+        // after WebSocket open must reach the repository and the EOSE tracker.
+        val eventCollector = launch(processingContext, start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents.collect { relayEvent ->
+                if (relayEvent.subscriptionId != subId) return@collect
+                val event = relayEvent.event
+                if (!matchesAddressableEventCoordinate(event, kind, author, dTag)) return@collect
+                if (!eventRepo.isEventVisibleToUser(event)) return@collect
+
+                // Populate the same reactive address index used by the detail route.
+                eventRepo.cacheEvent(event)
+                matchedEventsById.putIfAbsent(event.id, relayEvent.relayUrl)
+            }
+        }
+        val eoseCollector = if (targetUrls.isNotEmpty()) {
+            launch(processingContext, start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEoseSignals.collect { signal ->
+                    if (signal.subscriptionId == subId) tracker.markCompleted(signal.relayUrl)
+                }
+            }
+        } else {
+            null
+        }
+
+        try {
+            if (targetUrls.isNotEmpty()) {
+                for (url in targetUrls) {
+                    val isPriority = url in priorityRelayUrls
+                    if (isPriority) relayPool.clearCooldown(url)
+                    relayPool.sendToRelayOrEphemeral(
+                        url,
+                        request,
+                        skipBadCheck = isPriority,
+                        autoReconnect = true
+                    )
+                }
+            } else {
+                relayPool.sendToTopRelays(request, maxRelays = 10)
+            }
+
+            var completedWithinWindow = false
+            if (targetUrls.isEmpty()) {
+                subManager.awaitEoseWithTimeout(subId, timeoutMs = ADDRESSABLE_EOSE_TIMEOUT_MS)
+            } else {
+                var drainStartedAt = 0L
+                completedWithinWindow = withTimeoutOrNull(ADDRESSABLE_EOSE_TIMEOUT_MS) {
+                    while (true) {
+                        val responseRequirementMet = if (priorityRelayUrls.isEmpty()) {
+                            tracker.completedCount() >= tracker.minimumResponseCount()
+                        } else {
+                            tracker.hasSatisfiedRequiredResponses(priorityRelayUrls)
+                        }
+                        if (responseRequirementMet) {
+                            if (drainStartedAt == 0L) drainStartedAt = System.currentTimeMillis()
+                            val graceElapsed =
+                                System.currentTimeMillis() - drainStartedAt >= ADDRESSABLE_EOSE_DRAIN_GRACE_MS
+                            if (tracker.allTargetsCompleted() || graceElapsed) break
+                        }
+                        delay(100)
+                    }
+                    true
+                } == true
+            }
+
+            android.util.Log.i(
+                "MetadataFetcher",
+                "Addressable stage=${stage.mode} sub=$subId kind=$kind author=${author.take(12)} " +
+                    "matches=${matchedEventsById.size} relays=${tracker.completedCount()}/${tracker.targetCount()} " +
+                    "priority=${priorityRelayUrls.size} timeout=${!completedWithinWindow}"
+            )
+            AddressableFetchOutcome(
+                matched = matchedEventsById.isNotEmpty(),
+                matchingEventCount = matchedEventsById.size,
+                respondingRelays = tracker.completedCount(),
+                targetRelayCount = tracker.targetCount(),
+                timedOut = !completedWithinWindow
+            )
+        } finally {
+            eoseCollector?.cancelAndJoin()
+            eventCollector.cancelAndJoin()
+            subManager.closeSubscription(subId)
+        }
+    }
+
+
+    private data class AddressableSellerPage(
+        val events: List<NostrEvent>,
+        val completed: Boolean
+    )
+
+    /**
+     * Fallback for relays that ignore or inconsistently implement #d.
+     * Each relay maintains its own timestamp cursor, so a busy relay cannot make
+     * a quieter relay jump over older seller listings. Page requests run in parallel.
+     */
+    private suspend fun fetchAddressableEventHistoryPages(
+        author: String,
+        dTag: String,
+        targetUrls: List<String>,
+        kind: Int
+    ): AddressableFetchOutcome = kotlinx.coroutines.coroutineScope {
+        val targets = targetUrls.distinct()
+        if (targets.isEmpty()) {
+            return@coroutineScope AddressableFetchOutcome(
+                matched = false,
+                matchingEventCount = 0,
+                respondingRelays = 0,
+                targetRelayCount = 0,
+                timedOut = false
+            )
+        }
+
+        val found = kotlinx.coroutines.CompletableDeferred<NostrEvent?>()
+        val remaining = AtomicInteger(targets.size)
+        val respondingRelays = ConcurrentHashMap.newKeySet<String>()
+        val pagesFetched = AtomicLong(0L)
+
+        val workers = targets.map { relayUrl ->
+            launch(processingContext) {
+                try {
+                    var until: Long? = null
+                    repeat(NIP99_STOREFRONT_MAX_PAGES) {
+                        if (found.isCompleted) return@launch
+                        val page = fetchAddressableSellerPage(relayUrl, author, until, kind)
+                        pagesFetched.incrementAndGet()
+                        if (page.completed) respondingRelays.add(relayUrl)
+
+                        val match = page.events
+                            .asSequence()
+                            .filter { matchesAddressableEventCoordinate(it, kind, author, dTag) }
+                            .maxWithOrNull(compareBy<NostrEvent> { it.created_at }.thenBy { it.id })
+                        if (match != null) {
+                            found.complete(match)
+                            return@launch
+                        }
+
+                        if (!page.completed) return@launch
+                        val nextUntil = nextAddressableStorefrontPageUntil(
+                            receivedCreatedAt = page.events.map { it.created_at }
+                        ) ?: return@launch
+                        until = nextUntil
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        "MetadataFetcher",
+                        "NIP-99 history page failed relay=$relayUrl author=${author.take(12)}",
+                        error
+                    )
+                } finally {
+                    if (remaining.decrementAndGet() == 0) found.complete(null)
+                }
+            }
+        }
+
+        val match = withTimeoutOrNull(ADDRESSABLE_HISTORY_TOTAL_TIMEOUT_MS) {
+            found.await()
+        }
+        val timedOut = match == null && !found.isCompleted
+        workers.forEach { it.cancelAndJoin() }
+        if (match != null) {
+            eventRepo.cacheEvent(match)
+        }
+        AddressableFetchOutcome(
+            matched = match != null,
+            matchingEventCount = if (match != null) 1 else 0,
+            respondingRelays = respondingRelays.size,
+            targetRelayCount = targets.size,
+            timedOut = timedOut,
+            pagesFetched = pagesFetched.get().toInt()
+        )
+    }
+
+    private suspend fun fetchAddressableSellerPage(
+        relayUrl: String,
+        author: String,
+        until: Long?,
+        kind: Int
+    ): AddressableSellerPage = kotlinx.coroutines.coroutineScope {
+        val subId = "addr-history-${addressableBatchCounter.incrementAndGet()}"
+        val request = ClientMessage.req(subId, buildAddressableStorefrontPageFilter(author, until, kind))
+        val pageEvents = ConcurrentHashMap<String, NostrEvent>()
+
+        // Subscribe before sending the REQ: immediate EVENT/EOSE frames must not be lost.
+        val eventCollector = launch(processingContext, start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents.collect { relayEvent ->
+                if (relayEvent.subscriptionId != subId || relayEvent.relayUrl != relayUrl) return@collect
+                val event = relayEvent.event
+                if (event.kind != kind || event.pubkey != author) return@collect
+                if (Nip99.dTag(event).isBlank()) return@collect
+                if (!eventRepo.isEventVisibleToUser(event)) return@collect
+
+                eventRepo.cacheEvent(event)
+                pageEvents.putIfAbsent(event.id, event)
+            }
+        }
+        val eoseWaiter = async(processingContext, start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEoseSignals.first {
+                it.subscriptionId == subId && it.relayUrl == relayUrl
+            }
+        }
+
+        try {
+            relayPool.sendToRelayOrEphemeral(
+                relayUrl,
+                request,
+                skipBadCheck = true,
+                autoReconnect = true
+            )
+            val completed = withTimeoutOrNull(ADDRESSABLE_HISTORY_PAGE_EOSE_TIMEOUT_MS) {
+                eoseWaiter.await()
+                true
+            } == true
+            AddressableSellerPage(
+                events = pageEvents.values.sortedByDescending { it.created_at },
+                completed = completed
+            )
+        } finally {
+            eoseWaiter.cancelAndJoin()
+            eventCollector.cancelAndJoin()
+            relayPool.sendToRelayOrEphemeral(
+                relayUrl,
+                ClientMessage.close(subId),
+                skipBadCheck = true,
+                autoReconnect = true
+            )
         }
     }
 

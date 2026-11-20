@@ -44,8 +44,10 @@ import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
 import androidx.compose.material.icons.outlined.FlashOn
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.ui.draw.scale
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +92,8 @@ import com.darkwisp.app.nostr.DmReaction
 import com.darkwisp.app.nostr.EncryptedMedia
 import com.darkwisp.app.ui.component.FullScreenEncryptedImageViewer
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.TranslationState
+import com.darkwisp.app.repo.TranslationStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -108,6 +112,8 @@ fun DmBubble(
     isSelected: Boolean,
     conversationMessages: List<DmMessage>,
     eventRepo: EventRepository? = null,
+    translationState: TranslationState = TranslationState(),
+    onTranslate: () -> Unit = {},
     relayIcons: List<Pair<String, String?>> = emptyList(),
     onSelect: () -> Unit,
     onReply: (DmMessage) -> Unit,
@@ -132,6 +138,17 @@ fun DmBubble(
     val swipeThresholdPx = with(density) { 72.dp.toPx() }
     val senderProfile = remember(message.senderPubkey) { eventRepo?.getProfileData(message.senderPubkey) }
     val senderName = senderProfile?.displayString ?: (message.senderPubkey.take(8) + "…")
+    var showTranslation by remember(message.id) { mutableStateOf(true) }
+    val isTranslating =
+        translationState.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+            translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
+            translationState.status == TranslationStatus.TRANSLATING
+    val displayedContent =
+        if (translationState.status == TranslationStatus.DONE && showTranslation) {
+            translationState.translatedText
+        } else {
+            message.content
+        }
 
     val animatedSwipe by animateFloatAsState(
         targetValue = swipeOffsetPx,
@@ -139,8 +156,8 @@ fun DmBubble(
         label = "swipe"
     )
 
-    val bubbleColor = if (isSent) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+    val bubbleColor = if (isSent) MaterialTheme.colorScheme.surfaceVariant
+    else MaterialTheme.colorScheme.surface
 
     val quotedMessage = remember(message.replyToId, conversationMessages.size) {
         message.replyToId?.let { rid -> conversationMessages.firstOrNull { it.rumorId == rid || it.id == rid } }
@@ -206,10 +223,10 @@ fun DmBubble(
                         .wrapContentWidth(if (isSent) Alignment.End else Alignment.Start)
                         .clip(
                             RoundedCornerShape(
-                                topStart = 16.dp,
-                                topEnd = 16.dp,
-                                bottomStart = if (isSent) 16.dp else 4.dp,
-                                bottomEnd = if (isSent) 4.dp else 16.dp
+                                topStart = 8.dp,
+                                topEnd = 8.dp,
+                                bottomStart = if (isSent) 8.dp else 3.dp,
+                                bottomEnd = if (isSent) 3.dp else 8.dp
                             )
                         )
                         .background(bubbleColor)
@@ -264,7 +281,7 @@ fun DmBubble(
                             )
                         } else {
                             RichContent(
-                                content = message.content,
+                                content = displayedContent,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 linkColor = MaterialTheme.colorScheme.primary,
@@ -275,8 +292,68 @@ fun DmBubble(
                                 noteActions = noteActions
                             )
                         }
-                        // Timestamp at bottom only for sent messages (received shows it in header)
-                        if (isSent) {
+                        if (translationState.status == TranslationStatus.ERROR) {
+                            Text(
+                                text = translationState.errorMessage,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        // On-demand translation stays inside the bubble. The signed
+                        // NIP-17 message is never altered.
+                        if (message.content.isNotBlank() && message.encryptedFileMetadata == null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        if (translationState.status == TranslationStatus.DONE) {
+                                            showTranslation = !showTranslation
+                                        } else if (!isTranslating) {
+                                            onTranslate()
+                                        }
+                                    },
+                                    enabled = !isTranslating,
+                                    modifier = Modifier.size(26.dp)
+                                ) {
+                                    if (isTranslating) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(15.dp),
+                                            strokeWidth = 1.5.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Translate,
+                                            contentDescription = stringResource(
+                                                when {
+                                                    translationState.status == TranslationStatus.DONE && showTranslation ->
+                                                        R.string.translate_show_original
+                                                    translationState.status == TranslationStatus.DONE ->
+                                                        R.string.translate_show_translation
+                                                    else -> R.string.translate_translate
+                                                }
+                                            ),
+                                            tint = if (translationState.status == TranslationStatus.DONE && showTranslation) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                if (isSent) {
+                                    Text(
+                                        text = formatTime(message.createdAt),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else if (isSent) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End
@@ -541,12 +618,10 @@ private fun QuotedDmPreview(
         eventRepo?.getProfileData(message.senderPubkey)?.displayString
             ?: message.senderPubkey.take(8) + "…"
     }
-    val accentColor = if (parentIsSent) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
-    else MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-    val bgColor = if (parentIsSent) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
-    else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-    val textColor = if (parentIsSent) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-    else MaterialTheme.colorScheme.onSurfaceVariant
+    val accentColor = MaterialTheme.colorScheme.primary
+    val bgColor = if (parentIsSent) MaterialTheme.colorScheme.surfaceVariant
+    else MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Row(
         modifier = Modifier
@@ -589,7 +664,7 @@ private fun ReactionChips(
     resolvedEmojis: Map<String, String> = emptyMap()
 ) {
     val grouped = remember(reactions) { reactions.groupBy { it.emoji } }
-    val pillColor = if (isSent) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
+    val pillColor = if (isSent) MaterialTheme.colorScheme.surfaceVariant
                     else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
 
     Row(
