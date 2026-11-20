@@ -12,7 +12,7 @@ The staging workflow:
 4. runs `testStagingUnitTest`;
 5. builds `assembleStaging`;
 6. verifies the staging application ID, version name, version code, and permanent signing certificate;
-7. computes a SHA-256 digest and uploads the signed APK as a GitHub Actions artifact.
+7. computes a SHA-256 digest, uploads the signed APK as a GitHub Actions artifact, and creates a GitHub build-provenance attestation for the APK.
 
 The release workflow also applies release safeguards. The Zapstore and GitHub APKs for the audited v1.0.42 release were reported to have the same SHA-256 digest.
 
@@ -26,7 +26,7 @@ Postilla does not yet claim fully reproducible builds. The following work remain
 - Enable and commit Gradle dependency verification metadata, and review updates to dependency checksums.
 - Record the exact JDK, Gradle, Android Gradle Plugin, SDK/build-tools versions and source commit for every release.
 - Run two clean builds from the same commit in separate fresh environments, then compare the resulting APKs. If signatures or archive metadata differ, compare unsigned APK payloads and document the expected differences.
-- Publish build provenance/attestations alongside release artifacts and preserve the SHA-256 digest.
+- Extend the staging APK provenance attestation to the official release workflow and preserve the SHA-256 digest.
 - Provide a documented independent rebuild procedure for contributors.
 
 A provenance attestation helps connect an artifact to a build workflow; it is not, by itself, proof that another builder can reproduce the artifact.
