@@ -97,7 +97,7 @@ class Nip22Test {
             content = "A chair",
             sig = "test-sig"
         )
-        val address = "30402:$rootAuthor:vintage-chair"
+        val address = "30402:$author:vintage-chair"
         val tags = Nip22.buildAddressableRootCommentTags(root)
         assertTrue(tags.contains(listOf("A", address)))
         assertTrue(tags.contains(listOf("K", "30402")))
@@ -124,7 +124,7 @@ class Nip22Test {
             pubkey = topCommentAuthor
         )
         val tags = Nip22.buildAddressableCommentReplyTags(root, parent)
-        val address = "30402:$rootAuthor:vintage-chair"
+        val address = "30402:$author:vintage-chair"
 
         assertTrue(tags.contains(listOf("A", address)))
         assertTrue(tags.contains(listOf("K", "30402")))
@@ -138,7 +138,7 @@ class Nip22Test {
 
     @Test
     fun filterSerializesUppercaseAForAddressableComments() {
-        val address = "30402:$rootAuthor:vintage-chair"
+        val address = "30402:$author:vintage-chair"
         val json = Filter(
             kinds = listOf(Nip22.KIND_COMMENT),
             bigATags = listOf(address)
@@ -149,7 +149,7 @@ class Nip22Test {
 
     @Test
     fun filterSerializesLowercaseAForAddressableListingComments() {
-        val address = "30402:$rootAuthor:vintage-chair"
+        val address = "30402:$author:vintage-chair"
         val json = Filter(
             kinds = listOf(Nip22.KIND_COMMENT),
             aTags = listOf(address)
@@ -176,7 +176,7 @@ class Nip22LongFormArticleTest {
 
     @Test
     fun addressableRootMatchingAcceptsUppercaseAAndLegacyLowercaseA() {
-        val address = "30023:$rootAuthor:essay-1"
+        val address = "30023:$author:essay-1"
         val upper = NostrEvent(
             id = "upper-a", pubkey = author, created_at = 1L, kind = Nip22.KIND_COMMENT,
             tags = listOf(listOf("A", address)), content = "upper", sig = "test"
@@ -184,12 +184,12 @@ class Nip22LongFormArticleTest {
         val lower = upper.copy(id = "lower-a", tags = listOf(listOf("a", address)))
         assertTrue(Nip22.referencesAddressableRoot(upper, address))
         assertTrue(Nip22.referencesAddressableRoot(lower, address))
-        assertFalse(Nip22.referencesAddressableRoot(lower, "30023:$rootAuthor:other"))
+        assertFalse(Nip22.referencesAddressableRoot(lower, "30023:$author:other"))
     }
 
     @Test
     fun addressableRootCommentFiltersAreIndependentAlternatives() {
-        val address = "30023:$rootAuthor:essay-1"
+        val address = "30023:$author:essay-1"
         val articleEventId = "article-event-id"
         val filters = Nip22.addressableRootCommentFilters(address, articleEventId)
 
