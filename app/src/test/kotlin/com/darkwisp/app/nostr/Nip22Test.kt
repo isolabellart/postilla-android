@@ -97,7 +97,7 @@ class Nip22Test {
             content = "A chair",
             sig = "test-sig"
         )
-        val address = "30402:$author:vintage-chair"
+        val address = "30402:$rootAuthor:vintage-chair"
         val tags = Nip22.buildAddressableRootCommentTags(root)
         assertTrue(tags.contains(listOf("A", address)))
         assertTrue(tags.contains(listOf("K", "30402")))
@@ -124,7 +124,7 @@ class Nip22Test {
             pubkey = topCommentAuthor
         )
         val tags = Nip22.buildAddressableCommentReplyTags(root, parent)
-        val address = "30402:$author:vintage-chair"
+        val address = "30402:$rootAuthor:vintage-chair"
 
         assertTrue(tags.contains(listOf("A", address)))
         assertTrue(tags.contains(listOf("K", "30402")))
@@ -138,7 +138,7 @@ class Nip22Test {
 
     @Test
     fun filterSerializesUppercaseAForAddressableComments() {
-        val address = "30402:$author:vintage-chair"
+        val address = "30402:$rootAuthor:vintage-chair"
         val json = Filter(
             kinds = listOf(Nip22.KIND_COMMENT),
             bigATags = listOf(address)
@@ -149,7 +149,7 @@ class Nip22Test {
 
     @Test
     fun filterSerializesLowercaseAForAddressableListingComments() {
-        val address = "30402:$author:vintage-chair"
+        val address = "30402:$rootAuthor:vintage-chair"
         val json = Filter(
             kinds = listOf(Nip22.KIND_COMMENT),
             aTags = listOf(address)
