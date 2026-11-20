@@ -41,6 +41,10 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     private var eventRepo: EventRepository? = null
     private var notifRepo: NotificationRepository? = null
     private var myPubkey: String? = null
+    @Volatile private var defaultCommunitySigner: NostrSigner? = null
+    private val defaultCommunityJoinRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private var defaultCommunityListPublishedPubkey: String? = null
 
     /** Groups that currently have an open relay connection and active subscriptions. */
     private val subscribedGroups = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -91,8 +95,11 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         eventRepo = null
         notifRepo = null
         myPubkey = null
+        defaultCommunitySigner = null
+        defaultCommunityJoinRequests.clear()
+        defaultCommunityInviteWarnings.clear()
+        defaultCommunityListPublishedPubkey = null
     }
-
     val unreadGroups: StateFlow<Set<String>>
         get() = groupRepo?.unreadGroups ?: MutableStateFlow(emptySet())
 
@@ -113,6 +120,92 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         // Auto-subscribe to groups with notifications enabled so messages arrive in the background
         for ((relayUrl, groupId) in repository.getNotifiedGroupKeys()) {
             subscribeToGroup(relayUrl, groupId)
+        }
+    }
+
+    /**
+     * Add the public Postilla community to this account's room list once and subscribe to it.
+     * A kind-9021 request is sent only if relay metadata proves membership is required.
+     */
+    fun ensureDefaultCommunityGroup(signer: NostrSigner?) {
+        val repo = groupRepo ?: return
+        val relayUrl = Nip29.DEFAULT_COMMUNITY_RELAY
+        val groupId = Nip29.DEFAULT_COMMUNITY_GROUP_ID
+
+        defaultCommunitySigner = signer
+        if (repo.getRoom(relayUrl, groupId) == null) {
+            repo.addGroup(relayUrl, groupId)
+            applyCachedPreview(relayUrl, groupId)
+            Log.i("GroupListVM", "[default-community] registered locally relay=$relayUrl group=$groupId")
+        }
+        subscribeToGroup(relayUrl, groupId)
+
+        val account = myPubkey
+        if (signer != null && !account.isNullOrBlank() &&
+            defaultCommunityListPublishedPubkey != account) {
+            defaultCommunityListPublishedPubkey = account
+            publishGroupList(signer)
+        }
+
+        repo.getRoom(relayUrl, groupId)?.metadata?.let { maybeAutoJoinDefaultCommunity(it) }
+    }
+
+    /**
+     * Public/open rooms need no membership request. If the relay reports private or restricted
+     * access, request admission once; never treat a timeout as proof that membership was granted.
+     */
+    private fun maybeAutoJoinDefaultCommunity(metadata: Nip29.GroupMetadata) {
+        if (metadata.groupId != Nip29.DEFAULT_COMMUNITY_GROUP_ID ||
+            !Nip29.requiresJoinRequest(metadata)) return
+
+        val repo = groupRepo ?: return
+        val pool = relayPool ?: return
+        val relayUrl = Nip29.DEFAULT_COMMUNITY_RELAY
+        val account = myPubkey?.takeIf { it.isNotBlank() } ?: return
+        val requestKey = "$account|$relayUrl|${metadata.groupId}"
+
+        val currentMembers = repo.getRoom(relayUrl, metadata.groupId)?.members ?: emptyList()
+        if (account in currentMembers) {
+            defaultCommunityJoinRequests.add(requestKey)
+            return
+        }
+
+        if (metadata.isClosed) {
+            if (defaultCommunityInviteWarnings.add(requestKey)) {
+                accountScope.launch(Dispatchers.Default) {
+                    kotlinx.coroutines.delay(1_000)
+                    if (myPubkey != account || groupRepo !== repo || relayPool !== pool) return@launch
+                    val members = repo.getRoom(relayUrl, metadata.groupId)?.members ?: emptyList()
+                    if (account !in members) {
+                        _joinErrors.tryEmit(JoinError(relayUrl, metadata.groupId,
+                            "Il gruppo è chiuso e il link configurato non contiene un codice d'invito (?code=)."))
+                    }
+                }
+            }
+            return
+        }
+
+        val signer = defaultCommunitySigner ?: return
+        if (!defaultCommunityJoinRequests.add(requestKey)) return
+
+        accountScope.launch(Dispatchers.Default) {
+            // Give the relay time to deliver kind 39002 before deciding the account is not a member.
+            kotlinx.coroutines.delay(1_000)
+            if (myPubkey != account || groupRepo !== repo || relayPool !== pool) return@launch
+            val members = repo.getRoom(relayUrl, metadata.groupId)?.members ?: emptyList()
+            if (account in members) return@launch
+
+            pool.ensureGroupRelay(relayUrl)
+            attemptJoin(
+                repo = repo,
+                pool = pool,
+                normalizedUrl = relayUrl,
+                groupId = metadata.groupId,
+                s = signer,
+                inviteCode = null,
+                attempt = 1,
+                commitOnTimeout = false
+            )
         }
     }
 
@@ -295,6 +388,10 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                         val metadata = Nip29.parseGroupMetadata(event) ?: return@collect
                         repo.getRoom(relayUrl, metadata.groupId) ?: return@collect
                         repo.updateMetadata(relayUrl, metadata.groupId, metadata)
+                        if (relayUrl.lowercase().trimEnd('/') == Nip29.DEFAULT_COMMUNITY_RELAY &&
+                            metadata.groupId == Nip29.DEFAULT_COMMUNITY_GROUP_ID) {
+                            maybeAutoJoinDefaultCommunity(metadata)
+                        }
                     }
                     Nip29.KIND_GROUP_ADMINS -> {
                         Log.d("GroupListVM", "[raw 39001 admins] relay=$relayUrl ${event.toJson()}")
@@ -368,7 +465,8 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         groupId: String,
         s: NostrSigner,
         inviteCode: String?,
-        attempt: Int
+        attempt: Int,
+        commitOnTimeout: Boolean = true
     ) {
         val event = try {
             val tags = mutableListOf(listOf("h", groupId))
@@ -411,11 +509,16 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         collectResultJob.cancel()
 
         when {
-            // No OK came back in 10s — some relays silently accept. Be optimistic and admit,
-            // then let subsequent REQs surface reality (no messages = they never got in).
+            // Preserve the previous optimistic behavior for manual joins only. The automatic
+            // default-community flow passes commitOnTimeout=false and requires an explicit OK.
             result == null -> {
                 collectAuthJob.cancel()
-                commitJoin(repo, normalizedUrl, groupId, s)
+                if (commitOnTimeout) {
+                    commitJoin(repo, normalizedUrl, groupId, s)
+                } else {
+                    _joinErrors.tryEmit(JoinError(normalizedUrl, groupId,
+                        "Il relay non ha confermato la richiesta: il gruppo resta visibile, ma l'accesso non è verificato."))
+                }
             }
             // Accepted outright, or relay says we're already a member (per NIP-29 spec).
             result.accepted || result.message.startsWith("duplicate:", ignoreCase = true) -> {
@@ -428,7 +531,7 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                 val authed = withTimeoutOrNull(15_000) { authDeferred.await() } != null
                 collectAuthJob.cancel()
                 if (authed) {
-                    attemptJoin(repo, pool, normalizedUrl, groupId, s, inviteCode, attempt = attempt + 1)
+                    attemptJoin(repo, pool, normalizedUrl, groupId, s, inviteCode, attempt = attempt + 1, commitOnTimeout = commitOnTimeout)
                 } else {
                     _joinErrors.tryEmit(JoinError(normalizedUrl, groupId, result.message))
                     if (groupRepo?.getJoinedGroupKeys()?.none { it.first == normalizedUrl } == true) {

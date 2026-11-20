@@ -1,0 +1,242 @@
+name: Postilla v1.0.25 official release
+
+on:
+  push:
+    branches:
+      - "release/postilla-v1.0.25"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: postilla-v1.0.25-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Test, build, verify and publish Postilla v1.0.25
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check out exact release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release branch and tested source ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/release/postilla-v1.0.25" ]]
+          TESTED_STAGING_COMMIT="16643f8f8741523c467a5043bc3c2b8334840386"
+          PREVIOUS_RELEASE_COMMIT="6124e03973f8405d36d8162066bc73b863a7acf6"
+          git merge-base --is-ancestor "$PREVIOUS_RELEASE_COMMIT" HEAD
+          git merge-base --is-ancestor "$TESTED_STAGING_COMMIT" HEAD
+          echo "Verified v1.0.18 base and user-approved, CI-green Preview 1.0.25 source."
+          echo "Release source: $(git rev-parse HEAD)"
+          if [[ -n "$(git ls-remote --tags origin refs/tags/v1.0.25)" ]]; then
+            echo "::error::Tag v1.0.25 already exists; refusing to overwrite it."
+            exit 1
+          fi
+
+      - name: Check permanent signing secrets
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [[ -z "$KEYSTORE_B64" ]] && missing+=("DARK_WISP_ENHANCED_KEYSTORE_BASE64")
+          [[ -z "$STORE_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_STORE_PASSWORD")
+          [[ -z "$KEY_ALIAS" ]] && missing+=("DARK_WISP_ENHANCED_KEY_ALIAS")
+          [[ -z "$KEY_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_KEY_PASSWORD")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required permanent signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode permanent Postilla signing keystore
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/postilla-release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          {
+            echo "RELEASE_STORE_FILE=$KEYSTORE_PATH"
+            echo "RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Run staging unit tests
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            testStagingUnitTest --stacktrace
+
+      - name: Build signed production APK
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            assembleRelease --stacktrace
+
+      - name: Verify production package, version and permanent signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)"
+          test -x "$APKANALYZER"
+          PACKAGE_ID="$("$APKANALYZER" manifest application-id "$APK")"
+          VERSION_NAME="$("$APKANALYZER" manifest version-name "$APK")"
+          VERSION_CODE="$("$APKANALYZER" manifest version-code "$APK")"
+          echo "Package: $PACKAGE_ID"
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+          [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced" ]]
+          [[ "$VERSION_NAME" == "1.0.25" ]]
+          [[ "$VERSION_CODE" == "25" ]]
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1)"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | tee "$RUNNER_TEMP/postilla-release-signature.txt"
+          ACTUAL_CERT_SHA256="$(printf '%s\n' "$SIGNATURE_OUTPUT" \
+            | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
+            | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED_CERT_SHA256="86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841"
+          if [[ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]]; then
+            echo "::error::APK certificate mismatch. Expected $EXPECTED_CERT_SHA256, got ${ACTUAL_CERT_SHA256:-<missing>}."
+            exit 1
+          fi
+
+          cp "$APK" "Postilla-v1.0.25.apk"
+          sha256sum "Postilla-v1.0.25.apk" | tee "$RUNNER_TEMP/postilla-v1.0.25-sha256.txt"
+
+      - name: Upload verified APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: postilla-v1.0.25-signed-apk
+          path: Postilla-v1.0.25.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove stale draft from previous failed validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing DARK_WISP_ENHANCED_RELEASE_TOKEN."
+            exit 1
+          fi
+          RELEASE_IDS="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == "v1.0.25" and .draft == true) | .id')"
+          while IFS= read -r RELEASE_ID; do
+            [[ -n "$RELEASE_ID" ]] || continue
+            echo "Removing stale draft release $RELEASE_ID before a fresh verified upload."
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          done <<< "$RELEASE_IDS"
+
+      # Publish as a draft first. The Zapstore workflow listens for the
+      # published event, so the asset must already be attached before
+      # the release is made public.
+      - name: Create draft GitHub release and upload APK
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v1.0.25
+          target_commitish: ${{ github.sha }}
+          name: Postilla v1.0.25
+          draft: true
+          prerelease: false
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            ## What's new
+
+            - More reliable Marketplace discovery and browsing: progressive seller inventory loading, bounded relay pagination, clearer loading/retry handling and improved relay response thresholds.
+            - Legacy Marketplace products (NIP-15 kind 30018) are now handled consistently alongside NIP-99 listings: structured previews, images, price and status, editing and withdrawal, detail navigation and feed cards.
+            - Improved Shopstr seller reviews and ratings, including product-reference validation, seller matching and more resilient review discovery.
+            - Refined Marketplace storefront with a scrolling seller header, sticky category navigation and localized storefront metrics.
+            - Improved profile search across relays, with local cache support and more useful result ordering.
+            - Refreshed Lightning wallet presentation, send/receive emphasis, Light theme details and localized settings and safety copy.
+            - Additional fixes and reliability improvements across Marketplace, wallet and interface.
+
+            ## Compatibility
+
+            - Android package: `com.isolabellart.darkwispenhanced`
+            - Version: **1.0.25 (25)**
+            - Existing installations and the permanent signing identity are preserved.
+
+            ---
+
+            ## Novità
+
+            - Marketplace più affidabile nella ricerca e nella navigazione: caricamento progressivo delle vetrine, paginazione relay controllata, gestione più chiara del caricamento e dei tentativi e soglie di risposta migliorate.
+            - I prodotti Marketplace legacy (NIP-15 kind 30018) sono ora gestiti insieme agli annunci NIP-99: anteprime strutturate, immagini, prezzo e stato, modifica e ritiro, apertura del dettaglio e schede nel feed.
+            - Migliorata la gestione delle recensioni e delle valutazioni Shopstr dei venditori, con verifica dei riferimenti ai prodotti, corretta associazione del venditore e ricerca delle recensioni più resiliente.
+            - Vetrina Marketplace rifinita con intestazione del venditore scorrevole, categorie fisse durante lo scorrimento e metriche tradotte.
+            - Ricerca dei profili più affidabile tra relay, con supporto alla cache locale e ordinamento dei risultati più utile.
+            - Rinnovata la presentazione del portafoglio Lightning, maggiore evidenza a invio e ricezione, dettagli del tema Chiaro e testi di impostazioni e sicurezza localizzati.
+            - Ulteriori correzioni e miglioramenti di affidabilità per Marketplace, portafoglio e interfaccia.
+
+            ## Compatibilità
+
+            - Package Android: `com.isolabellart.darkwispenhanced`
+            - Versione: **1.0.25 (25)**
+            - Installazioni esistenti e identità di firma permanente mantenute.
+          files: Postilla-v1.0.25.apk
+          fail_on_unmatched_files: true
+          overwrite_files: false
+          token: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+
+      - name: Verify uploaded asset and publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing DARK_WISP_ENHANCED_RELEASE_TOKEN."
+            exit 1
+          fi
+          RELEASE_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == "v1.0.25" and .draft == true) | .id' | tail -n 1)"
+          test -n "$RELEASE_ID"
+          EXPECTED_SHA256="$(sha256sum Postilla-v1.0.25.apk | awk '{print $1}')"
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
+          ASSET_DATA="$(jq -c --arg name "Postilla-v1.0.25.apk" '.assets[] | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+          [[ -n "$ASSET_DATA" ]] || {
+            echo "::error::The signed APK is not attached to the draft release."
+            exit 1
+          }
+          ASSET_SIZE="$(jq -r '.size' <<< "$ASSET_DATA")"
+          ASSET_DIGEST="$(jq -r '.digest // empty' <<< "$ASSET_DATA")"
+          (( ASSET_SIZE > 0 ))
+          if [[ -n "$ASSET_DIGEST" && "$ASSET_DIGEST" != "sha256:$EXPECTED_SHA256" ]]; then
+            echo "::error::Uploaded APK digest does not match the verified build."
+            exit 1
+          fi
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false -F prerelease=false -f make_latest=true >/dev/null
+          echo "Postilla v1.0.25 is published with its verified APK asset."

@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
@@ -117,6 +119,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip88
@@ -162,9 +165,18 @@ fun ComposeScreen(
     onNotePublished: (() -> Unit)? = null,
     powManager: PowManager? = null,
     powPrefs: PowPreferences? = null,
-    resolvedEmojis: Map<String, String> = emptyMap()
+    resolvedEmojis: Map<String, String> = emptyMap(),
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null,
+    initialContent: String? = null,
+    onWriteArticle: () -> Unit = {}
 ) {
     val content by viewModel.content.collectAsState()
+    var composerMinHeight by remember { mutableStateOf(160.dp) }
+    val resizeFieldDescription = stringResource(R.string.compose_resize_text_area)
+    val density = LocalDensity.current
+    LaunchedEffect(initialContent) {
+        initialContent?.takeIf(String::isNotBlank)?.let(viewModel::setInitialContent)
+    }
     val publishing by viewModel.publishing.collectAsState()
     val error by viewModel.error.collectAsState()
     val uploadedUrls by viewModel.uploadedUrls.collectAsState()
@@ -248,7 +260,9 @@ fun ComposeScreen(
                             quoteTo != null -> stringResource(R.string.compose_quote)
                             replyTo != null -> stringResource(R.string.compose_reply)
                             else -> stringResource(R.string.compose_new_post)
-                        }
+                        },
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+                        maxLines = 1
                     )
                 },
                 navigationIcon = {
@@ -258,32 +272,43 @@ fun ComposeScreen(
                 },
                 actions = {
                     if (replyTo != null || quoteTo != null) {
-                        // No gallery toggle when replying or quoting
-                    } else if (galleryMode) {
-                        OutlinedButton(
-                            onClick = { viewModel.toggleGalleryMode() },
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Outlined.Article,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.compose_switch_to_text))
-                        }
+                        // Mode switches are hidden while replying or quoting.
                     } else {
-                        OutlinedButton(
-                            onClick = { viewModel.toggleGalleryMode() },
-                            modifier = Modifier.padding(end = 8.dp)
+                        Row(
+                            modifier = Modifier.padding(end = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Outlined.PhotoLibrary,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.compose_switch_to_gallery))
+                            Surface(
+                                shape = CircleShape,
+                                color = if (galleryMode) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f) else Color.Transparent,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .clickable { viewModel.toggleGalleryMode() }
+                                    .padding(horizontal = 9.dp, vertical = 7.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.compose_gallery_button), style = MaterialTheme.typography.labelMedium, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .clickable(onClick = onWriteArticle)
+                                    .padding(horizontal = 9.dp, vertical = 7.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.compose_article_button), style = MaterialTheme.typography.labelMedium, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 },
@@ -716,7 +741,8 @@ fun ComposeScreen(
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp)
+                            .padding(top = 12.dp)
+                            .heightIn(min = composerMinHeight, max = 420.dp)
                             .contentReceiver(object : ReceiveContentListener {
                                 override fun onReceive(
                                     transferableContent: TransferableContent
@@ -749,10 +775,40 @@ fun ComposeScreen(
                                 singleLine = false,
                                 visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
                                 interactionSource = interactionSource,
-                                label = { Text(stringResource(R.string.compose_placeholder)) }
+                                label = { Text(stringResource(R.string.compose_placeholder)) },
+                                // Reserve enough top space for the floating label and its
+                                // outline notch; the custom BasicTextField decorator otherwise
+                                // clips the label when the user starts typing.
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    start = 16.dp,
+                                    top = 24.dp,
+                                    end = 16.dp,
+                                    bottom = 16.dp
+                                )
                             )
                         }
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(18.dp)
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val delta = with(density) { dragAmount.toDp() }
+                                    composerMinHeight = (composerMinHeight + delta).coerceIn(140.dp, 420.dp)
+                                }
+                            }
+                            .semantics { contentDescription = resizeFieldDescription },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier.width(44.dp).height(4.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        ) {}
+                    }
 
                     // Attach row with preview toggle
                     Spacer(Modifier.height(4.dp))
@@ -811,7 +867,9 @@ fun ComposeScreen(
 
                         // Private reply toggle: only meaningful for replies in plain text mode
                         // (private replies don't carry gallery/poll/schedule/quote payloads in v1).
-                        if (replyTo != null && quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
+                        if (replyTo != null && replyTo.kind != 30023 &&
+                            com.darkwisp.app.nostr.Nip22.longFormRootCoordinate(replyTo) == null &&
+                            quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
                             IconButton(onClick = {
                                 // Locked toggles short-circuit in the VM, so the state stays ON.
                                 val nextState = if (privateReplyLocked) true else !privateReply
@@ -1187,7 +1245,7 @@ fun ComposeScreen(
 
                     // Live preview
                     AnimatedVisibility(
-                        visible = !imeVisible && (content.text.isNotBlank() || (pollEnabled && pollOptions.any { it.isNotBlank() })) && eventRepo != null
+                        visible = (content.text.isNotBlank() || (pollEnabled && pollOptions.any { it.isNotBlank() })) && eventRepo != null
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -1226,7 +1284,8 @@ fun ComposeScreen(
                                 RichContent(
                                     content = content.text,
                                     emojiMap = resolvedEmojis,
-                                    eventRepo = eventRepo
+                                    eventRepo = eventRepo,
+                                    onMarketplaceListingClick = onMarketplaceListingClick
                                 )
                                 // Poll preview
                                 if (pollEnabled) {

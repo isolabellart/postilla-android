@@ -7,8 +7,10 @@ import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip02
+import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip65
 import com.darkwisp.app.nostr.NipA3
@@ -29,11 +31,17 @@ import com.darkwisp.app.repo.PaymentTargetRepository
 import com.darkwisp.app.repo.RelayHintStore
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.relay.SubscriptionManager
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -72,8 +80,12 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
     private val _repostAuthors = mutableMapOf<String, String>()
     val repostAuthors: Map<String, String> get() = _repostAuthors
 
-    // Track repost sort time: inner event id -> repost wrapper created_at
+    // Track each profile repost event so NIP-09 can remove the correct embedded note.
     private val _repostSortTime = mutableMapOf<String, Long>()
+    private val _repostEventIdsByTarget = mutableMapOf<String, MutableSet<String>>()
+    private val _repostEventTargets = mutableMapOf<String, String>()
+    private val _repostEventTimes = mutableMapOf<String, MutableMap<String, Long>>()
+    private val _deletedRepostEventIds = mutableSetOf<String>()
 
     private val _followList = MutableStateFlow<List<Nip02.FollowEntry>>(emptyList())
     val followList: StateFlow<List<Nip02.FollowEntry>> = _followList
@@ -160,6 +172,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private val SUB_IDS = setOf("userprofile", "userposts", "usergallery", "userfollows", "userrelays", "userpins", "usergroups", "userpaytargets", "followprofiles")
+        private val PROFILE_CACHE_KINDS = setOf(1, 6, 20, 21, 22, 1068, 6969, Nip22.KIND_COMMENT, 30023)
     }
 
     fun loadProfile(
@@ -176,6 +189,12 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         paymentTargetRepo: PaymentTargetRepository? = null
     ) {
         targetPubkey = pubkey
+        _repostAuthors.clear()
+        _repostSortTime.clear()
+        _repostEventIdsByTarget.clear()
+        _repostEventTargets.clear()
+        _repostEventTimes.clear()
+        _deletedRepostEventIds.clear()
         eventRepoRef = eventRepo
         relayPoolRef = relayPool
         outboxRouterRef = outboxRouter
@@ -187,6 +206,8 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         latestProfileTimestamp = 0
         latestFollowListTimestamp = 0
         latestRelayListTimestamp = 0
+        _rootNotes.value = emptyList()
+        _replies.value = emptyList()
         _notesSortMode.value = ProfileSortMode.RECENCY
         _repliesSortMode.value = ProfileSortMode.RECENCY
         _sortedNotes.value = emptyList()
@@ -203,6 +224,19 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         _paymentTargets.value = paymentTargetRepo?.getTargets(pubkey) ?: emptyList()
         _relayHints.value = relayHintStore?.getHints(pubkey) ?: emptySet()
         _isFollowing.value = contactRepo.isFollowing(pubkey)
+        // Paint the profile from local history immediately; relay responses will merge into it.
+        viewModelScope.launch(Dispatchers.IO) {
+            val cachedEvents = eventRepo.getCachedEventsByAuthorAndKinds(
+                pubkey = pubkey,
+                kinds = PROFILE_CACHE_KINDS,
+                limit = 200
+            )
+            withContext(Dispatchers.Main.immediate) {
+                if (targetPubkey == pubkey && cachedEvents.isNotEmpty()) {
+                    seedProfileFromCache(cachedEvents, eventRepo)
+                }
+            }
+        }
         extendedNetworkRepoRef = extendedNetworkRepo
         _followedBy.value = extendedNetworkRepo?.getFollowedBy(pubkey)?.toList() ?: emptyList()
         Log.d("UserProfileVM", "loadProfile: followedBy=${_followedBy.value.size} for $pubkey, discoveryState=${extendedNetworkRepo?.discoveryState?.value}")
@@ -225,7 +259,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
         // Request fresh profile, posts, follow list, and relay list
         val profileFilter = Filter(kinds = listOf(0), authors = listOf(pubkey), limit = 1)
-        val postsFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(pubkey), limit = 50)
+        val postsFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 5, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(pubkey), limit = 50)
         // Gallery posts can be old and curated — fetch separately with no since filter, higher limit
         val galleryFilter = Filter(kinds = listOf(20, 21, 22), authors = listOf(pubkey), limit = 100)
         val followFilter = Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1)
@@ -295,6 +329,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // Only process events from our own subscriptions
                 if (subscriptionId !in SUB_IDS && !subscriptionId.startsWith("followprofiles") && !subscriptionId.startsWith("user-engage") && subscriptionId != "userposts-more" && subscriptionId != "userreplies-more") return@collect
+                if (event.id in _deletedRepostEventIds) return@collect
 
                 // Route engagement events — reactions, zaps, reply counts
                 if (subscriptionId.startsWith("user-engage")) {
@@ -328,15 +363,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         1, Nip22.KIND_COMMENT -> {
                             eventRepo.cacheEvent(event)
-                            if (Nip10.getReplyTarget(event) == null) {
-                                if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
-                                val current = _rootNotes.value.toMutableList()
-                                if (current.none { it.id == event.id }) {
-                                    current.add(event)
-                                    current.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
-                                    _rootNotes.value = current
-                                }
-                            } else {
+                            if (event.kind == Nip22.KIND_COMMENT || Nip10.getReplyTarget(event) != null) {
                                 if (event.created_at < oldestReplyTimestamp) oldestReplyTimestamp = event.created_at
                                 val current = _replies.value.toMutableList()
                                 if (current.none { it.id == event.id }) {
@@ -344,17 +371,22 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                                     current.sortByDescending { it.created_at }
                                     _replies.value = current
                                 }
+                            } else {
+                                if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
+                                val current = _rootNotes.value.toMutableList()
+                                if (current.none { it.id == event.id }) {
+                                    current.add(event)
+                                    current.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
+                                    _rootNotes.value = current
+                                }
                             }
                         }
                         30023, 1068, 6969 -> {
                             eventRepo.cacheEvent(event)
                             if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
                             val current = _rootNotes.value.toMutableList()
-                            if (current.none { it.id == event.id }) {
-                                current.add(event)
-                                current.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
-                                _rootNotes.value = current
-                            }
+                            addRootNoteToList(current, event)
+                            _rootNotes.value = current
                         }
                         20, 21, 22 -> {
                             eventRepo.cacheEvent(event)
@@ -374,16 +406,67 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                                 _rootNotes.value = current
                             }
                         }
+                        5 -> {
+                            // Feed the deletion through the shared repository as well, so
+                            // the timeline and repost counters reconcile with this profile.
+                            eventRepo.addEvent(event)
+                            val currentRoots = _rootNotes.value.toMutableList()
+                            val currentReplies = _replies.value.toMutableList()
+                            var rootsChanged = false
+                            var repliesChanged = false
+
+                            for (deletedId in Nip09.getDeletedEventIds(event)) {
+                                _deletedRepostEventIds.add(deletedId)
+                                val targetId = _repostEventTargets.remove(deletedId)
+                                if (targetId != null) {
+                                    val repostIds = _repostEventIdsByTarget[targetId]
+                                    repostIds?.remove(deletedId)
+                                    _repostEventTimes[targetId]?.remove(deletedId)
+                                    if (repostIds.isNullOrEmpty()) {
+                                        _repostEventIdsByTarget.remove(targetId)
+                                        _repostEventTimes.remove(targetId)
+                                        _repostAuthors.remove(targetId)
+                                        _repostSortTime.remove(targetId)
+                                        val original = currentRoots.firstOrNull { it.id == targetId }
+                                            ?: eventRepo.getEvent(targetId)
+                                        // If the embedded note was authored by this profile,
+                                        // it remains a normal note after its repost is undone.
+                                        if (original?.pubkey != pubkey) {
+                                            if (currentRoots.removeAll { it.id == targetId }) rootsChanged = true
+                                        }
+                                    } else {
+                                        _repostSortTime[targetId] =
+                                            _repostEventTimes[targetId]?.values?.maxOrNull() ?: 0L
+                                    }
+                                    rootsChanged = true
+                                } else {
+                                    if (currentRoots.removeAll { it.id == deletedId }) rootsChanged = true
+                                    if (currentReplies.removeAll { it.id == deletedId }) repliesChanged = true
+                                }
+                            }
+
+                            if (rootsChanged) {
+                                currentRoots.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
+                                _rootNotes.value = currentRoots
+                            }
+                            if (repliesChanged) _replies.value = currentReplies
+                        }
                         6 -> {
-                            eventRepo.cacheEvent(event)
+                            if (event.id in _deletedRepostEventIds) return@collect
+                            eventRepo.addEvent(event)
                             if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
-                            // Show the reposted event in profile's root notes
+                            // Show the reposted event in profile's root notes and retain the
+                            // wrapper IDs/timestamps so a later kind-5 deletion can undo it.
                             if (event.content.isNotBlank()) {
                                 try {
                                     val inner = NostrEvent.fromJson(event.content)
                                     eventRepo.cacheEvent(inner)
+                                    _repostEventTargets[event.id] = inner.id
+                                    _repostEventIdsByTarget.getOrPut(inner.id) { mutableSetOf() }.add(event.id)
+                                    val times = _repostEventTimes.getOrPut(inner.id) { mutableMapOf() }
+                                    times[event.id] = event.created_at
                                     _repostAuthors[inner.id] = event.pubkey
-                                    _repostSortTime[inner.id] = event.created_at
+                                    _repostSortTime[inner.id] = times.values.maxOrNull() ?: event.created_at
                                     val current = _rootNotes.value.toMutableList()
                                     current.removeAll { it.id == inner.id }
                                     current.add(inner)
@@ -538,28 +621,143 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         relayPoolRef?.let { closeAllSubs(it) }
     }
 
+    /**
+     * Merge locally persisted profile events into the visible timeline before the relay fetch completes.
+     * EventRepository applies the same mute/deletion/trust visibility rules used by other auxiliary views.
+     */
+    private fun seedProfileFromCache(events: List<NostrEvent>, eventRepo: EventRepository) {
+        val roots = _rootNotes.value.toMutableList()
+        val replies = _replies.value.toMutableList()
+        val gallery = _galleryPosts.value.toMutableList()
+
+        for (event in events.sortedBy { it.created_at }) {
+            if (event.pubkey != targetPubkey || !eventRepo.isEventVisibleToUser(event)) continue
+            eventRepo.cacheEvent(event)
+            when (event.kind) {
+                1, Nip22.KIND_COMMENT -> {
+                    if (event.kind == Nip22.KIND_COMMENT || Nip10.getReplyTarget(event) != null) {
+                        if (event.created_at < oldestReplyTimestamp) oldestReplyTimestamp = event.created_at
+                        if (replies.none { it.id == event.id }) replies.add(event)
+                    } else {
+                        if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
+                        if (roots.none { it.id == event.id }) roots.add(event)
+                    }
+                }
+                30023, 1068, 6969 -> {
+                    if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
+                    addRootNoteToList(roots, event)
+                }
+                20, 21, 22 -> {
+                    if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
+                    if (gallery.none { it.id == event.id }) gallery.add(event)
+                    if (roots.none { it.id == event.id }) roots.add(event)
+                }
+                6 -> {
+                    if (event.id in _deletedRepostEventIds || event.content.isBlank()) continue
+                    if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
+                    try {
+                        val inner = NostrEvent.fromJson(event.content)
+                        if (!eventRepo.isEventVisibleToUser(inner)) continue
+                        eventRepo.cacheEvent(inner)
+                        _repostEventTargets[event.id] = inner.id
+                        _repostEventIdsByTarget.getOrPut(inner.id) { mutableSetOf() }.add(event.id)
+                        val times = _repostEventTimes.getOrPut(inner.id) { mutableMapOf() }
+                        times[event.id] = event.created_at
+                        _repostAuthors[inner.id] = event.pubkey
+                        _repostSortTime[inner.id] = times.values.maxOrNull() ?: event.created_at
+                        roots.removeAll { it.id == inner.id }
+                        roots.add(inner)
+                    } catch (_: Exception) {
+                        // Ignore malformed cached repost wrappers; the relay fetch can still supply valid content.
+                    }
+                }
+            }
+        }
+
+        _rootNotes.value = roots.distinctBy { it.id }
+            .sortedByDescending { _repostSortTime[it.id] ?: it.created_at }
+        _replies.value = replies.distinctBy { it.id }.sortedByDescending { it.created_at }
+        _galleryPosts.value = gallery.distinctBy { it.id }.sortedByDescending { it.created_at }
+    }
+
+    /**
+     * Insert a root profile post while keeping only the current revision of each
+     * NIP-23 author + d-tag coordinate. Prior versions remain in EventRepository's
+     * cache/history, but are not rendered as separate profile timeline cards.
+     */
+    private fun addRootNoteToList(roots: MutableList<NostrEvent>, event: NostrEvent) {
+        if (event.kind == Nip23.KIND_LONG_FORM) {
+            val dTag = Nip23.dTag(event)
+            if (dTag.isNotBlank()) {
+                val latest = Nip23.latestRevision(
+                    roots.filter { it.kind == Nip23.KIND_LONG_FORM } + event,
+                    event.pubkey,
+                    dTag
+                ) ?: event
+                roots.removeAll {
+                    it.kind == Nip23.KIND_LONG_FORM &&
+                        it.pubkey == event.pubkey &&
+                        Nip23.dTag(it) == dTag
+                }
+                roots.add(latest)
+            } else if (roots.none { it.id == event.id }) {
+                roots.add(event)
+            }
+        } else if (roots.none { it.id == event.id }) {
+            roots.add(event)
+        }
+        roots.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
+    }
+
+    /**
+     * Start the EOSE collector before sending a pagination REQ, so a fast relay cannot
+     * finish before the waiter is listening. Wait for a useful quorum, not the first relay.
+     */
+    private fun startProfileEoseWait(pool: RelayPool, subId: String) = viewModelScope.async(start = CoroutineStart.UNDISPATCHED) {
+        val connected = pool.connectedCount.value
+        val expected = if (connected <= 1) 1 else
+            maxOf(2, (connected * 0.25).toInt()).coerceAtMost(6).coerceAtMost(connected)
+        val timeoutMs = 12_000L
+        val manager = subManagerRef
+        if (manager != null) {
+            manager.awaitEoseCount(subId, expected, timeoutMs = timeoutMs)
+        } else {
+            var received = 0
+            withTimeoutOrNull(timeoutMs) {
+                pool.eoseSignals.filter { it == subId }.take(expected).collect { received++ }
+            }
+            received
+        }
+    }
+
+    /** Send one pagination query to the author write relays plus distinct scored fallback relays. */
+    private fun sendProfilePaginationQuery(pool: RelayPool, subId: String, filter: Filter) {
+        val message = ClientMessage.req(subId, filter)
+        val targeted = linkedSetOf<String>()
+        val router = outboxRouterRef
+        if (router != null) {
+            targeted.addAll(router.subscribeToUserWriteRelays(subId, targetPubkey, filter))
+        } else {
+            pool.sendToAll(message)
+            targeted.addAll(pool.getRelayUrls())
+        }
+        for (url in topRelayUrls.distinct()) {
+            if (url !in targeted && pool.sendToRelayOrEphemeral(url, message)) targeted.add(url)
+        }
+    }
     fun loadMoreNotes() {
         if (isLoadingMoreNotes) return
         isLoadingMoreNotes = true
         if (oldestNoteTimestamp == Long.MAX_VALUE) { isLoadingMoreNotes = false; return }
 
         val pool = relayPoolRef ?: run { isLoadingMoreNotes = false; return }
-        val filter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(targetPubkey), until = oldestNoteTimestamp - 1, limit = 50)
-
-        val router = outboxRouterRef
-        if (router != null) {
-            router.subscribeToUserWriteRelays("userposts-more", targetPubkey, filter)
-        } else {
-            pool.sendToAll(ClientMessage.req("userposts-more", filter))
-        }
-        for (url in topRelayUrls) {
-            pool.sendToRelayOrEphemeral(url, ClientMessage.req("userposts-more", filter))
-        }
+        val filter = Filter(kinds = listOf(1, 5, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(targetPubkey), until = oldestNoteTimestamp - 1, limit = 50)
+        val eoseWaiter = startProfileEoseWait(pool, "userposts-more")
+        sendProfilePaginationQuery(pool, "userposts-more", filter)
 
         viewModelScope.launch {
-            withTimeoutOrNull(10_000) {
-                pool.eoseSignals.first { it == "userposts-more" }
-            }
+            val receivedEose = eoseWaiter.await()
+            Log.d("UserProfileVM", "loadMoreNotes: received $receivedEose EOSE signals")
             pool.closeOnAllRelays("userposts-more")
             isLoadingMoreNotes = false
         }
@@ -572,21 +770,12 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
         val pool = relayPoolRef ?: run { isLoadingMoreReplies = false; return }
         val filter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT), authors = listOf(targetPubkey), until = oldestReplyTimestamp - 1, limit = 50)
-
-        val router = outboxRouterRef
-        if (router != null) {
-            router.subscribeToUserWriteRelays("userreplies-more", targetPubkey, filter)
-        } else {
-            pool.sendToAll(ClientMessage.req("userreplies-more", filter))
-        }
-        for (url in topRelayUrls) {
-            pool.sendToRelayOrEphemeral(url, ClientMessage.req("userreplies-more", filter))
-        }
+        val eoseWaiter = startProfileEoseWait(pool, "userreplies-more")
+        sendProfilePaginationQuery(pool, "userreplies-more", filter)
 
         viewModelScope.launch {
-            withTimeoutOrNull(10_000) {
-                pool.eoseSignals.first { it == "userreplies-more" }
-            }
+            val receivedEose = eoseWaiter.await()
+            Log.d("UserProfileVM", "loadMoreReplies: received $receivedEose EOSE signals")
             pool.closeOnAllRelays("userreplies-more")
             isLoadingMoreReplies = false
         }

@@ -1,6 +1,8 @@
 package com.darkwisp.app.nostr
 
 object Nip09 {
+    const val KIND_DELETION = 5
+
     fun buildDeletionTags(eventId: String, kind: Int): List<List<String>> {
         return listOf(
             listOf("e", eventId),
@@ -18,11 +20,18 @@ object Nip09 {
         event.tags.filter { it.size >= 2 && it[0] == "a" }.map { it[1] }
 
     /** Build deletion tags for an addressable event (kinds 30000-39999) using an "a" tag. */
-    fun buildAddressableDeletionTags(kind: Int, pubkey: String, dTag: String): List<List<String>> {
-        return listOf(
+    fun buildAddressableDeletionTags(
+        kind: Int,
+        pubkey: String,
+        dTag: String,
+        eventId: String? = null
+    ): List<List<String>> {
+        val tags = mutableListOf(
             listOf("a", addressCoord(kind, pubkey, dTag)),
             listOf("k", kind.toString())
         )
+        eventId?.trim()?.takeIf(String::isNotEmpty)?.let { tags.add(0, listOf("e", it)) }
+        return tags
     }
 
     fun addressCoord(kind: Int, pubkey: String, dTag: String): String = "$kind:$pubkey:$dTag"

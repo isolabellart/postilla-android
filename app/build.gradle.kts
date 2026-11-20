@@ -26,9 +26,9 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.3.0"
-        resValue("string", "app_name", "Dark Wisp")
+        versionCode = 42
+        versionName = "1.0.42"
+        resValue("string", "app_name", "Postilla")
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -52,7 +52,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = debugApplicationIdSuffix
-            resValue("string", "app_name", "Dark Wisp Debug")
+            resValue("string", "app_name", "Postilla Debug")
         }
 
         release {
@@ -65,16 +65,19 @@ android {
         }
 
         create("staging") {
-            // Release-performance build for on-device testing. debuggable=true (the
-            // debug type) makes ART ignore the baseline profile and run JIT-only with
-            // deoptimization support, which cripples the per-event hot path (JSON parse,
-            // hex decode, SHA-256, JNI Schnorr verify per relay event). This variant is
-            // non-debuggable + R8 like release, but debug-signed so anyone can install
-            // it without the release keystore. Installs alongside debug/release.
+            // Keep staging non-debuggable, R8-minified and resource-shrunk.
+            // CI supplies the permanent signing key so staging upgrades remain stable
+            // and the tested APK uses the same certificate as the eventual release.
+            // Local builds without release secrets fall back to the debug key.
             initWith(getByName("release"))
             applicationIdSuffix = ".staging"
-            resValue("string", "app_name", "Dark Wisp Staging")
-            signingConfig = signingConfigs.getByName("debug")
+            resValue("string", "app_name", "Postilla Preview")
+            val releaseConfig = signingConfigs.getByName("release")
+            signingConfig = if (releaseConfig.storeFile != null) {
+                releaseConfig
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -141,7 +144,14 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.objectbox.android)
     implementation(libs.objectbox.kotlin)
-    implementation(libs.breez.sdk.spark)
+    // Spark uses the mnemonic flow; Postilla does not use Breez passkey authentication.
+    // Exclude the optional Credential Manager bridge that pulls Google Play Services FIDO.
+    implementation(libs.breez.sdk.spark) {
+        exclude(
+            group = "androidx.credentials",
+            module = "credentials-play-services-auth"
+        )
+    }
     implementation(libs.kmp.tor.runtime)
     implementation(libs.kmp.tor.runtime.service.ui)
     implementation(libs.kmp.tor.resource.exec)

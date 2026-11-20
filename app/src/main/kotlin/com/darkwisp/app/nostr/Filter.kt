@@ -25,7 +25,9 @@ data class Filter(
     val since: Long? = null,
     val until: Long? = null,
     val limit: Int? = null,
-    val search: String? = null
+    val search: String? = null,
+    /** Uppercase A tags — NIP-22 addressable-root comments (#A). */
+    val bigATags: List<String>? = null
 ) {
     fun toJsonObject(): JsonObject = buildJsonObject {
         kinds?.let { put("kinds", buildJsonArray { it.forEach { k -> add(JsonPrimitive(k)) } }) }
@@ -40,6 +42,7 @@ data class Filter(
         aTags?.let { put("#a", buildJsonArray { it.forEach { a -> add(JsonPrimitive(a)) } }) }
         bigPTags?.let { put("#P", buildJsonArray { it.forEach { p -> add(JsonPrimitive(p)) } }) }
         bigETags?.let { put("#E", buildJsonArray { it.forEach { e -> add(JsonPrimitive(e)) } }) }
+        bigATags?.let { put("#A", buildJsonArray { it.forEach { a -> add(JsonPrimitive(a)) } }) }
         since?.let { put("since", JsonPrimitive(it)) }
         until?.let { put("until", JsonPrimitive(it)) }
         limit?.let { put("limit", JsonPrimitive(it)) }

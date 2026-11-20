@@ -144,6 +144,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
@@ -981,39 +982,48 @@ private fun WalletConnectionContent(
 
     Spacer(Modifier.height(24.dp))
 
-    // Paste / Scan card — top half displays the pasted string (or
-    // stays empty while the user hasn't pasted anything); bottom row
-    // splits a Paste button and a Scan QR button with a vertical
-    // divider. Matches iOS 1:1 — no separate text field, no trailing
-    // icon, no Recommended-wallets stack.
+    // Editable NWC URI field: a saved connection can be replaced without
+    // disconnecting/reinstalling the wallet or relying on the clipboard alone.
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column {
-            Box(
+            OutlinedTextField(
+                value = connectionString,
+                onValueChange = { value ->
+                    if (!NsecPasteGuard.blockIfNsec(connectionString, value)) {
+                        onConnectionStringChange(value)
+                    }
+                },
+                enabled = !isConnecting,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
-                    .padding(14.dp)
-            ) {
-                if (connectionString.isBlank()) {
+                    .padding(12.dp)
+                    .heightIn(min = 124.dp, max = 180.dp),
+                textStyle = MaterialTheme.typography.bodySmall,
+                placeholder = {
                     Text(
                         "nostr+walletconnect://…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                     )
-                } else {
-                    Text(
-                        connectionString,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+                },
+                trailingIcon = {
+                    if (connectionString.isNotBlank()) {
+                        IconButton(
+                            onClick = { onConnectionStringChange("") },
+                            enabled = !isConnecting,
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.btn_cancel))
+                        }
+                    }
+                },
+                minLines = 3,
+                maxLines = 5,
+                singleLine = false,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
             Row(
                 modifier = Modifier
@@ -1291,6 +1301,9 @@ private fun WalletHomeContent(
     val fiatCurrency by fiatPrefs.currency.collectAsState()
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
     val accent = WispThemeColors.zapColor
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val balanceTextColor = if (isDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface
+    val balanceMutedColor = if (isDarkTheme) Color(0xFFBDBDBD) else MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(
         modifier = modifier
@@ -1472,24 +1485,27 @@ private fun WalletHomeContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .heightIn(min = 96.dp)
+                .fillMaxWidth()
+                .heightIn(min = 112.dp)
+                .background(if (isDarkTheme) Color(0xFF242424) else Color.Transparent, RoundedCornerShape(24.dp))
                 .clickable {
                     balanceDisplay = balanceDisplay.next()
                     WalletBalanceDisplayMode.write(prefs, pubkey, balanceDisplay)
                 }
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             when (balanceDisplay) {
                 WalletBalanceDisplayMode.HIDDEN -> {
                     Text(
                         "* * * * *",
                         style = MaterialTheme.typography.displayLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = balanceMutedColor
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         stringResource(R.string.wallet_tap_to_reveal),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = balanceMutedColor
                     )
                 }
                 WalletBalanceDisplayMode.FIAT -> {
@@ -1499,7 +1515,7 @@ private fun WalletHomeContent(
                             fiat,
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = balanceTextColor
                         )
                     } else {
                         // Exchange-rate cache hasn't loaded yet — fall
@@ -1509,13 +1525,13 @@ private fun WalletHomeContent(
                             "%,d".format(balanceSats),
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = balanceTextColor
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
                             stringResource(R.string.wallet_sats),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = balanceMutedColor
                         )
                     }
                 }
@@ -1529,7 +1545,7 @@ private fun WalletHomeContent(
                             AmountFormatter.formatShort(balanceSats, context),
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = balanceTextColor
                         )
                     } else {
                         // BalanceUnit selects between three sat denominations
@@ -1542,13 +1558,13 @@ private fun WalletHomeContent(
                                     "%,d".format(balanceSats),
                                     style = MaterialTheme.typography.displayLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = balanceTextColor
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     stringResource(R.string.wallet_sats),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = balanceMutedColor
                                 )
                             }
                             BalanceUnit.BITCOIN -> {
@@ -1560,14 +1576,14 @@ private fun WalletHomeContent(
                                         "₿",
                                         style = MaterialTheme.typography.displayLarge,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = balanceMutedColor
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         "%,d".format(balanceSats),
                                         style = MaterialTheme.typography.displayLarge,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = balanceTextColor
                                     )
                                 }
                             }
@@ -1584,7 +1600,7 @@ private fun WalletHomeContent(
                                         "%,d".format(balanceSats),
                                         style = MaterialTheme.typography.displayLarge,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = balanceTextColor
                                     )
                                 }
                             }
@@ -1607,12 +1623,13 @@ private fun WalletHomeContent(
                 modifier = Modifier.clickable {
                     clipboard.setPrimaryClip(ClipData.newPlainText("address", lightningAddress))
                 },
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(50)
+                color = if (isDarkTheme) Color(0xFF3A2A18) else Color.Transparent,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, if (isDarkTheme) accent.copy(alpha = 0.7f) else Color.Transparent)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_bolt),
@@ -1624,7 +1641,9 @@ private fun WalletHomeContent(
                     Text(
                         lightningAddress,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isDarkTheme) Color.White else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -1662,18 +1681,22 @@ private fun WalletHomeContent(
         Spacer(Modifier.height(20.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             WalletActionButton(
                 icon = Icons.Default.ArrowUpward,
                 label = stringResource(R.string.wallet_send),
                 tint = accent,
+                highlighted = true,
+                modifier = Modifier.weight(1f),
                 onClick = onSend
             )
             WalletActionButton(
                 icon = Icons.Default.ArrowDownward,
                 label = stringResource(R.string.wallet_receive),
                 tint = accent,
+                highlighted = false,
+                modifier = Modifier.weight(1f),
                 onClick = onReceive
             )
         }
@@ -1759,29 +1782,39 @@ private fun WalletActionButton(
     icon: ImageVector,
     label: String,
     tint: Color,
+    highlighted: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .background(tint, CircleShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+    Surface(
+        modifier = modifier
+            .height(56.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = if (highlighted) tint else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (highlighted) Color.White else MaterialTheme.colorScheme.onSurface,
+        border = if (highlighted) null else BorderStroke(1.dp, tint.copy(alpha = 0.8f)),
+        shadowElevation = if (highlighted) 3.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 icon,
-                contentDescription = label,
-                modifier = Modifier.size(28.dp),
-                tint = Color.White
+                contentDescription = null,
+                modifier = Modifier.size(21.dp),
+                tint = if (highlighted) Color.White else tint
+            )
+            Spacer(Modifier.width(9.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (highlighted) Color.White else MaterialTheme.colorScheme.onSurface
             )
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
@@ -3137,8 +3170,13 @@ private fun TransactionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+                RoundedCornerShape(14.dp)
+            )
             .then(if (expandable) Modifier.clickable { expanded = !expanded } else Modifier)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Avatar or direction icon
@@ -4189,7 +4227,7 @@ private fun WalletSettingsContent(
         Spacer(Modifier.height(16.dp))
 
         Text(
-            "Settings",
+            stringResource(R.string.wallet_settings_title),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -4199,7 +4237,7 @@ private fun WalletSettingsContent(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                "Lightning Address",
+                stringResource(R.string.wallet_lightning_address_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -4237,7 +4275,7 @@ private fun WalletSettingsContent(
                         }) {
                             Icon(
                                 Icons.Default.ContentCopy,
-                                contentDescription = "Copy address",
+                                contentDescription = stringResource(R.string.wallet_copy_address),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -4256,13 +4294,13 @@ private fun WalletSettingsContent(
                     ) {
                         Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("QR Code")
+                        Text(stringResource(R.string.wallet_qr_code))
                     }
                     OutlinedButton(
                         onClick = onSetupAddress,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Change")
+                        Text(stringResource(R.string.wallet_change))
                     }
                 }
 
@@ -4272,7 +4310,7 @@ private fun WalletSettingsContent(
                     onClick = onDeleteAddress,
                     colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFD32F2F))
                 ) {
-                    Text("Remove Lightning Address")
+                    Text(stringResource(R.string.wallet_remove_lightning_address))
                 }
             } else {
                 OutlinedButton(
@@ -4281,7 +4319,7 @@ private fun WalletSettingsContent(
                 ) {
                     Icon(painter = painterResource(R.drawable.ic_bolt), contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Set Up Lightning Address")
+                    Text(stringResource(R.string.wallet_setup_lightning_address))
                 }
             }
         }
@@ -4289,7 +4327,7 @@ private fun WalletSettingsContent(
         // ── Wallet Info expandable (Spark + NWC) ─────────────────
         Spacer(Modifier.height(24.dp))
         Text(
-            if (walletMode == WalletMode.NWC) "Wallet Connection" else "Wallet Info",
+            if (walletMode == WalletMode.NWC) stringResource(R.string.wallet_connection) else stringResource(R.string.wallet_info),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -4311,7 +4349,7 @@ private fun WalletSettingsContent(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                "Display",
+                stringResource(R.string.wallet_display),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -4319,7 +4357,7 @@ private fun WalletSettingsContent(
             Spacer(Modifier.height(12.dp))
 
             Text(
-                "Balance Unit",
+                stringResource(R.string.wallet_balance_unit),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -4383,7 +4421,7 @@ private fun WalletSettingsContent(
         Spacer(Modifier.height(24.dp))
 
         Text(
-            "Security",
+            stringResource(R.string.wallet_security),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -4395,7 +4433,7 @@ private fun WalletSettingsContent(
                 onClick = onBackupMnemonic,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Backup Recovery Phrase")
+                Text(stringResource(R.string.wallet_backup_recovery_phrase))
             }
 
             Spacer(Modifier.height(8.dp))
@@ -4406,7 +4444,7 @@ private fun WalletSettingsContent(
             ) {
                 Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Backup to Nostr Relays")
+                Text(stringResource(R.string.wallet_backup_to_nostr_relays))
             }
 
             Spacer(Modifier.height(8.dp))
@@ -4414,7 +4452,7 @@ private fun WalletSettingsContent(
             // Delete the saved Spark wallet backup from relays. Scoped to this
             // wallet's d-tag so it won't touch an NWC connection backup.
             DeleteRelayBackupControl(
-                label = "Delete Wallet Backup from Relays",
+                label = stringResource(R.string.wallet_delete_wallet_backup_relays),
                 deleteBackupStatus = deleteBackupStatus,
                 onDelete = onDeleteSparkRelayBackup,
                 onResetStatus = onResetDeleteBackupStatus
@@ -4431,7 +4469,7 @@ private fun WalletSettingsContent(
             )
         ) {
             Text(
-                "IMPORTANT: Wisp never holds user funds. You manage your own wallet and are responsible for securing it properly.",
+                stringResource(R.string.wallet_custody_disclaimer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp)
@@ -4503,12 +4541,12 @@ private fun WalletSettingsContent(
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text(
-                                "Withdraw on-chain",
+                                stringResource(R.string.wallet_withdraw_onchain),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = Color(0xFFFF3B30)
                             )
                             Text(
-                                "Send everything to a Bitcoin address",
+                                stringResource(R.string.wallet_withdraw_onchain_description),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -4528,7 +4566,7 @@ private fun WalletSettingsContent(
             // nwc-wallet-backup d-tag so it won't touch a Spark mnemonic backup.
             Spacer(Modifier.height(16.dp))
             DeleteRelayBackupControl(
-                label = "Delete Connection Backup from Relays",
+                label = stringResource(R.string.wallet_delete_connection_backup_relays),
                 deleteBackupStatus = deleteBackupStatus,
                 onDelete = onDeleteNwcRelayBackup,
                 onResetStatus = onResetDeleteBackupStatus
@@ -4542,7 +4580,7 @@ private fun WalletSettingsContent(
                     contentColor = Color.White
                 )
             ) {
-                Text("Delete Wallet")
+                Text(stringResource(R.string.wallet_delete_wallet))
             }
         }
 
@@ -4556,7 +4594,7 @@ private fun WalletSettingsContent(
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_spark_badge),
-                    contentDescription = "Built on Spark",
+                    contentDescription = stringResource(R.string.wallet_built_on_spark),
                     modifier = Modifier.height(22.dp),
                     colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -4629,7 +4667,7 @@ private fun DeleteRelayBackupControl(
     LaunchedEffect(deleteBackupStatus) {
         when (deleteBackupStatus) {
             is DeleteBackupStatus.Success -> {
-                Toast.makeText(context, "Backup deleted from relays", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.wallet_backup_deleted_toast), Toast.LENGTH_SHORT).show()
                 onResetStatus()
             }
             is DeleteBackupStatus.Error -> {
@@ -4645,25 +4683,25 @@ private fun DeleteRelayBackupControl(
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            if (deleteBackupStatus is DeleteBackupStatus.InProgress) "Deleting…"
+            if (deleteBackupStatus is DeleteBackupStatus.InProgress) stringResource(R.string.wallet_deleting)
             else label
         )
     }
     if (showConfirm) {
         AlertDialog(
             onDismissRequest = { showConfirm = false },
-            title = { Text("Delete backup from relays") },
+            title = { Text(stringResource(R.string.wallet_delete_backup_title)) },
             text = {
-                Text("Remove the saved wallet backup from your relays? You can reconnect or restore from your recovery phrase anytime, but it won't be available from relays on another device.")
+                Text(stringResource(R.string.wallet_delete_backup_body))
             },
             confirmButton = {
                 TextButton(onClick = {
                     showConfirm = false
                     onDelete()
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.wallet_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showConfirm = false }) { Text(stringResource(R.string.wallet_cancel)) }
             }
         )
     }
@@ -4897,7 +4935,7 @@ private fun LightningAddressQRContent(
                 }) {
                     Icon(
                         Icons.Default.ContentCopy,
-                        contentDescription = "Copy address",
+                        contentDescription = stringResource(R.string.wallet_copy_address),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -5022,7 +5060,7 @@ private fun DeleteWalletConfirmContent(
             onClick = onCancel,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Cancel")
+            Text(stringResource(R.string.wallet_cancel))
         }
 
         Spacer(Modifier.height(32.dp))
@@ -5161,7 +5199,7 @@ private fun BackupToRelayContent(
                     onClick = onDone,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.wallet_cancel))
                 }
             }
         }
@@ -5222,7 +5260,7 @@ private fun RestoreFromRelayContent(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.wallet_cancel))
                 }
             }
             is RestoreFromRelayStatus.Searching -> {
@@ -5295,7 +5333,7 @@ private fun RestoreFromRelayContent(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.wallet_cancel))
                 }
             }
             is RestoreFromRelayStatus.MultipleFound -> {
@@ -5346,7 +5384,7 @@ private fun RestoreFromRelayContent(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.wallet_cancel))
                 }
             }
             is RestoreFromRelayStatus.NotFound -> {
@@ -5372,7 +5410,7 @@ private fun RestoreFromRelayContent(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.wallet_cancel))
                 }
             }
             is RestoreFromRelayStatus.Error -> {
@@ -5398,7 +5436,7 @@ private fun RestoreFromRelayContent(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.wallet_cancel))
                 }
             }
         }
@@ -5480,7 +5518,7 @@ private fun WalletInfoCard(
                 if (walletMode == WalletMode.SPARK) Spacer(Modifier.weight(1f))
                 Icon(
                     if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    contentDescription = if (expanded) stringResource(R.string.wallet_collapse) else stringResource(R.string.wallet_expand),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
@@ -5490,32 +5528,32 @@ private fun WalletInfoCard(
                 Column(modifier = Modifier.padding(top = 16.dp)) {
                     if (walletMode == WalletMode.SPARK) {
                         if (!sparkIdentityPubkey.isNullOrBlank()) {
-                            WalletInfoRow("Wallet ID", truncateMiddle(sparkIdentityPubkey),
+                            WalletInfoRow(stringResource(R.string.wallet_wallet_id), truncateMiddle(sparkIdentityPubkey),
                                 onCopy = { onCopy(sparkIdentityPubkey) })
                         }
-                        WalletInfoRow("Network", "Mainnet")
+                        WalletInfoRow(stringResource(R.string.wallet_network), stringResource(R.string.wallet_mainnet))
                         WalletInfoRow(
-                            "SDK version",
+                            stringResource(R.string.wallet_sdk_version),
                             BuildConfig.BREEZ_SDK_VERSION
                         )
                     } else {
                         nwcConnectionInfo?.let { info ->
-                            WalletInfoRow("Service pubkey", truncateMiddle(info.servicePubkeyHex),
+                            WalletInfoRow(stringResource(R.string.wallet_service_pubkey), truncateMiddle(info.servicePubkeyHex),
                                 onCopy = { onCopy(info.servicePubkeyHex) })
-                            WalletInfoRow("Client pubkey", truncateMiddle(info.clientPubkeyHex),
+                            WalletInfoRow(stringResource(R.string.wallet_client_pubkey), truncateMiddle(info.clientPubkeyHex),
                                 onCopy = { onCopy(info.clientPubkeyHex) })
-                            WalletInfoRow("Relay", info.relayUrl,
+                            WalletInfoRow(stringResource(R.string.wallet_relay), info.relayUrl,
                                 onCopy = { onCopy(info.relayUrl) })
-                            WalletInfoRow("Encryption", info.encryption)
+                            WalletInfoRow(stringResource(R.string.wallet_encryption), info.encryption)
                         }
                         if (!lightningAddress.isNullOrBlank()) {
-                            WalletInfoRow("Lightning address", lightningAddress,
+                            WalletInfoRow(stringResource(R.string.wallet_lightning_address_title), lightningAddress,
                                 onCopy = { onCopy(lightningAddress) })
                         }
                         if (nwcSupportedMethods.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "Supported methods",
+                                stringResource(R.string.wallet_supported_methods),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -5574,7 +5612,7 @@ private fun WalletInfoRow(
             ) {
                 Icon(
                     Icons.Default.ContentCopy,
-                    contentDescription = "Copy",
+                    contentDescription = stringResource(R.string.wallet_copy),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )

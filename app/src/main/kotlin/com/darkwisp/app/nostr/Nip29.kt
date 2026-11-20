@@ -230,5 +230,13 @@ object Nip29 {
     fun inviteLink(relayUrl: String, groupId: String, code: String): String =
         "${inviteLink(relayUrl, groupId)}?code=$code"
 
-    val DEFAULT_GROUP_RELAYS = listOf("wss://chat.wisp.talk")
+    const val DEFAULT_COMMUNITY_RELAY = "wss://groups.hzrd149.com"
+    const val DEFAULT_COMMUNITY_GROUP_ID = "2f28ff"
+    const val DEFAULT_COMMUNITY_INVITE = "wss://groups.hzrd149.com'2f28ff"
+
+    /** A private or write-restricted group requires an explicit kind-9021 admission request. */
+    fun requiresJoinRequest(metadata: GroupMetadata): Boolean =
+        metadata.isPrivate || metadata.isRestricted
+
+    val DEFAULT_GROUP_RELAYS = listOf(DEFAULT_COMMUNITY_RELAY)
 }

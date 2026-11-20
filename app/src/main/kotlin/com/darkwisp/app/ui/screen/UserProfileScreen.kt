@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
+import androidx.compose.material.icons.outlined.Storefront
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.ui.component.Nip05Badge
 import com.darkwisp.app.ui.component.PaymentTargetSheet
@@ -82,6 +83,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -198,13 +200,16 @@ fun UserProfileScreen(
     fetchGroupPreview: (suspend (String, String) -> com.darkwisp.app.repo.GroupPreview?)? = null,
     onAddEmojiSet: ((String, String) -> Unit)? = null,
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
-    isEmojiSetAdded: ((String, String) -> Boolean)? = null
+    isEmojiSetAdded: ((String, String) -> Boolean)? = null,
+    onOpenStorefront: (() -> Unit)? = null,
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 ) {
     val resolvedEmojisState = rememberUpdatedState(resolvedEmojis)
     val unicodeEmojisState = rememberUpdatedState(unicodeEmojis)
-    val invoiceNoteActions = remember(onPayInvoice, onGroupRoom, onLiveStreamClick, fetchGroupPreview, onAddEmojiSet, onOpenEmojiLibrary) {
-        if (onPayInvoice != null || onGroupRoom != null || fetchGroupPreview != null || onAddEmojiSet != null || onLiveStreamClick != null || onOpenEmojiLibrary != null) {
+    val invoiceNoteActions = remember(onPayInvoice, onGroupRoom, onLiveStreamClick, fetchGroupPreview, onAddEmojiSet, onOpenEmojiLibrary, onMarketplaceListingClick) {
+        if (onPayInvoice != null || onGroupRoom != null || fetchGroupPreview != null || onAddEmojiSet != null || onLiveStreamClick != null || onOpenEmojiLibrary != null || onMarketplaceListingClick != null) {
             com.darkwisp.app.ui.component.NoteActions(
+            onMarketplaceListingClick = onMarketplaceListingClick,
             onPayInvoice = onPayInvoice,
             onGroupRoom = onGroupRoom,
             onLiveStreamClick = onLiveStreamClick,
@@ -578,6 +583,43 @@ fun UserProfileScreen(
         }
 
         val listState = rememberLazyListState()
+        var pendingRepostScrollRestore by remember {
+            mutableStateOf<Triple<String, Int, Int>?>(null)
+        }
+        val handleProfileRepost: (NostrEvent) -> Unit = { repostedEvent ->
+            // Reposting an old note moves its row to the top of this profile.
+            // Remember the numeric viewport position so the row being moved does
+            // not drag the user's scroll position along with it.
+            if (isOwnProfile && selectedTab == 0 && notesSortMode == ProfileSortMode.RECENCY) {
+                pendingRepostScrollRestore = Triple(
+                    repostedEvent.id,
+                    listState.firstVisibleItemIndex,
+                    listState.firstVisibleItemScrollOffset
+                )
+            }
+            onRepost(repostedEvent)
+        }
+        LaunchedEffect(rootNotes, pendingRepostScrollRestore, selectedTab, notesSortMode) {
+            val pending = pendingRepostScrollRestore ?: return@LaunchedEffect
+            if (isOwnProfile &&
+                selectedTab == 0 &&
+                notesSortMode == ProfileSortMode.RECENCY &&
+                rootNotes.firstOrNull()?.id == pending.first
+            ) {
+                withFrameNanos { }
+                val lastIndex = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                listState.scrollToItem(
+                    pending.second.coerceAtMost(lastIndex),
+                    pending.third
+                )
+                pendingRepostScrollRestore = null
+            }
+        }
+        LaunchedEffect(pendingRepostScrollRestore) {
+            val pending = pendingRepostScrollRestore ?: return@LaunchedEffect
+            delay(5_000)
+            if (pendingRepostScrollRestore == pending) pendingRepostScrollRestore = null
+        }
 
         // Auto-load more media when scrolling near the bottom of the grid
         if (selectedTab == 3 && mediaItems.isNotEmpty()) {
@@ -626,7 +668,8 @@ fun UserProfileScreen(
                     onMuteUser = onBlockUser,
                     onUnmuteUser = onUnblockUser,
                     paymentTargets = paymentTargets,
-                    onPaymentTargetClick = { paymentTargetSheetTarget = it }
+                    onPaymentTargetClick = { paymentTargetSheetTarget = it },
+                    onOpenStorefront = onOpenStorefront
                 )
             }
 
@@ -846,7 +889,7 @@ fun UserProfileScreen(
                                 onNoteClick = { onNoteClick(event) },
                                 onQuotedNoteClick = onQuotedNoteClick,
                                 onReact = { emoji -> onReact(event, emoji) },
-                                onRepost = { onRepost(event) },
+                                onRepost = { handleProfileRepost(event) },
                                 onQuote = { onQuote(event) },
                                 userReactionEmojis = userEmojis,
                                 hasUserReposted = hasUserReposted,
@@ -1213,7 +1256,8 @@ private fun ProfileHeader(
     onMuteUser: (() -> Unit)? = null,
     onUnmuteUser: (() -> Unit)? = null,
     paymentTargets: List<NipA3.PaymentTarget> = emptyList(),
-    onPaymentTargetClick: (NipA3.PaymentTarget) -> Unit = {}
+    onPaymentTargetClick: (NipA3.PaymentTarget) -> Unit = {},
+    onOpenStorefront: (() -> Unit)? = null
 ) {
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
 
@@ -1224,41 +1268,57 @@ private fun ProfileHeader(
         )
     }
 
-    // Banner
+    // Rounded, inset banner and framed avatar mirror the seller storefront header.
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(150.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .height(184.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        profile?.banner?.let { bannerUrl ->
-            AsyncImage(
-                model = bannerUrl,
-                contentDescription = "Banner",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { fullScreenImageUrl = bannerUrl }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(126.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            profile?.banner?.let { bannerUrl ->
+                AsyncImage(
+                    model = bannerUrl,
+                    contentDescription = "Banner",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { fullScreenImageUrl = bannerUrl }
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 4.dp
+        ) {
+            ProfilePicture(
+                url = profile?.picture,
+                modifier = Modifier.padding(4.dp),
+                size = 68,
+                showBlockedBadge = isBlocked,
+                onClick = profile?.picture?.let { url -> { fullScreenImageUrl = url } }
             )
         }
     }
 
-    // Profile info overlapping banner
+    // Profile information and existing profile actions.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
         Row(
-            verticalAlignment = Alignment.Bottom,
-            modifier = Modifier.offset(y = (-16).dp)
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            ProfilePicture(
-                url = profile?.picture,
-                size = 72,
-                showBlockedBadge = isBlocked,
-                onClick = profile?.picture?.let { url -> { fullScreenImageUrl = url } }
-            )
             Spacer(Modifier.weight(1f))
             if (isOwnProfile) {
                 OutlinedButton(onClick = onEditProfile) {
@@ -1295,14 +1355,14 @@ private fun ProfileHeader(
                                 Icon(
                                     painter = painterResource(R.drawable.ic_bolt),
                                     contentDescription = stringResource(R.string.profile_pay_zap),
-                                    tint = Color(0xFFFFC107),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(11.dp)
                                 )
                             } else {
                                 Icon(
                                     Icons.Outlined.CurrencyBitcoin,
                                     contentDescription = stringResource(R.string.profile_pay_zap),
-                                    tint = Color(0xFFFFC107),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(10.dp)
                                 )
                             }
@@ -1363,6 +1423,15 @@ private fun ProfileHeader(
                         )
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
+            }
+        }
+
+        if (onOpenStorefront != null) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onOpenStorefront) {
+                Icon(Icons.Outlined.Storefront, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.marketplace_storefront))
             }
         }
 
@@ -1461,14 +1530,14 @@ private fun ProfileHeader(
                         Icon(
                             painter = painterResource(R.drawable.ic_bolt),
                             contentDescription = null,
-                            tint = Color(0xFFFFC107),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     } else {
                         Icon(
                             Icons.Outlined.CurrencyBitcoin,
                             contentDescription = null,
-                            tint = Color(0xFFFFC107),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1500,14 +1569,14 @@ private fun ProfileHeader(
                         Icon(
                             painter = painterResource(R.drawable.ic_bolt),
                             contentDescription = null,
-                            tint = Color(0xFFFFC107),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     } else {
                         Icon(
                             Icons.Outlined.CurrencyBitcoin,
                             contentDescription = null,
-                            tint = Color(0xFFFFC107),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1546,7 +1615,7 @@ private fun ProfileHeader(
                     com.darkwisp.app.ui.component.PaymentTargetGlyph(
                         type = target.type,
                         size = 16.dp,
-                        tint = Color(0xFFFFC107)
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -1583,7 +1652,7 @@ private fun ProfileHeader(
                         com.darkwisp.app.ui.component.PaymentTargetGlyph(
                             type = target.type,
                             size = 16.dp,
-                            tint = Color(0xFFFFC107)
+                            tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(

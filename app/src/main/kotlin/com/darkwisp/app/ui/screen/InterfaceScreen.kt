@@ -2,16 +2,8 @@ package com.darkwisp.app.ui.screen
 
 import android.app.Activity
 import android.app.Application
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,12 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,7 +41,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,12 +48,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -74,9 +60,9 @@ import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.ExchangeRateRepository
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.InterfacePreferences
+import com.darkwisp.app.ui.component.TranslationSettingsSection
+import com.darkwisp.app.ui.component.PostillaBrandMark
 import com.darkwisp.app.repo.LocaleRepository
-import com.darkwisp.app.ui.theme.ThemePreset
-import com.darkwisp.app.ui.theme.Themes
 import com.darkwisp.app.ui.theme.wispSwitchColors
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
@@ -96,7 +82,9 @@ fun InterfaceScreen(
     application: Application,
     interfacePrefs: InterfacePreferences,
     onBack: () -> Unit,
-    onChanged: () -> Unit
+    onChanged: () -> Unit,
+    isDarkTheme: Boolean,
+    onToggleTheme: () -> Unit
 ) {
     var isLargeText by remember { mutableStateOf(interfacePrefs.isLargeText()) }
     var newNotesHidden by remember { mutableStateOf(interfacePrefs.isNewNotesButtonHidden()) }
@@ -106,24 +94,9 @@ fun InterfaceScreen(
     var mediaLayout by remember { mutableStateOf(interfacePrefs.getMediaLayoutStyle()) }
     var liveStreamsHidden by remember { mutableStateOf(interfacePrefs.isLiveStreamsHidden()) }
     var notifFeedStyle by remember { mutableStateOf(interfacePrefs.getNotificationFeedStyle()) }
-    var selectedTheme by remember { mutableStateOf(interfacePrefs.getTheme()) }
-    var isCustomTheme by remember { mutableStateOf(selectedTheme == "custom") }
     var selectedLanguage by remember { mutableStateOf(interfacePrefs.getLanguage()) }
     var languagesExpanded by remember { mutableStateOf(false) }
-
-    val savedColor = remember { Color(interfacePrefs.getAccentColor()) }
-    val initialHsv = remember {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(savedColor.toArgb(), hsv)
-        hsv
-    }
-    var hue by remember { mutableFloatStateOf(initialHsv[0]) }
-    var saturation by remember { mutableFloatStateOf(initialHsv[1]) }
-    var brightness by remember { mutableFloatStateOf(initialHsv[2]) }
-
-    val currentColor = remember(hue, saturation, brightness) {
-        Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
-    }
+    var drawerOnRight by remember { mutableStateOf(interfacePrefs.isDrawerOnRight()) }
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -149,6 +122,59 @@ fun InterfaceScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
+            // Postilla identity and direct light/dark theme controls.
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PostillaBrandMark(size = 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.postilla_appearance_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.postilla_appearance_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
+                        onClick = { if (!isDarkTheme) onToggleTheme() }
+                    ) {
+                        Icon(
+                            Icons.Outlined.LightMode,
+                            contentDescription = "Light theme",
+                            tint = if (!isDarkTheme) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
+                        onClick = { if (isDarkTheme) onToggleTheme() }
+                    ) {
+                        Icon(
+                            Icons.Outlined.DarkMode,
+                            contentDescription = "Dark theme",
+                            tint = if (isDarkTheme) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
             // Language section
             Row(
                 modifier = Modifier
@@ -219,6 +245,50 @@ fun InterfaceScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            TranslationSettingsSection(interfacePrefs)
+
+            Spacer(Modifier.height(24.dp))
+
+            // Drawer position
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.settings_drawer_position),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.settings_drawer_position_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                val drawerPositionOptions = listOf(
+                    false to R.string.settings_drawer_left,
+                    true to R.string.settings_drawer_right
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    drawerPositionOptions.forEachIndexed { index, (right, labelRes) ->
+                        SegmentedButton(
+                            selected = drawerOnRight == right,
+                            onClick = {
+                                drawerOnRight = right
+                                interfacePrefs.setDrawerOnRight(right)
+                                onChanged()
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = drawerPositionOptions.size
+                            )
+                        ) {
+                            Text(stringResource(labelRes))
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             // Text Size section
             Text(
                 text = stringResource(R.string.settings_text_size),
@@ -250,138 +320,6 @@ fun InterfaceScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-
-            // Popular Themes section
-            var themesExpanded by remember { mutableStateOf(false) }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { themesExpanded = !themesExpanded }
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = stringResource(R.string.settings_popular_themes),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_choose_color_scheme),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Text(
-                    text = if (themesExpanded) "▲" else "▼",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (themesExpanded) {
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Themes.themes.forEach { theme ->
-                        ThemeCard(
-                            theme = theme,
-                            isSelected = selectedTheme == theme.name,
-                            isDark = true,
-                            onClick = {
-                                selectedTheme = theme.name
-                                isCustomTheme = theme.name == "custom"
-                                interfacePrefs.setTheme(theme.name)
-                                onChanged()
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            if (isCustomTheme) {
-                // Accent Color section — collapsed by default, tap to expand
-                var colorPickerExpanded by remember { mutableStateOf(false) }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { colorPickerExpanded = !colorPickerExpanded }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(currentColor)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_accent_color),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Tap to customize",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Text(
-                        text = if (colorPickerExpanded) "▲" else "▼",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                AnimatedVisibility(visible = colorPickerExpanded) {
-                    Column {
-                        Spacer(Modifier.height(12.dp))
-
-                        // Saturation/Brightness square
-                        SatBrightnessSquare(
-                            hue = hue,
-                            saturation = saturation,
-                            brightness = brightness,
-                            onChanged = { s, b ->
-                                saturation = s
-                                brightness = b
-                                interfacePrefs.setAccentColor(
-                                    android.graphics.Color.HSVToColor(floatArrayOf(hue, s, b))
-                                )
-                                onChanged()
-                            }
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        // Hue slider
-                        HueBar(
-                            hue = hue,
-                            onHueChanged = { h ->
-                                hue = h
-                                interfacePrefs.setAccentColor(
-                                    android.graphics.Color.HSVToColor(floatArrayOf(h, saturation, brightness))
-                                )
-                                onChanged()
-                            }
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(24.dp))
-            }
 
             // New Notes Button section
             Text(
@@ -828,7 +766,7 @@ fun InterfaceScreen(
             var diagnosticEnabled by remember { mutableStateOf(DiagnosticLogger.isEnabled) }
 
             Text(
-                text = "Wisp v$versionName",
+                text = "Postilla v$versionName",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -910,164 +848,6 @@ fun InterfaceScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun HueBar(
-    hue: Float,
-    onHueChanged: (Float) -> Unit
-) {
-    val hueColors = remember {
-        List(7) { i -> Color(android.graphics.Color.HSVToColor(floatArrayOf(i * 60f, 1f, 1f))) }
-    }
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    onHueChanged((offset.x / size.width * 360f).coerceIn(0f, 360f))
-                }
-            }
-            .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
-                    change.consume()
-                    onHueChanged((change.position.x / size.width * 360f).coerceIn(0f, 360f))
-                }
-            }
-    ) {
-        drawRect(brush = Brush.horizontalGradient(hueColors))
-
-        // Indicator
-        val x = (hue / 360f) * size.width
-        drawCircle(
-            color = Color.White,
-            radius = 14.dp.toPx(),
-            center = Offset(x.coerceIn(14.dp.toPx(), size.width - 14.dp.toPx()), size.height / 2),
-            style = Stroke(width = 3.dp.toPx())
-        )
-    }
-}
-
-@Composable
-private fun SatBrightnessSquare(
-    hue: Float,
-    saturation: Float,
-    brightness: Float,
-    onChanged: (saturation: Float, brightness: Float) -> Unit
-) {
-    val pureHueColor = remember(hue) {
-        Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f)))
-    }
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(200.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    val s = (offset.x / size.width).coerceIn(0f, 1f)
-                    val b = (1f - offset.y / size.height).coerceIn(0f, 1f)
-                    onChanged(s, b)
-                }
-            }
-            .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
-                    change.consume()
-                    val s = (change.position.x / size.width).coerceIn(0f, 1f)
-                    val b = (1f - change.position.y / size.height).coerceIn(0f, 1f)
-                    onChanged(s, b)
-                }
-            }
-    ) {
-        // White to hue color (horizontal: saturation)
-        drawRect(brush = Brush.horizontalGradient(listOf(Color.White, pureHueColor)))
-        // Transparent to black (vertical: brightness)
-        drawRect(brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
-
-        // Indicator
-        val x = (saturation * size.width).coerceIn(10f, size.width - 10f)
-        val y = ((1f - brightness) * size.height).coerceIn(10f, size.height - 10f)
-        drawCircle(
-            color = Color.White,
-            radius = 10.dp.toPx(),
-            center = Offset(x, y),
-            style = Stroke(width = 2.dp.toPx())
-        )
-        drawCircle(
-            color = Color.Black,
-            radius = 12.dp.toPx(),
-            center = Offset(x, y),
-            style = Stroke(width = 1.dp.toPx())
-        )
-    }
-}
-
-@Composable
-private fun ThemeCard(
-    theme: ThemePreset,
-    isSelected: Boolean,
-    isDark: Boolean,
-    onClick: () -> Unit
-) {
-    val colors = if (isDark) theme.dark else theme.light
-
-    Card(
-        modifier = Modifier
-            .width(100.dp)
-            .clickable(onClick = onClick)
-            .then(
-                if (isSelected) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                } else {
-                    Modifier
-                }
-            ),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = colors.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(colors.primary, RoundedCornerShape(4.dp))
-                )
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(colors.secondary, RoundedCornerShape(4.dp))
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(16.dp)
-                    .background(colors.background, RoundedCornerShape(4.dp))
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = theme.displayName,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurface
-            )
         }
     }
 }

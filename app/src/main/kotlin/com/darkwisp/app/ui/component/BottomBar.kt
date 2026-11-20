@@ -7,15 +7,11 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Column
@@ -47,11 +43,11 @@ enum class BottomTab(
     val selectedIconRes: Int? = null,
     val unselectedIconRes: Int? = null
 ) {
-    HOME(Routes.FEED, R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home),
+    HOME(Routes.FEED, R.string.nav_home, Icons.Outlined.Home, Icons.Outlined.Home),
     WALLET(Routes.WALLET, R.string.nav_wallet, null, null, R.drawable.ic_wallet, R.drawable.ic_wallet_outlined),
-    SEARCH(Routes.SEARCH, R.string.nav_search, Icons.Filled.Search, Icons.Outlined.Search),
-    MESSAGES(Routes.DM_LIST, R.string.nav_messages, Icons.Filled.Forum, Icons.Outlined.Forum),
-    NOTIFICATIONS(Routes.NOTIFICATIONS, R.string.nav_notifications, Icons.Filled.Notifications, Icons.Outlined.Notifications)
+    MARKETPLACE(Routes.MARKETPLACE, R.string.marketplace_title, Icons.Outlined.Storefront, Icons.Outlined.Storefront),
+    MESSAGES(Routes.DM_LIST, R.string.nav_messages, Icons.Outlined.Forum, Icons.Outlined.Forum),
+    NOTIFICATIONS(Routes.NOTIFICATIONS, R.string.nav_notifications, Icons.Outlined.Notifications, Icons.Outlined.Notifications)
 }
 
 @Composable
@@ -85,7 +81,7 @@ fun WispBottomBar(
             // don't double-pad.
             modifier = Modifier
                 .windowInsetsPadding(NavigationBarDefaults.windowInsets)
-                .height(56.dp),
+                .height(64.dp),
             windowInsets = WindowInsets(0)
         ) {
         BottomTab.entries.forEach { tab ->
@@ -94,7 +90,7 @@ fun WispBottomBar(
             val hasUnread = when (tab) {
                 BottomTab.HOME -> hasUnreadHome
                 BottomTab.WALLET -> false
-                BottomTab.SEARCH -> false
+                BottomTab.MARKETPLACE -> false
                 BottomTab.MESSAGES -> hasUnreadMessages
                 BottomTab.NOTIFICATIONS -> hasUnreadNotifications
             }
@@ -112,7 +108,7 @@ fun WispBottomBar(
                 icon = {
                     val useBolt = com.darkwisp.app.ui.util.useBoltIcon()
                     Box(
-                        modifier = Modifier.requiredSize(24.dp),
+                        modifier = Modifier.requiredSize(26.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         val zapTint = if (selected) MaterialTheme.colorScheme.primary
@@ -121,39 +117,43 @@ fun WispBottomBar(
                             Icon(
                                 painter = painterResource(R.drawable.ic_bolt),
                                 contentDescription = stringResource(tab.labelResId),
-                                tint = zapTint
-                            )
-                        } else if (tab.selectedIconRes != null && tab.unselectedIconRes != null) {
-                            // Drawable-backed tabs (wallet) — solid when selected,
-                            // outlined when not.
-                            val iconRes = if (selected) tab.selectedIconRes else tab.unselectedIconRes
-                            Icon(
-                                painter = painterResource(iconRes),
-                                contentDescription = stringResource(tab.labelResId),
+                                modifier = Modifier.size(26.dp),
                                 tint = zapTint
                             )
                         } else {
-                            val icon = if (tab == BottomTab.NOTIFICATIONS && isZapAnimating)
-                                Icons.Outlined.CurrencyBitcoin
-                            else if (selected) tab.selectedIcon!!
-                            else tab.unselectedIcon!!
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = stringResource(tab.labelResId),
-                                tint = zapTint
-                            )
+                            val iconResource = if (selected) tab.selectedIconRes else tab.unselectedIconRes
+                            if (iconResource != null) {
+                                Icon(
+                                    painter = painterResource(iconResource),
+                                    contentDescription = stringResource(tab.labelResId),
+                                    modifier = Modifier.size(26.dp),
+                                    tint = zapTint
+                                )
+                            } else {
+                                val icon = if (tab == BottomTab.NOTIFICATIONS && isZapAnimating) {
+                                    Icons.Outlined.CurrencyBitcoin
+                                } else if (selected) {
+                                    tab.selectedIcon
+                                } else {
+                                    tab.unselectedIcon
+                                }
+                                Icon(
+                                    imageVector = icon!!,
+                                    contentDescription = stringResource(tab.labelResId),
+                                    modifier = Modifier.size(26.dp),
+                                    tint = zapTint
+                                )
+                            }
                         }
                         if (hasUnread) {
-                            // Notification dot uses iOS-standard badge red
-                            // (#FF3B30) instead of the primary accent so it
-                            // reads as "alert" rather than "branded highlight."
+                            // Unread state is a small orange punctuation mark in Postilla.
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .align(Alignment.TopEnd)
                                     .offset(x = 2.dp, y = (-2).dp)
                                     .background(
-                                        color = Color(0xFFFF3B30),
+                                        color = MaterialTheme.colorScheme.primary,
                                         shape = CircleShape
                                     )
                             )
@@ -188,7 +188,8 @@ fun WispBottomBar(
                         }
                     }
                 },
-                label = null
+                label = null,
+                alwaysShowLabel = false
             )
         }
     }

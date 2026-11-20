@@ -25,6 +25,7 @@ import com.darkwisp.app.repo.ProfileRepository
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
+import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.RelaySet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -64,7 +65,7 @@ class FeedSubscriptionManager(
     private val prefs: SharedPreferences
 ) {
     companion object {
-        val FEED_KINDS = listOf(1, 6, 1068, 6969, 30023, 20, 21, 22)
+        val FEED_KINDS = listOf(1, 6, 1068, 6969, 30023, 30402, 20, 21, 22)
         // How many of a poll's advertised relays to reach past the persistent
         // pool. iOS uses 3 and gets complete tallies; the votes land on the
         // first few relays a poll lists, not the long tail.
@@ -197,6 +198,7 @@ class FeedSubscriptionManager(
                 val follows = contactRepo.getFollowList().map { it.pubkey }.toSet()
                 if (myPubkey != null) follows + myPubkey else follows
             }
+            FeedType.WITH_REPLIES -> contactRepo.getFollowList().map { it.pubkey }.toSet()
             FeedType.LIST -> listRepo.selectedList.value?.members
             else -> null  // EXTENDED_FOLLOWS, RELAY, and TRENDING show everything
         })
@@ -224,7 +226,7 @@ class FeedSubscriptionManager(
 
         when (type) {
             FeedType.FOR_YOU, FeedType.FOLLOWS, FeedType.EXTENDED_FOLLOWS -> {
-                if (prev == FeedType.LIST) {
+                if (prev == FeedType.LIST || prev == FeedType.WITH_REPLIES) {
                     Log.d("RLC", "[FeedSub] switching from $prev to $type — rebuilding feed from cache and resubscribing")
                     eventRepo.resetFeedDisplay()
                     eventRepo.rebuildFeedFromCache()
@@ -236,6 +238,11 @@ class FeedSubscriptionManager(
                 if (type == FeedType.FOR_YOU && prev != FeedType.FOR_YOU) {
                     startForYouSupplementaryFetches()
                 }
+            }
+            FeedType.WITH_REPLIES -> {
+                val followedAuthors = contactRepo.getFollowList().map { it.pubkey }.toSet()
+                eventRepo.setReplyFeedAuthors(followedAuthors)
+                resubscribeFeed()
             }
             FeedType.RELAY -> {
                 // Skip if already in RELAY mode — setSelectedRelay() already triggered
@@ -362,8 +369,13 @@ class FeedSubscriptionManager(
         val savedFeedTs = if (catchupFeed && timestampKey != null) {
             prefs.getLong(timestampKey, 0L).coerceIn(0L, nowSeconds)
         } else 0L
-        val sinceTimestamp = if (savedFeedTs > 0) maxOf(savedFeedTs - 5 * 60, defaultSince)
-                             else defaultSince
+        val sinceTimestamp = if (_feedType.value == FeedType.WITH_REPLIES) {
+            nowSeconds - 7 * 24 * 3600L
+        } else if (savedFeedTs > 0) {
+            maxOf(savedFeedTs - 5 * 60, defaultSince)
+        } else {
+            defaultSince
+        }
         Log.d("RLC", "[FeedSub] resubscribeFeed: since=$sinceTimestamp (savedFeedTs=$savedFeedTs, followCount=$followCount, windowDays=${defaultWindowSeconds/86400})")
         val indexerRelays = getIndexerRelays()
         val excludedUrls = getExcludedRelayUrls()
@@ -384,6 +396,23 @@ class FeedSubscriptionManager(
                 val notesFilter = Filter(kinds = FEED_KINDS, since = sinceTimestamp)
                 outboxRouter.subscribeByAuthors(
                     feedSubId, allAuthors, notesFilter,
+                    indexerRelays = indexerRelays, blockedUrls = excludedUrls
+                )
+            }
+            FeedType.WITH_REPLIES -> {
+                val authors = contactRepo.getFollowList().map { it.pubkey }
+                if (authors.isEmpty()) {
+                    Log.d("RLC", "[FeedSub] Conversations: no followed authors")
+                    return
+                }
+                eventRepo.setReplyFeedAuthors(authors.toSet())
+                val repliesFilter = Filter(
+                    kinds = listOf(1, Nip22.KIND_COMMENT),
+                    since = sinceTimestamp,
+                    limit = 500
+                )
+                outboxRouter.subscribeByAuthors(
+                    feedSubId, authors, repliesFilter,
                     indexerRelays = indexerRelays, blockedUrls = excludedUrls
                 )
             }
@@ -488,7 +517,7 @@ class FeedSubscriptionManager(
 
     fun loadMore() {
         if (isLoadingMore) return
-        if (_feedType.value == FeedType.TRENDING) return  // trending relay sends full ranked set
+        if (_feedType.value == FeedType.TRENDING || _feedType.value == FeedType.WITH_REPLIES) return // reply feed is capped at 500 events per subscription
         isLoadingMore = true
 
         val indexerRelays = getIndexerRelays()
@@ -575,6 +604,7 @@ class FeedSubscriptionManager(
                 )
             }
             FeedType.TRENDING -> return  // guarded above, but required for exhaustiveness
+            FeedType.WITH_REPLIES -> return  // replies use the bounded initial subscription
         }
 
         val loadMoreSubId = if (_feedType.value == FeedType.RELAY) "relay-loadmore" else "loadmore"
@@ -1005,7 +1035,7 @@ class FeedSubscriptionManager(
     fun subscribeEngagementForFeed() {
         pauseEngagement()
 
-        val feedEvents = if (_feedType.value == FeedType.RELAY || _feedType.value == FeedType.TRENDING) eventRepo.relayFeed.value else eventRepo.feed.value
+        val feedEvents = currentFeedEvents()
         if (feedEvents.isEmpty()) return
 
         // Subscribe global subs (poll votes, DM zaps) for all feed events
@@ -1175,9 +1205,11 @@ class FeedSubscriptionManager(
     }
 
     private fun currentFeedEvents(): List<NostrEvent> =
-        if (_feedType.value == FeedType.RELAY || _feedType.value == FeedType.TRENDING) {
-            eventRepo.relayFeed.value
-        } else eventRepo.feed.value
+        when (_feedType.value) {
+            FeedType.RELAY, FeedType.TRENDING -> eventRepo.relayFeed.value
+            FeedType.WITH_REPLIES -> eventRepo.replyFeed.value
+            else -> eventRepo.feed.value
+        }
 
     /** Global poll/DM/notification subscriptions are intentionally not viewport-owned. */
     private fun cleanupDistantEngagementSubs(nearbyIds: Set<String>) {
@@ -1324,7 +1356,7 @@ class FeedSubscriptionManager(
 
         Log.d("RLC", "[FeedSub] restoring saved feed type: $savedType")
         when (savedType) {
-            FeedType.FOLLOWS, FeedType.TRENDING, FeedType.EXTENDED_FOLLOWS -> setFeedType(savedType)
+            FeedType.FOLLOWS, FeedType.WITH_REPLIES, FeedType.TRENDING, FeedType.EXTENDED_FOLLOWS -> setFeedType(savedType)
             FeedType.RELAY -> {
                 val relaySetName = prefs.getString(KEY_LAST_RELAY_SET_NAME, null)
                 val relaySetRelays = prefs.getString(KEY_LAST_RELAY_SET_RELAYS, null)

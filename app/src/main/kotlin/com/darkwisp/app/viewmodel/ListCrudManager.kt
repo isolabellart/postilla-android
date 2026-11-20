@@ -1,5 +1,6 @@
 package com.darkwisp.app.viewmodel
 
+import android.util.Log
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.CustomEmoji
 import com.darkwisp.app.nostr.Filter
@@ -17,10 +18,13 @@ import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.InterestRepository
 import com.darkwisp.app.repo.ListRepository
 import com.darkwisp.app.repo.MetadataFetcher
+import com.darkwisp.app.repo.publishMarketplaceEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
+
+private const val MARKETPLACE_WATCHLIST_SET_DTAG = "dark-wisp-marketplace-watchlist"
 
 /**
  * Handles CRUD for follow-set lists, bookmark sets, and custom emoji sets.
@@ -170,6 +174,7 @@ class ListCrudManager(
     fun addNoteToBookmarkSet(dTag: String, eventId: String) {
         val s = getSigner() ?: return
         val myPubkey = s.pubkeyHex
+        bookmarkSetRepo.setOwner(myPubkey)
         val existing = bookmarkSetRepo.getSet(myPubkey, dTag) ?: return
         val newIds = existing.eventIds + eventId
         val title = existing.name.takeIf { it != existing.dTag }
@@ -197,14 +202,19 @@ class ListCrudManager(
     fun removeNoteFromBookmarkSet(dTag: String, eventId: String) {
         val s = getSigner() ?: return
         val myPubkey = s.pubkeyHex
+        bookmarkSetRepo.setOwner(myPubkey)
         val existing = bookmarkSetRepo.getSet(myPubkey, dTag) ?: return
+        // Marketplace entries are stored as stable NIP-99 coordinates (a-tags),
+        // while ordinary notes are stored as event IDs (e-tags).
         val newIds = existing.eventIds - eventId
+        val newCoordinates = existing.coordinates - eventId
+        if (newIds == existing.eventIds && newCoordinates == existing.coordinates) return
         val title = existing.name.takeIf { it != existing.dTag }
         val hints = eventRepo.getRelayHintsForEvents(newIds)
         if (existing.isPrivate) {
-            val (tags, plaintext) = Nip51.buildBookmarkSetPrivate(dTag, newIds, existing.coordinates, existing.hashtags, title = title, relayHints = hints)
+            val (tags, plaintext) = Nip51.buildBookmarkSetPrivate(dTag, newIds, newCoordinates, existing.hashtags, title = title, relayHints = hints)
             scope.launch {
-                val hasContent = newIds.isNotEmpty() || existing.coordinates.isNotEmpty() || existing.hashtags.isNotEmpty() || title != null
+                val hasContent = newIds.isNotEmpty() || newCoordinates.isNotEmpty() || existing.hashtags.isNotEmpty() || title != null
                 val encrypted = if (hasContent) s.nip44Encrypt(plaintext, myPubkey) else ""
                 val event = s.signEvent(kind = Nip51.KIND_BOOKMARK_SET, content = encrypted, tags = tags)
                 eventRepo.cacheEvent(event)
@@ -212,12 +222,21 @@ class ListCrudManager(
                 bookmarkSetRepo.updateFromEvent(event, if (hasContent) plaintext else "[]")
             }
         } else {
-            val tags = Nip51.buildBookmarkSetTags(dTag, newIds, existing.coordinates, existing.hashtags, title = title, relayHints = hints)
+            val tags = Nip51.buildBookmarkSetTags(dTag, newIds, newCoordinates, existing.hashtags, title = title, relayHints = hints)
             scope.launch {
                 val event = s.signEvent(kind = Nip51.KIND_BOOKMARK_SET, content = "", tags = tags)
                 eventRepo.cacheEvent(event)
-                relayPool.sendToWriteRelays(ClientMessage.event(event))
+                // Update the local list before network acknowledgement so removal is immediate.
                 bookmarkSetRepo.updateFromEvent(event)
+                if (dTag == MARKETPLACE_WATCHLIST_SET_DTAG) {
+                    try {
+                        publishMarketplaceEvent(relayPool, event)
+                    } catch (error: Exception) {
+                        Log.w("ListCrudManager", "Marketplace wishlist update was not confirmed", error)
+                    }
+                } else {
+                    relayPool.sendToWriteRelays(ClientMessage.event(event))
+                }
             }
         }
     }
@@ -225,11 +244,20 @@ class ListCrudManager(
     fun deleteBookmarkSet(dTag: String) {
         val s = getSigner() ?: return
         val myPubkey = s.pubkeyHex
+        bookmarkSetRepo.setOwner(myPubkey)
         val deletionTags = Nip09.buildAddressableDeletionTags(Nip51.KIND_BOOKMARK_SET, myPubkey, dTag)
         scope.launch {
             val deleteEvent = s.signEvent(kind = 5, content = "", tags = deletionTags)
-            relayPool.sendToWriteRelays(ClientMessage.event(deleteEvent))
             bookmarkSetRepo.removeSet(myPubkey, dTag)
+            if (dTag == MARKETPLACE_WATCHLIST_SET_DTAG) {
+                try {
+                    publishMarketplaceEvent(relayPool, deleteEvent)
+                } catch (error: Exception) {
+                    Log.w("ListCrudManager", "Marketplace wishlist deletion was not confirmed", error)
+                }
+            } else {
+                relayPool.sendToWriteRelays(ClientMessage.event(deleteEvent))
+            }
         }
     }
 

@@ -163,6 +163,7 @@ class DraftsViewModel(app: Application) : AndroidViewModel(app) {
         deletedEventsRepo: DeletedEventsRepository? = null
     ) {
         if (signer == null) return
+        val innerKind = _drafts.value.firstOrNull { it.dTag == dTag }?.kind ?: 1
         removeDraftLocally(dTag)
         // Persist locally first so any future relay response for this coord is silently dropped,
         // even before the kind 5 deletion propagates.
@@ -177,7 +178,7 @@ class DraftsViewModel(app: Application) : AndroidViewModel(app) {
 
                 // Also publish an empty-content replacement so clients that don't honor NIP-09
                 // (or that use the replace-by-address semantics of NIP-37) still observe deletion.
-                val replacementTags = Nip37.buildDraftTags(dTag, 1)
+                val replacementTags = Nip37.buildDraftTags(dTag, innerKind)
                 val encrypted = signer.nip44Encrypt("", signer.pubkeyHex)
                 val replacement = signer.signEvent(
                     kind = Nip37.KIND_DRAFT,

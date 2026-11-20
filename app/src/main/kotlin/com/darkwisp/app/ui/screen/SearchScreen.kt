@@ -119,7 +119,8 @@ fun SearchScreen(
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
     nip05Repo: com.darkwisp.app.repo.Nip05Repository? = null,
-    onPayInvoice: (suspend (String) -> Boolean)? = null
+    onPayInvoice: (suspend (String) -> Boolean)? = null,
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
 ) {
     val query by viewModel.query.collectAsState()
     val filter by viewModel.filter.collectAsState()
@@ -140,8 +141,9 @@ fun SearchScreen(
         contactRepo?.followList ?: MutableStateFlow<List<Nip02.FollowEntry>>(emptyList())
     }.collectAsState()
 
-    val noteActions = remember(userPubkey, onHashtagClick) {
+    val noteActions = remember(userPubkey, onHashtagClick, onMarketplaceListingClick) {
         NoteActions(
+            onMarketplaceListingClick = onMarketplaceListingClick,
             onHashtagClick = onHashtagClick,
             onProfileClick = onProfileClick,
             onNoteClick = { eventId -> onQuotedNoteClick?.invoke(eventId) },

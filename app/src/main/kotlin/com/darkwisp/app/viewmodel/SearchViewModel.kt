@@ -12,6 +12,8 @@ import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.MuteRepository
+import com.darkwisp.app.repo.rankProfileSearchResults
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,7 +132,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val pool = relayPool ?: return
         val repo = eventRepoRef ?: return
         val trimmed = newQuery.trim().removePrefix("nostr:")
-        if (trimmed.length < 2) return
+        if (trimmed.length < 2) {
+            searchJob?.cancel()
+            relayPool?.let { closeSubscriptions(it) }
+            _users.value = emptyList()
+            _notes.value = emptyList()
+            _isSearching.value = false
+            return
+        }
         autoSearchJob = viewModelScope.launch {
             delay(500)
             search(newQuery, pool, repo, muteRepoRef)
@@ -152,65 +161,77 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         _authorSearchResults.value = emptyList()
     }
 
+    private fun selectedSearchRelays(): List<String> {
+        val defaults = (listOf(DEFAULT_SEARCH_RELAY) + RelayConfig.DEFAULT_INDEXER_RELAYS).distinct()
+        return when (_selectedRelayOption.value) {
+            RelayOption.DEFAULT -> defaults
+            RelayOption.ALL_RELAYS -> _searchRelays.value.ifEmpty { defaults }.distinct()
+            RelayOption.INDIVIDUAL -> listOfNotNull(_selectedRelayUrl.value)
+        }
+    }
+
     fun searchAuthors(query: String, relayPool: RelayPool, eventRepo: EventRepository) {
         val trimmed = query.trim().removePrefix("nostr:")
         if (trimmed.isEmpty()) {
+            authorSearchJob?.cancel()
+            relayPool.closeOnAllRelays(authorSubId)
             _authorSearchResults.value = emptyList()
+            _isAuthorSearching.value = false
             return
         }
 
         authorSearchJob?.cancel()
+        relayPool.closeOnAllRelays(authorSubId)
         searchCounter++
         authorSubId = "search-author-$searchCounter"
-        _isAuthorSearching.value = true
-        _authorSearchResults.value = emptyList()
-
-        val relaysToQuery = when (_selectedRelayOption.value) {
-            RelayOption.DEFAULT -> listOf(DEFAULT_SEARCH_RELAY)
-            RelayOption.ALL_RELAYS -> _searchRelays.value
-            RelayOption.INDIVIDUAL -> listOfNotNull(_selectedRelayUrl.value)
-        }
-
-        val authorFilter = Filter(kinds = listOf(0), search = trimmed, limit = 10)
-        val req = ClientMessage.req(authorSubId, authorFilter)
-        for (url in relaysToQuery) {
-            relayPool.sendToRelayOrEphemeral(url, req)
-        }
-
         val activeSubId = authorSubId
-        val seenPubkeys = mutableSetOf<String>()
+        val profilesByPubkey = linkedMapOf<String, ProfileData>()
+        eventRepo.searchProfiles(trimmed, limit = 30).forEach { profilesByPubkey[it.pubkey] = it }
+        _isAuthorSearching.value = true
+        _authorSearchResults.value = rankProfileSearchResults(profilesByPubkey.values, trimmed)
+
+        val authorRequest = ClientMessage.req(
+            activeSubId,
+            Filter(kinds = listOf(0), search = trimmed, limit = 30)
+        )
 
         authorSearchJob = viewModelScope.launch {
-            val eventJob = launch {
+            val eventJob = launch(start = CoroutineStart.UNDISPATCHED) {
                 relayPool.relayEvents.collect { relayEvent ->
                     if (relayEvent.subscriptionId != activeSubId) return@collect
                     val event = relayEvent.event
-                    if (event.kind == 0 && event.pubkey !in seenPubkeys) {
-                        seenPubkeys.add(event.pubkey)
-                        eventRepo.cacheEvent(event)
-                        val profile = ProfileData.fromEvent(event)
-                        if (profile != null) {
-                            _authorSearchResults.value = _authorSearchResults.value + profile
-                        }
+                    if (event.kind != 0) return@collect
+                    val profile = ProfileData.fromEvent(event) ?: return@collect
+                    eventRepo.cacheEvent(event)
+                    val previous = profilesByPubkey[event.pubkey]
+                    if (previous == null || profile.updatedAt > previous.updatedAt) {
+                        profilesByPubkey[event.pubkey] = profile
+                        _authorSearchResults.value = rankProfileSearchResults(profilesByPubkey.values, trimmed)
                     }
                 }
             }
 
-            val eoseJob = launch {
+            val eoseJob = launch(start = CoroutineStart.UNDISPATCHED) {
                 relayPool.eoseSignals.collect { subId ->
-                    if (subId == activeSubId) {
-                        _isAuthorSearching.value = false
-                    }
+                    if (subId == activeSubId) _isAuthorSearching.value = false
                 }
             }
 
-            delay(3000)
-            _isAuthorSearching.value = false
-            relayPool.closeOnAllRelays(activeSubId)
-            eventJob.cancel()
-            eoseJob.cancel()
+            try {
+                selectedSearchRelays().forEach { url ->
+                    runCatching { relayPool.sendToRelayOrEphemeral(url, authorRequest) }
+                }
+                delay(6000L)
+            } finally {
+                _isAuthorSearching.value = false
+                relayPool.closeOnAllRelays(activeSubId)
+                eventJob.cancel()
+                eoseJob.cancel()
+            }
         }
     }
+
+
 
     fun search(query: String, relayPool: RelayPool, eventRepo: EventRepository, muteRepo: MuteRepository? = null) {
         val trimmed = query.trim().removePrefix("nostr:")
@@ -238,55 +259,52 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         _notes.value = emptyList()
 
         val activeFilter = _filter.value
-        val relaysToQuery = when (_selectedRelayOption.value) {
-            RelayOption.DEFAULT -> listOf(DEFAULT_SEARCH_RELAY)
-            RelayOption.ALL_RELAYS -> _searchRelays.value
-            RelayOption.INDIVIDUAL -> listOfNotNull(_selectedRelayUrl.value)
-        }
-
+        val relaysToQuery = selectedSearchRelays()
         val activeSubId = when (activeFilter) {
-            SearchFilter.PEOPLE -> {
-                val userFilter = Filter(kinds = listOf(0), search = trimmed, limit = 20)
-                val userReq = ClientMessage.req(userSubId, userFilter)
-                for (url in relaysToQuery) {
-                    relayPool.sendToRelayOrEphemeral(url, userReq)
-                }
-                userSubId
-            }
-            SearchFilter.NOTES -> {
-                val authorPubkey = _authorFilter.value?.pubkey
-                val noteFilter = Filter(
-                    kinds = listOf(1),
-                    authors = authorPubkey?.let { listOf(it) },
-                    search = trimmed,
-                    limit = 50
-                )
-                val noteReq = ClientMessage.req(noteSubId, noteFilter)
-                for (url in relaysToQuery) {
-                    relayPool.sendToRelayOrEphemeral(url, noteReq)
-                }
-                noteSubId
-            }
+            SearchFilter.PEOPLE -> userSubId
+            SearchFilter.NOTES -> noteSubId
+        }
+        val userRequest = ClientMessage.req(
+            userSubId,
+            Filter(kinds = listOf(0), search = trimmed, limit = 40)
+        )
+        val authorPubkey = _authorFilter.value?.pubkey
+        val noteRequest = ClientMessage.req(
+            noteSubId,
+            Filter(
+                kinds = listOf(1),
+                authors = authorPubkey?.let { listOf(it) },
+                search = trimmed,
+                limit = 50
+            )
+        )
+
+        val profilesByPubkey = linkedMapOf<String, ProfileData>()
+        if (activeFilter == SearchFilter.PEOPLE) {
+            eventRepo.searchProfiles(trimmed, limit = 50)
+                .filter { muteRepo?.isBlocked(it.pubkey) != true }
+                .forEach { profilesByPubkey[it.pubkey] = it }
+            _users.value = rankProfileSearchResults(profilesByPubkey.values, trimmed)
         }
 
-        val seenUserPubkeys = mutableSetOf<String>()
         val seenNoteIds = mutableSetOf<String>()
+        var metricsRequested = false
 
         searchJob = viewModelScope.launch {
-            val eventJob = launch {
+            // Start both collectors before sending REQ: fast relays may answer immediately.
+            val eventJob = launch(start = CoroutineStart.UNDISPATCHED) {
                 relayPool.relayEvents.collect { relayEvent ->
                     if (relayEvent.subscriptionId != activeSubId) return@collect
                     when (activeFilter) {
                         SearchFilter.PEOPLE -> {
                             val event = relayEvent.event
-                            if (event.kind == 0 && event.pubkey !in seenUserPubkeys) {
-                                if (muteRepo?.isBlocked(event.pubkey) == true) return@collect
-                                seenUserPubkeys.add(event.pubkey)
-                                eventRepo.cacheEvent(event)
-                                val profile = ProfileData.fromEvent(event)
-                                if (profile != null) {
-                                    _users.value = _users.value + profile
-                                }
+                            if (event.kind != 0 || muteRepo?.isBlocked(event.pubkey) == true) return@collect
+                            val profile = ProfileData.fromEvent(event) ?: return@collect
+                            eventRepo.cacheEvent(event)
+                            val previous = profilesByPubkey[event.pubkey]
+                            if (previous == null || profile.updatedAt > previous.updatedAt) {
+                                profilesByPubkey[event.pubkey] = profile
+                                _users.value = rankProfileSearchResults(profilesByPubkey.values, trimmed)
                             }
                         }
                         SearchFilter.NOTES -> {
@@ -303,40 +321,54 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            val eoseJob = launch {
+            val eoseJob = launch(start = CoroutineStart.UNDISPATCHED) {
                 relayPool.eoseSignals.collect { subId ->
-                    if (subId == activeSubId) {
-                        _isSearching.value = false
-                        // After notes arrive, fetch reactions + reposts from read relays.
-                        // Search relays (NIP-50) only store notes, not engagement events,
-                        // so we must query the user's regular read relay pool.
-                        if (activeFilter == SearchFilter.NOTES) {
-                            val noteIds = seenNoteIds.toList()
-                            if (noteIds.isNotEmpty()) {
-                                noteIds.chunked(100).forEachIndexed { i, chunk ->
-                                    val chunkSubId = if (i == 0) metricsSubId else "$metricsSubId-$i"
-                                    val engageFilter = Filter(
-                                        kinds = listOf(7, 6, 9735),
-                                        eTags = chunk,
-                                        limit = 500
-                                    )
-                                    relayPool.sendToReadRelays(ClientMessage.req(chunkSubId, engageFilter))
-                                }
+                    if (subId != activeSubId) return@collect
+                    _isSearching.value = false
+                    // Request engagement only once; the same subscription can EOSE on many relays.
+                    if (activeFilter == SearchFilter.NOTES && !metricsRequested) {
+                        metricsRequested = true
+                        val noteIds = seenNoteIds.toList()
+                        if (noteIds.isNotEmpty()) {
+                            noteIds.chunked(100).forEachIndexed { i, chunk ->
+                                val chunkSubId = if (i == 0) metricsSubId else "$metricsSubId-$i"
+                                val engageFilter = Filter(
+                                    kinds = listOf(7, 6, 9735),
+                                    eTags = chunk,
+                                    limit = 500
+                                )
+                                relayPool.sendToReadRelays(ClientMessage.req(chunkSubId, engageFilter))
                             }
                         }
                     }
                 }
             }
 
-            delay(5000)
-            _isSearching.value = false
-            closeSubscriptions(relayPool)
-            eventJob.cancel()
-            eoseJob.cancel()
+            try {
+                relaysToQuery.forEach { url ->
+                    runCatching {
+                        relayPool.sendToRelayOrEphemeral(
+                            url,
+                            if (activeFilter == SearchFilter.PEOPLE) userRequest else noteRequest
+                        )
+                    }
+                }
+                delay(7000L)
+            } finally {
+                _isSearching.value = false
+                relayPool.closeOnAllRelays(activeSubId)
+                relayPool.closeOnAllRelays(metricsSubId)
+                eventJob.cancel()
+                eoseJob.cancel()
+            }
         }
     }
 
+
+
     fun clear() {
+        autoSearchJob?.cancel()
+        autoSearchJob = null
         searchJob?.cancel()
         authorSearchJob?.cancel()
         relayPool?.let { closeSubscriptions(it) }
