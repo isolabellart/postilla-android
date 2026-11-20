@@ -88,6 +88,7 @@ import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.RelayInfoRepository
 import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.repo.TranslationState
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -169,6 +170,8 @@ fun DmConversationScreen(
     val totalRelayCount = (allParticipantRelays.values.sumOf { it.urls.size } + userDmRelays.size)
         .coerceAtLeast(peerDelivery.urls.size + userDmRelays.size)
     val context = LocalContext.current
+    val interfacePrefs = remember(context) { InterfacePreferences(context) }
+    var pendingCloudTranslation by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
@@ -413,7 +416,15 @@ fun DmConversationScreen(
                             eventRepo = eventRepo,
                             relayIcons = icons,
                             translationState = translationState,
-                            onTranslate = { translationRepo?.translateWithDeepL(translationKey, msg.content) },
+                            onTranslate = {
+                                if (interfacePrefs.getTranslationEngine() == InterfacePreferences.TranslationEngine.DEEPL) {
+                                    // A private message is sent to DeepL only after an explicit,
+                                    // per-message confirmation by the user.
+                                    pendingCloudTranslation = translationKey to msg.content
+                                } else {
+                                    translationRepo?.translate(translationKey, msg.content)
+                                }
+                            },
                             onSelect = { viewModel.selectMessage(msg.id) },
                             onReply = { viewModel.setReplyingTo(it) },
                             onReact = { m, emoji -> viewModel.sendReaction(m.rumorId, emoji, relayPool, signer, resolvedEmojis); onEmojiUsed?.invoke(emoji) },
