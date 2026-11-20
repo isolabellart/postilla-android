@@ -199,7 +199,7 @@ cd postilla-android
 ./gradlew assembleRelease
 ~~~
 
-Release signing material is kept outside the repository. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md) and [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the signing and publication procedure. GitHub Release and Zapstore publication are handled by dedicated workflows.
+Release signing material is kept outside the repository. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md), [the development guide](docs/DEVELOPMENT.md), [branching model](docs/BRANCHING.md), [CI/CD map](docs/CI_CD.md) and [release process](docs/RELEASE_PROCESS.md). GitHub Release and Zapstore publication use separate protected workflows.
 
 ## Contributing
 
