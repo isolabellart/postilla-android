@@ -991,6 +991,9 @@
     <string name="translation_deepl_key_missing">Add a DeepL API key in Interface settings to use DeepL.</string>
     <string name="translation_deepl_show_key">Show API key</string>
     <string name="translation_deepl_hide_key">Hide API key</string>
+    <string name="dm_translation_cloud_title">Translate this private message with DeepL?</string>
+    <string name="dm_translation_cloud_message">The message text will be sent to DeepL for translation. It will leave this device and be processed under DeepL’s privacy terms. Continue only if you are comfortable sharing this message with the service.</string>
+    <string name="dm_translation_cloud_confirm">Send to DeepL</string>
 
     <string name="settings_accent_color_hint">Tap to customize</string>
 
