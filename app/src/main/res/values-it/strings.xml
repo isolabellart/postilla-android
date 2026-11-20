@@ -731,6 +731,9 @@
     <string name="translation_deepl_key_missing">Per usare DeepL, aggiungi una chiave API nelle impostazioni Interfaccia.</string>
     <string name="translation_deepl_show_key">Mostra chiave API</string>
     <string name="translation_deepl_hide_key">Nascondi chiave API</string>
+    <string name="dm_translation_cloud_title">Tradurre questo messaggio privato con DeepL?</string>
+    <string name="dm_translation_cloud_message">Il testo del messaggio verrà inviato a DeepL per la traduzione. Uscirà da questo dispositivo e sarà trattato secondo le condizioni sulla privacy di DeepL. Continua soltanto se desideri condividere questo messaggio con il servizio.</string>
+    <string name="dm_translation_cloud_confirm">Invia a DeepL</string>
 
     <string name="fiat_settings_title">Modalità fiat</string>
     <string name="fiat_settings_enable">Attiva modalità fiat</string>
