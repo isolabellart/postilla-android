@@ -36,7 +36,7 @@ The existing secret names are retained intentionally for compatibility. Do not r
 - `DARK_WISP_ENHANCED_KEY_PASSWORD`
 - `DARK_WISP_ENHANCED_RELEASE_TOKEN`
 
-The release token must be limited to this repository and have the permissions required by the release workflow. It is not a signing password and must never be used as one.
+The release token must be a fine-grained PAT limited to this repository with **Contents: Read and write** permission, used only by the final GitHub Release creation step. Workflow execution itself uses the read-only `GITHUB_TOKEN`. The PAT is not a signing password and must never be used as one.
 
 Zapstore secrets are separate:
 - `ZAPSTORE_SIGN_WITH`

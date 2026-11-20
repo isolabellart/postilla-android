@@ -23,5 +23,18 @@ The GitHub Actions run `44712898088` for that exact release commit completed suc
 - `backup/pre-reorg-main-tip-20261120` → `d350e4157f3d564a600b968bca59eb704f12927f`
 - `backup/pre-reorg-feature-tip-20261120` → `2b3f48937584e7f860d72c9e126de31bc2433dbf`
 - `backup/pre-postilla-merge-integration-20261120` → `d350e4157f3d564a600b968bca59eb704f12927f`
+- `backup/postilla-merged-mainline-pre-workflows-20261120` → `428987490c11f17589bbdfe779c2aea0aa1fc1e4`
+- `backup/postilla-mainline-pre-final-release-guard-20261120` → `09f552c7121113145ed8dbdad9dc6268979d3905`
 
 No tag, published release, signing key, application ID or historical release branch was modified by this integration commit. The former feature tip is retained as a source of the later documentation and rebrand assets, not treated as the current application code base.
+
+
+## Automated validation of the integration branch
+
+On commit `09f552c7121113145ed8dbdad9dc6268979d3905`:
+- PR CI run `44772029609`: passed.
+- Push CI run `44772017278`: passed.
+- Staging run `44772017235`: passed unit tests, signed staging build, package/version/certificate verification and artifact upload.
+- Staging artifact: `postilla-staging-1.0.42`, artifact ID `14646974593`.
+
+These are validations of the pre-final-release-guard commit. The release-guard changes are validated by the subsequent CI and staging runs before merging the integration PR. No production APK, GitHub Release or Zapstore publication was initiated during this reorganization.

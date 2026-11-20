@@ -15,7 +15,7 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: postilla-release
@@ -60,7 +60,7 @@ jobs:
         if: steps.signing.outputs.ready != 'true'
         run: |
           echo "No APK was built or published."
-          echo "Configure the four Dark Wisp Enhanced signing secrets, then push a new commit to this branch."
+          echo "Configure the four signing secrets, then dispatch this workflow manually from the matching versioned release branch."
 
       - name: Check release publishing permission
         if: steps.signing.outputs.ready == 'true'
@@ -69,13 +69,27 @@ jobs:
           RELEASE_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
         run: |
           if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error::Add repository secret DARK_WISP_ENHANCED_RELEASE_TOKEN with a fine-grained PAT limited to this repository and Contents: Read and write plus Workflows: Read and write."
+            echo "::error::Add repository secret DARK_WISP_ENHANCED_RELEASE_TOKEN with a fine-grained PAT limited to this repository and Contents: Read and write."
             exit 1
           fi
 
       - name: Check out source
         if: steps.signing.outputs.ready == 'true'
         uses: actions/checkout@v4
+
+      - name: Verify release branch matches the Gradle application version
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_REF="${GITHUB_REF#refs/heads/}"
+          VERSION_NAME="$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "$VERSION_NAME"
+          EXPECTED_REF="release/postilla-v${VERSION_NAME}"
+          [[ "$ACTUAL_REF" == "$EXPECTED_REF" ]] || {
+            echo "::error::This release branch does not match the app version. Expected $EXPECTED_REF."
+            exit 1
+          }
 
       - name: Set up JDK 17
         if: steps.signing.outputs.ready == 'true'
@@ -111,9 +125,7 @@ jobs:
       # Compile the staging test variant and release variant in separate Gradle
       # invocations. Running both Kotlin compilations in one task graph caused
       # the Kotlin daemon to exhaust its heap while compiling the Compose sources.
-      # The Postilla staging branch is validated separately before stable promotion.
-      # these tests on the exact application source. Re-run them on manual
-      # dispatches; a release push proceeds straight to the release build.
+      # Re-run unit tests on every manual release dispatch before the production build.
       - name: Run staging unit tests
         if: steps.signing.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
         shell: bash
@@ -178,13 +190,25 @@ jobs:
         env:
           RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          set -euo pipefail
+          VERSION_NAME="$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -n 1)"
           test -n "$VERSION_NAME"
+          EXPECTED_TAG="v$VERSION_NAME"
           TAG="$RELEASE_TAG_INPUT"
-          [[ -n "$TAG" ]] || TAG="v$VERSION_NAME"
+          [[ -n "$TAG" ]] || TAG="$EXPECTED_TAG"
+          if [[ "$TAG" != "$EXPECTED_TAG" ]]; then
+            echo "::error::Release tag must match the Gradle version ($EXPECTED_TAG)."
+            exit 1
+          fi
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Release tag must use vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          TAG_REFS="$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+          if [[ -n "$TAG_REFS" ]]; then
+            echo "::error::Tag $TAG already exists. Published tags are immutable."
             exit 1
           fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -192,11 +216,7 @@ jobs:
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # A push to the designated Enhanced release branch publishes a
-          # normal GitHub Release. Manual dispatch can still opt into prerelease.
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          elif [[ "$PRERELEASE_INPUT" == "true" ]]; then
+          if [[ "$PRERELEASE_INPUT" == "true" ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
