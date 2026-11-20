@@ -20,7 +20,9 @@ The release workflow also applies release safeguards. The Zapstore and GitHub AP
 
 ## Reproducibility status
 
-Postilla does not yet claim fully reproducible builds. The following work remains before making that claim:
+Postilla does not yet claim fully reproducible builds. A manual GitHub Actions workflow, `.github/workflows/postilla-reproducibility.yml`, now builds the same selected commit twice in separate clean runners and compares the signed APK bytes. It has not yet been run successfully. Even a passing result would be an initial CI reproducibility check, not an independent third-party rebuild.
+
+The following work remains before making a broader reproducibility claim:
 
 - Pin every third-party GitHub Action used in build and release workflows to a reviewed immutable commit SHA, rather than a movable major-version tag.
 - Enable and commit Gradle dependency verification metadata, and review updates to dependency checksums.
