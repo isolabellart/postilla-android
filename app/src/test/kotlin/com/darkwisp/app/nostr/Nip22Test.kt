@@ -176,7 +176,7 @@ class Nip22LongFormArticleTest {
 
     @Test
     fun addressableRootMatchingAcceptsUppercaseAAndLegacyLowercaseA() {
-        val address = "30023:$author:essay-1"
+        val address = "30023:$rootAuthor:essay-1"
         val upper = NostrEvent(
             id = "upper-a", pubkey = author, created_at = 1L, kind = Nip22.KIND_COMMENT,
             tags = listOf(listOf("A", address)), content = "upper", sig = "test"
@@ -184,12 +184,12 @@ class Nip22LongFormArticleTest {
         val lower = upper.copy(id = "lower-a", tags = listOf(listOf("a", address)))
         assertTrue(Nip22.referencesAddressableRoot(upper, address))
         assertTrue(Nip22.referencesAddressableRoot(lower, address))
-        assertFalse(Nip22.referencesAddressableRoot(lower, "30023:$author:other"))
+        assertFalse(Nip22.referencesAddressableRoot(lower, "30023:$rootAuthor:other"))
     }
 
     @Test
     fun addressableRootCommentFiltersAreIndependentAlternatives() {
-        val address = "30023:$author:essay-1"
+        val address = "30023:$rootAuthor:essay-1"
         val articleEventId = "article-event-id"
         val filters = Nip22.addressableRootCommentFilters(address, articleEventId)
 
