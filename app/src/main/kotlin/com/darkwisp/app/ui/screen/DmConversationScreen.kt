@@ -628,6 +628,28 @@ fun DmConversationScreen(
         }
     }
 
+
+    pendingCloudTranslation?.let { (messageId, content) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingCloudTranslation = null },
+            title = { Text(stringResource(R.string.dm_translation_cloud_title)) },
+            text = { Text(stringResource(R.string.dm_translation_cloud_message)) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    pendingCloudTranslation = null
+                    translationRepo?.translate(messageId, content)
+                }) {
+                    Text(stringResource(R.string.dm_translation_cloud_confirm))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingCloudTranslation = null }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            }
+        )
+    }
+
     debugMessage?.let { msg ->
         DmDebugDialog(message = msg, onDismiss = { debugMessage = null })
     }
