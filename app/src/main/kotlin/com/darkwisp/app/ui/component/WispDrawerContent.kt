@@ -84,6 +84,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -174,6 +175,7 @@ fun WispDrawerContent(
     walletBalanceMsats: Long? = null,
     isWatchOnly: Boolean = false,
 ) {
+    val uriHandler = LocalUriHandler.current
     ModalDrawerSheet(
         drawerContainerColor = MaterialTheme.colorScheme.surface,
         windowInsets = androidx.compose.foundation.layout.WindowInsets(0)
@@ -777,6 +779,15 @@ fun WispDrawerContent(
                     label = { Text(stringResource(R.string.drawer_console)) },
                     selected = false,
                     onClick = onConsole,
+                    modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
+                )
+                NavigationDrawerItem(
+                    icon = { PostillaDrawerIcon(Icons.Outlined.Shield) },
+                    label = { Text(stringResource(R.string.drawer_privacy_security)) },
+                    selected = false,
+                    onClick = {
+                        uriHandler.openUri("https://github.com/isolabellart/postilla-android/blob/main/docs/PRIVACY.md")
+                    },
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
             }
