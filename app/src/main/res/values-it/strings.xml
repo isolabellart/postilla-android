@@ -712,13 +712,13 @@
 
     <!-- Traduzione dei post -->
     <string name="translation_settings_title">Traduzione dei post</string>
-    <string name="translation_settings_subtitle">Scegli il motore di traduzione e la lingua in cui tradurre i post.</string>
+    <string name="translation_settings_subtitle">Scegli come tradurre post e messaggi privati e in quale lingua.</string>
     <string name="translation_target_language">Lingua di traduzione</string>
     <string name="translation_engine">Motore di traduzione</string>
     <string name="translation_engine_mlkit">Sul dispositivo (ML Kit)</string>
     <string name="translation_engine_deepl">DeepL API</string>
     <string name="translation_deepl_api_key">Chiave API DeepL</string>
-    <string name="translation_deepl_privacy">Il testo del post scelto viene inviato a DeepL. Link, riferimenti Nostr, invoice Lightning e hashtag vengono protetti.</string>
+    <string name="translation_deepl_privacy">Il testo che scegli di tradurre viene inviato a DeepL. Link, riferimenti Nostr, invoice Lightning e hashtag vengono protetti.</string>
     <string name="translation_deepl_save_key">Salva chiave</string>
     <string name="translation_deepl_test_key">Verifica chiave</string>
     <string name="translation_deepl_remove_key">Rimuovi chiave</string>
