@@ -16,7 +16,24 @@ object Nip22 {
 
     /** Uppercase NIP-22 A scope, used to open comments on addressable roots. */
     fun getAddressableRootTag(event: NostrEvent): String? =
-        event.tags.firstOrNull { it.size >= 2 && it[0] == "A" }?.get(1)
+        event.tags.firstOrNull { it.size >= 2 && it[0] in setOf("A", "a") }?.get(1)
+
+    /**
+     * Alternative filters for comments on an addressable root. Nostr combines
+     * different tag filters in one REQ with AND semantics, so #A and #a must be
+     * queried independently. #A catches canonical NIP-22 comments and nested
+     * replies; #a/#e retain compatibility with older clients.
+     */
+    fun addressableRootCommentFilters(address: String, rootEventId: String? = null): List<Filter> {
+        if (address.isBlank()) return emptyList()
+        return buildList {
+            add(Filter(kinds = listOf(KIND_COMMENT), bigATags = listOf(address)))
+            add(Filter(kinds = listOf(1, KIND_COMMENT), aTags = listOf(address)))
+            rootEventId?.takeIf(String::isNotBlank)?.let { eventId ->
+                add(Filter(kinds = listOf(1, KIND_COMMENT), eTags = listOf(eventId)))
+            }
+        }
+    }
 
     /** NIP-22 root scope (A/K/P) and direct parent (a/k/p) for a listing comment. */
     fun buildAddressableRootCommentTags(root: NostrEvent): List<List<String>> {
@@ -27,7 +44,9 @@ object Nip22 {
     }
 
     fun referencesAddressableRoot(event: NostrEvent, addressTag: String): Boolean =
-        event.kind == KIND_COMMENT && event.tags.any { it.size >= 2 && it[0] == "A" && it[1] == addressTag }
+        event.kind == KIND_COMMENT && event.tags.any {
+            it.size >= 2 && it[0] in setOf("A", "a") && it[1] == addressTag
+        }
 
     /** Root coordinate for a comment on an addressable long-form article. */
     fun longFormRootCoordinate(event: NostrEvent): String? =

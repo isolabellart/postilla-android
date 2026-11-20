@@ -259,7 +259,9 @@ fun ComposeScreen(
                             quoteTo != null -> stringResource(R.string.compose_quote)
                             replyTo != null -> stringResource(R.string.compose_reply)
                             else -> stringResource(R.string.compose_new_post)
-                        }
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1
                     )
                 },
                 navigationIcon = {
@@ -270,36 +272,41 @@ fun ComposeScreen(
                 actions = {
                     if (replyTo != null || quoteTo != null) {
                         // Mode switches are hidden while replying or quoting.
-                    } else if (galleryMode) {
-                        OutlinedButton(
-                            onClick = { viewModel.toggleGalleryMode() },
-                            modifier = Modifier.padding(end = 8.dp).width(176.dp).heightIn(min = 40.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.compose_switch_to_text))
-                        }
                     } else {
-                        Column(
+                        Row(
                             modifier = Modifier.padding(end = 8.dp),
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedButton(
-                                onClick = { viewModel.toggleGalleryMode() },
-                                modifier = Modifier.width(176.dp).heightIn(min = 40.dp)
+                            Surface(
+                                shape = CircleShape,
+                                color = if (galleryMode) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f) else Color.Transparent,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .clickable { viewModel.toggleGalleryMode() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(R.string.compose_switch_to_gallery))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.compose_gallery_button), style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                                }
                             }
-                            OutlinedButton(
-                                onClick = onWriteArticle,
-                                modifier = Modifier.width(176.dp).heightIn(min = 40.dp)
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                    .clickable(onClick = onWriteArticle)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(R.string.article_compose_button))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.compose_article_button), style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                                }
                             }
                         }
                     }

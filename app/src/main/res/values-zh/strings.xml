@@ -78,6 +78,8 @@
     <string name="compose_placeholder">你在想什么？</string>
     <string name="compose_switch_to_text">切换到文字</string>
     <string name="compose_switch_to_gallery">切换到图库</string>
+    <string name="compose_gallery_button">图库</string>
+    <string name="compose_article_button">文章</string>
     <string name="compose_gallery_mode">图库帖子</string>
     <string name="compose_gallery_placeholder">为您的图库帖子添加描述…</string>
     <string name="compose_gallery_tap_to_add">点击添加照片或视频</string>

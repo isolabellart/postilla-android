@@ -13,6 +13,7 @@ import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip01EventOrder
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrEvent.Companion.fromJson
 import com.darkwisp.app.nostr.ProfileData
@@ -659,6 +660,9 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             // before the relay feed delivers it. Still enforce a newer Hidden revision
             // against older public copies already displayed in the feed.
             purgeMarketplaceAddressIfLatestHidden(event)
+            if (event.kind == Nip23.KIND_LONG_FORM) {
+                syncLatestArticleRevisionInFeed(event, countAsNewIfFirstRevision = false)
+            }
             // A kind-6 repost may have entered seenEventIds through cacheEvent() or
             // another profile path before reaching this pipeline. Reconcile its
             // metadata even when the event itself is already deduplicated.
@@ -716,8 +720,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 // NIP-22 comments never appear in feeds — cached only, rendered in
                 // thread/article views and counted as replies.
             }
-            30023 -> {
-                binaryInsert(event, fromFeed = true)
+            Nip23.KIND_LONG_FORM -> {
+                syncLatestArticleRevisionInFeed(event, countAsNewIfFirstRevision = true)
             }
             Nip99.KIND_LISTING, Nip99.KIND_LEGACY_PRODUCT -> {
                 val addressableListing = addressSnapshot(
@@ -1187,6 +1191,58 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             }
         }
         if (removedIds.isNotEmpty()) feedDirty.trySend(Unit)
+    }
+
+    /**
+     * Remove older visible feed copies of one NIP-23 coordinate. The event cache
+     * and ObjectBox history are deliberately preserved for revision lookup/editing.
+     */
+    private fun removeArticleAddressFromFeed(author: String, dTag: String): Boolean {
+        if (author.isBlank() || dTag.isBlank()) return false
+        val removedIds = mutableSetOf<String>()
+        synchronized(feedList) {
+            val iterator = feedList.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (candidate.kind == Nip23.KIND_LONG_FORM &&
+                    candidate.pubkey == author &&
+                    Nip23.dTag(candidate) == dTag
+                ) {
+                    removedIds.add(candidate.id)
+                    iterator.remove()
+                }
+            }
+            if (removedIds.isNotEmpty()) {
+                feedIds.removeAll(removedIds)
+                filteredFeed.removeAll { it.id in removedIds }
+                filteredFeedIds.removeAll(removedIds)
+            }
+        }
+        if (removedIds.isNotEmpty()) feedDirty.trySend(Unit)
+        return removedIds.isNotEmpty()
+    }
+
+    /**
+     * Reconcile the visible feed against the newest NIP-23 revision known locally.
+     * Old event objects remain in cache/persistence; only duplicate feed cards are
+     * replaced. This also handles out-of-order relay delivery and cache-first paths.
+     */
+    private fun syncLatestArticleRevisionInFeed(event: NostrEvent, countAsNewIfFirstRevision: Boolean) {
+        if (event.kind != Nip23.KIND_LONG_FORM) return
+        val dTag = Nip23.dTag(event)
+        if (dTag.isBlank()) return
+        val latest = Nip23.latestRevision(
+            events = eventCache.values.filter(::isVisible),
+            authorPubkey = event.pubkey,
+            dTag = dTag
+        ) ?: return
+        if (latest.created_at > System.currentTimeMillis() / 1000 + 30) return
+
+        val replacedPreviousRevision = removeArticleAddressFromFeed(event.pubkey, dTag)
+        binaryInsert(
+            latest,
+            fromFeed = countAsNewIfFirstRevision && !replacedPreviousRevision
+        )
     }
 
     private fun binaryInsert(event: NostrEvent, sortTime: Long = event.created_at, fromFeed: Boolean = false) {
@@ -2189,9 +2245,17 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
      */
     fun rebuildFeedFromCache(sinceTimestamp: Long = System.currentTimeMillis() / 1000 - 60 * 60 * 24) {
         val snapshot = eventCache
+        val latestArticleIds = snapshot.values
+            .asSequence()
+            .filter { it.kind == Nip23.KIND_LONG_FORM && Nip23.dTag(it).isNotBlank() }
+            .groupBy { it.pubkey to Nip23.dTag(it) }
+            .mapValues { (_, revisions) -> Nip01EventOrder.newest(revisions)?.id }
         var inserted = 0
         for ((_, event) in snapshot) {
-            if (event.kind != 1 && event.kind != 20 && event.kind != 21 && event.kind != 22 && event.kind != 1068 && event.kind != 6969 && event.kind != 30023) continue
+            if (event.kind != 1 && event.kind != 20 && event.kind != 21 && event.kind != 22 && event.kind != 1068 && event.kind != 6969 && event.kind != Nip23.KIND_LONG_FORM) continue
+            if (event.kind == Nip23.KIND_LONG_FORM &&
+                latestArticleIds[event.pubkey to Nip23.dTag(event)] != event.id
+            ) continue
             if (event.created_at < sinceTimestamp) continue
             if (event.created_at > System.currentTimeMillis() / 1000 + 30) continue  // skip future-dated (scheduled) notes
             if (muteRepo?.isEventMuted(event) == true) continue

@@ -10,6 +10,7 @@ import com.darkwisp.app.nostr.Nip02
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip65
 import com.darkwisp.app.nostr.NipA3
@@ -384,11 +385,8 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                             eventRepo.cacheEvent(event)
                             if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
                             val current = _rootNotes.value.toMutableList()
-                            if (current.none { it.id == event.id }) {
-                                current.add(event)
-                                current.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
-                                _rootNotes.value = current
-                            }
+                            addRootNoteToList(current, event)
+                            _rootNotes.value = current
                         }
                         20, 21, 22 -> {
                             eventRepo.cacheEvent(event)
@@ -647,7 +645,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 30023, 1068, 6969 -> {
                     if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
-                    if (roots.none { it.id == event.id }) roots.add(event)
+                    addRootNoteToList(roots, event)
                 }
                 20, 21, 22 -> {
                     if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
@@ -680,6 +678,35 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             .sortedByDescending { _repostSortTime[it.id] ?: it.created_at }
         _replies.value = replies.distinctBy { it.id }.sortedByDescending { it.created_at }
         _galleryPosts.value = gallery.distinctBy { it.id }.sortedByDescending { it.created_at }
+    }
+
+    /**
+     * Insert a root profile post while keeping only the current revision of each
+     * NIP-23 author + d-tag coordinate. Prior versions remain in EventRepository's
+     * cache/history, but are not rendered as separate profile timeline cards.
+     */
+    private fun addRootNoteToList(roots: MutableList<NostrEvent>, event: NostrEvent) {
+        if (event.kind == Nip23.KIND_LONG_FORM) {
+            val dTag = Nip23.dTag(event)
+            if (dTag.isNotBlank()) {
+                val latest = Nip23.latestRevision(
+                    roots.filter { it.kind == Nip23.KIND_LONG_FORM } + event,
+                    event.pubkey,
+                    dTag
+                ) ?: event
+                roots.removeAll {
+                    it.kind == Nip23.KIND_LONG_FORM &&
+                        it.pubkey == event.pubkey &&
+                        Nip23.dTag(it) == dTag
+                }
+                roots.add(latest)
+            } else if (roots.none { it.id == event.id }) {
+                roots.add(event)
+            }
+        } else if (roots.none { it.id == event.id }) {
+            roots.add(event)
+        }
+        roots.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
     }
 
     /**

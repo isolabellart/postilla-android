@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.CustomNip
-import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip57
+import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
@@ -120,32 +120,61 @@ class ArticleViewModel : ViewModel() {
         this.currentArticleEventId = articleEventId
         _isCommentsLoading.value = true
 
+        // Close any subscriptions from a previous article before starting a new scope.
+        activeSubIds.toList().forEach(relayPool::closeOnAllRelays)
+        activeSubIds.clear()
+
         val coordinate = "$kind:$author:$dTag"
-        val commentSubId = "article-comments"
-        activeSubIds.add(commentSubId)
-
-        // Also subscribe via e-tag if we have the article event ID — many clients
-        // reply with e-tags pointing to the article event, not a-tags
-        val eTagSubId = "article-comments-etag"
-        if (articleEventId != null) {
-            activeSubIds.add(eTagSubId)
+        val commentFilters = Nip22.addressableRootCommentFilters(coordinate, articleEventId)
+        val commentSubIds = commentFilters.mapIndexed { index, _ ->
+            when (index) {
+                0 -> "article-comments-A"
+                1 -> "article-comments-a"
+                else -> "article-comments-e-$index"
+            }
         }
+        activeSubIds.addAll(commentSubIds)
 
-        // Collect comment events from both subscriptions
+        // Reset transient state and hydrate comments already known locally before
+        // waiting for network subscriptions to answer.
+        commentEvents.clear()
+        expandedIds.clear()
+        metadataSubscribedIds.clear()
+        synchronized(pendingMetadataIds) { pendingMetadataIds.clear() }
+        metadataBatchIndex = 0
+        for (cached in eventRepo.getRecentCommentsForAddressableRoot(coordinate)) {
+            commentEvents[cached.id] = cached
+            if (eventRepo.getProfileData(cached.pubkey) == null) {
+                metadataFetcher.addToPendingProfiles(cached.pubkey)
+            }
+            synchronized(pendingMetadataIds) { pendingMetadataIds.add(cached.id) }
+        }
+        _comments.value = emptyList()
+        if (commentEvents.isNotEmpty()) rebuildTree(articleEventId)
+        _isCommentsLoading.value = true
+
+        // Listen to every independent query. A comment is accepted only when it
+        // explicitly points to this addressable root or to the article event ID.
         collectorJob?.cancel()
         collectorJob = viewModelScope.launch {
             relayPool.relayEvents.collect { (event, relayUrl, subId) ->
-                if (subId == commentSubId || subId == eTagSubId) {
+                if (subId in commentSubIds) {
                     if (event.kind != 1 && event.kind != Nip22.KIND_COMMENT) return@collect
+                    val referencesCoordinate = event.tags.any {
+                        it.size >= 2 && it[0] in setOf("A", "a") && it[1] == coordinate
+                    }
+                    val referencesArticleEvent = articleEventId != null &&
+                        Nip22.referencesRoot(event, articleEventId)
+                    if (!referencesCoordinate && !referencesArticleEvent) return@collect
+
                     val isNew = event.id !in commentEvents
                     if (isNew) {
                         commentEvents[event.id] = event
-                        eventRepo.cacheEvent(event)
+                        eventRepo.addEvent(event)
                         eventRepo.addEventRelay(event.id, relayUrl)
                         if (eventRepo.getProfileData(event.pubkey) == null) {
                             metadataFetcher.addToPendingProfiles(event.pubkey)
                         }
-                        // Track for incremental engagement subscriptions
                         synchronized(pendingMetadataIds) {
                             pendingMetadataIds.add(event.id)
                         }
@@ -155,7 +184,7 @@ class ArticleViewModel : ViewModel() {
             }
         }
 
-        // Collect engagement events (reactions, zaps, reposts)
+        // Collect engagement events (reactions, zaps, reposts).
         engagementCollectorJob?.cancel()
         engagementCollectorJob = viewModelScope.launch {
             relayPool.relayEvents.collect { (event, _, subId) ->
@@ -173,42 +202,28 @@ class ArticleViewModel : ViewModel() {
             }
         }
 
-        // Two-phase loading matching ThreadViewModel pattern
+        // #A, #a and legacy #e must be separate REQs: different tag filters in
+        // a single Nostr filter are combined with AND and hide nested replies.
+        loadJob?.cancel()
+        metadataBatchJob?.cancel()
         loadJob = viewModelScope.launch {
-            // Phase 1a: Subscribe for comments via `a` tag on author's read relays + top relays
-            val commentFilter = Filter(
-                kinds = listOf(1, Nip22.KIND_COMMENT),
-                aTags = listOf(coordinate),
-                bigATags = listOf(coordinate)
-            )
-            outboxRouter.subscribeToUserReadRelays(commentSubId, author, commentFilter)
-            val aTagMsg = ClientMessage.req(commentSubId, commentFilter)
-            for (url in topRelayUrls) {
-                relayPool.sendToRelayOrEphemeral(url, aTagMsg)
-            }
-
-            // Phase 1b: Also subscribe via e-tag — many clients reply with e-tags
-            if (articleEventId != null) {
-                val eTagFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT), eTags = listOf(articleEventId))
-                outboxRouter.subscribeToUserReadRelays(eTagSubId, author, eTagFilter)
-                val eTagMsg = ClientMessage.req(eTagSubId, eTagFilter)
+            commentFilters.forEachIndexed { index, commentFilter ->
+                val subId = commentSubIds[index]
+                outboxRouter.subscribeToUserReadRelays(subId, author, commentFilter)
+                val message = ClientMessage.req(subId, commentFilter)
                 for (url in topRelayUrls) {
-                    relayPool.sendToRelayOrEphemeral(url, eTagMsg)
+                    relayPool.sendToRelayOrEphemeral(url, message)
                 }
             }
 
-            // Wait for EOSE from both subscriptions
-            subManager.awaitEoseWithTimeout(commentSubId, 5_000)
-            if (articleEventId != null) {
-                subManager.awaitEoseWithTimeout(eTagSubId, 3_000)
+            commentSubIds.forEach { subId ->
+                subManager.awaitEoseWithTimeout(subId, 3_000)
             }
             _isCommentsLoading.value = false
             metadataFetcher.sweepMissingProfiles()
 
-            // Phase 2: Seed reply counts from loaded comments + subscribe engagement
+            // Seed reply counts and subscribe to engagement data.
             subscribeEngagement(relayPool, articleEventId, coordinate, author, eventRepo, subManager)
-
-            // Start incremental engagement batching for late-arriving comments
             startMetadataBatching(relayPool, author)
         }
     }

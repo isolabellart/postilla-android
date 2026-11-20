@@ -78,6 +78,8 @@
     <string name="compose_placeholder">今何を考えていますか？</string>
     <string name="compose_switch_to_text">テキストに変換</string>
     <string name="compose_switch_to_gallery">ギャラリーに変換</string>
+    <string name="compose_gallery_button">ギャラリー</string>
+    <string name="compose_article_button">記事</string>
     <string name="compose_gallery_mode">ギャラリー投稿</string>
     <string name="compose_gallery_placeholder">ギャラリー投稿の説明を追加…</string>
     <string name="compose_gallery_tap_to_add">写真または動画を追加するにはタップ</string>

@@ -173,6 +173,34 @@ class Nip22Test {
 class Nip22LongFormArticleTest {
     private val author = "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb"
 
+
+    @Test
+    fun addressableRootMatchingAcceptsUppercaseAAndLegacyLowercaseA() {
+        val address = "30023:$author:essay-1"
+        val upper = NostrEvent(
+            id = "upper-a", pubkey = author, created_at = 1L, kind = Nip22.KIND_COMMENT,
+            tags = listOf(listOf("A", address)), content = "upper", sig = "test"
+        )
+        val lower = upper.copy(id = "lower-a", tags = listOf(listOf("a", address)))
+        assertTrue(Nip22.referencesAddressableRoot(upper, address))
+        assertTrue(Nip22.referencesAddressableRoot(lower, address))
+        assertFalse(Nip22.referencesAddressableRoot(lower, "30023:$author:other"))
+    }
+
+    @Test
+    fun addressableRootCommentFiltersAreIndependentAlternatives() {
+        val address = "30023:$author:essay-1"
+        val articleEventId = "article-event-id"
+        val filters = Nip22.addressableRootCommentFilters(address, articleEventId)
+
+        assertEquals(3, filters.size)
+        assertEquals(listOf(address), filters[0].bigATags)
+        assertEquals(null, filters[0].aTags)
+        assertEquals(listOf(address), filters[1].aTags)
+        assertEquals(null, filters[1].bigATags)
+        assertEquals(listOf(articleEventId), filters[2].eTags)
+    }
+
     @Test
     fun articleRootCommentUsesLongFormAddress() {
         val article = NostrEvent(

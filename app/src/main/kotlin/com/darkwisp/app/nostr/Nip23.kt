@@ -4,6 +4,18 @@ package com.darkwisp.app.nostr
 object Nip23 {
     const val KIND_LONG_FORM = 30023
 
+    /** Select the current NIP-23 revision for one stable author + d-tag coordinate. */
+    fun latestRevision(events: Iterable<NostrEvent>, authorPubkey: String, dTag: String): NostrEvent? {
+        if (authorPubkey.isBlank() || dTag.isBlank()) return null
+        var latest: NostrEvent? = null
+        for (candidate in events) {
+            if (candidate.kind != KIND_LONG_FORM || candidate.pubkey != authorPubkey || Nip23.dTag(candidate) != dTag) continue
+            val current = latest
+            if (current == null || Nip01EventOrder.isNewer(candidate, current)) latest = candidate
+        }
+        return latest
+    }
+
     fun dTag(event: NostrEvent): String =
         event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1).orEmpty()
 
