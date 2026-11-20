@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           ACTUAL_REF="${GITHUB_REF#refs/heads/}"
-          VERSION_NAME="$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
           test -n "$VERSION_NAME"
           EXPECTED_REF="release/postilla-v${VERSION_NAME}"
           [[ "$ACTUAL_REF" == "$EXPECTED_REF" ]] || {
@@ -193,7 +193,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSION_NAME="$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
           test -n "$VERSION_NAME"
           EXPECTED_TAG="v$VERSION_NAME"
           TAG="$RELEASE_TAG_INPUT"

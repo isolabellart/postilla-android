@@ -38,3 +38,8 @@ On commit `09f552c7121113145ed8dbdad9dc6268979d3905`:
 - Staging artifact: `postilla-staging-1.0.42`, artifact ID `14646974593`.
 
 These are validations of the pre-final-release-guard commit. The release-guard changes are validated by the subsequent CI and staging runs before merging the integration PR. No production APK, GitHub Release or Zapstore publication was initiated during this reorganization.
+
+
+## Follow-up release guard correction
+
+Commit `9b01c88fffddef0c20be97223853e095fd41ead5` tightened release branch and tag validation. Its version-extraction expression was then simplified to use the exact Gradle line and shell field splitting rather than an escaped sed capture. The correction is kept in the integration branch's subsequent commit; the earlier SHA and backup refs remain available for recovery.
