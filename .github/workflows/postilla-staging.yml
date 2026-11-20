@@ -18,6 +18,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 
 concurrency:
   group: postilla-staging-${{ github.ref }}
@@ -138,6 +140,11 @@ jobs:
 
           cp "$APK" "Postilla-Preview-v$EXPECTED_VERSION_NAME.apk"
           sha256sum "Postilla-Preview-v$EXPECTED_VERSION_NAME.apk" | tee "$RUNNER_TEMP/postilla-staging-sha256.txt"
+
+      - name: Attest staging APK build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: Postilla-Preview-v${{ steps.version.outputs.name }}.apk
 
       - name: Upload signed staging APK
         uses: actions/upload-artifact@v4
