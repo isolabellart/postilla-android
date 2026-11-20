@@ -119,6 +119,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip88
@@ -260,7 +261,7 @@ fun ComposeScreen(
                             replyTo != null -> stringResource(R.string.compose_reply)
                             else -> stringResource(R.string.compose_new_post)
                         },
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
                         maxLines = 1
                     )
                 },
@@ -274,8 +275,8 @@ fun ComposeScreen(
                         // Mode switches are hidden while replying or quoting.
                     } else {
                         Row(
-                            modifier = Modifier.padding(end = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(end = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
@@ -285,12 +286,12 @@ fun ComposeScreen(
                                     .clip(CircleShape)
                                     .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                     .clickable { viewModel.toggleGalleryMode() }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .padding(horizontal = 9.dp, vertical = 7.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text(stringResource(R.string.compose_gallery_button), style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                                    Text(stringResource(R.string.compose_gallery_button), style = MaterialTheme.typography.labelMedium, maxLines = 1, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             Surface(
@@ -300,12 +301,12 @@ fun ComposeScreen(
                                     .clip(CircleShape)
                                     .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                     .clickable(onClick = onWriteArticle)
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .padding(horizontal = 9.dp, vertical = 7.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text(stringResource(R.string.compose_article_button), style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                                    Text(stringResource(R.string.compose_article_button), style = MaterialTheme.typography.labelMedium, maxLines = 1, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }

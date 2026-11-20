@@ -61,6 +61,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.darkwisp.app.R
@@ -91,6 +93,25 @@ fun ArticleComposerScreen(
     val error by viewModel.error.collectAsState()
     val preview by viewModel.preview.collectAsState()
     val context = LocalContext.current
+    var bodyFieldValue by remember { mutableStateOf(TextFieldValue(text = body)) }
+    LaunchedEffect(body) {
+        if (bodyFieldValue.text != body) {
+            bodyFieldValue = TextFieldValue(text = body, selection = TextRange(body.length))
+        }
+    }
+    val onMarkdownFormat: (ArticleMarkdownFormat) -> Unit = { format ->
+        val edit = formatArticleMarkdownSelection(
+            text = bodyFieldValue.text,
+            selectionStart = bodyFieldValue.selection.start,
+            selectionEnd = bodyFieldValue.selection.end,
+            format = format
+        )
+        bodyFieldValue = TextFieldValue(
+            text = edit.text,
+            selection = TextRange(edit.selectionStart, edit.selectionEnd)
+        )
+        viewModel.updateBody(edit.text)
+    }
     val bodyBringIntoViewRequester = remember { BringIntoViewRequester() }
     var bodyEditorFocused by remember { mutableStateOf(false) }
     val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
@@ -131,8 +152,8 @@ fun ArticleComposerScreen(
         },
         bottomBar = {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 OutlinedButton(
                     onClick = {
@@ -163,7 +184,7 @@ fun ArticleComposerScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Spacer(Modifier.height(2.dp))
             if (!preview) {
@@ -222,33 +243,48 @@ fun ArticleComposerScreen(
                     singleLine = true,
                     enabled = !publishing
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf("## " to "H2", "**" to "B", "*" to "I", "> " to "Quote", "- " to "List").forEach { (marker, label) ->
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.clickable(enabled = !publishing) { viewModel.insertMarkdown(marker) }
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
-                        }
-                    }
-                }
                 OutlinedTextField(
-                    value = body,
-                    onValueChange = viewModel::updateBody,
+                    value = bodyFieldValue,
+                    onValueChange = { value ->
+                        bodyFieldValue = value
+                        if (value.text != body) viewModel.updateBody(value.text)
+                    },
                     label = { Text(stringResource(R.string.article_body_hint)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .bringIntoViewRequester(bodyBringIntoViewRequester)
                         .onFocusChanged { bodyEditorFocused = it.isFocused },
-                    minLines = 8,
-                    maxLines = 24,
+                    minLines = 4,
+                    maxLines = 12,
                     enabled = !publishing
                 )
+                // Keep formatting actions below the editor so Android's selection popup
+                // does not cover the Markdown controls on the first line.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf(
+                        ArticleMarkdownFormat.HEADING_2 to "H2",
+                        ArticleMarkdownFormat.BOLD to "B",
+                        ArticleMarkdownFormat.ITALIC to "I",
+                        ArticleMarkdownFormat.QUOTE to "Quote",
+                        ArticleMarkdownFormat.LIST to "List"
+                    ).forEach { (format, label) ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.clickable(enabled = !publishing) { onMarkdownFormat(format) }
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
             } else {
                 Text(title.ifBlank { stringResource(R.string.article_title_hint) }, style = MaterialTheme.typography.headlineMedium)
                 if (coverImage.isNotBlank()) {
@@ -260,7 +296,7 @@ fun ArticleComposerScreen(
                     )
                 }
                 if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                ArticleMarkdownPreview(markdown = body, modifier = Modifier.fillMaxWidth())
                 if (hashtags.isNotBlank()) {
                     Text(hashtags.split(',', ' ').filter { it.isNotBlank() }.joinToString(" ") {
                         if (it.startsWith("#")) it else "#$it"

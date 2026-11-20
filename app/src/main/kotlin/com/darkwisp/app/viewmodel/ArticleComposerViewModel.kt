@@ -112,19 +112,6 @@ class ArticleComposerViewModel(app: Application) : AndroidViewModel(app) {
     fun updateHashtags(value: String) { _hashtags.value = value; dirty = true }
     fun togglePreview() { _preview.value = !_preview.value }
 
-    fun insertMarkdown(marker: String) {
-        val addition = when (marker) {
-            "## " -> "\n## Titolo"
-            "**" -> "**grassetto**"
-            "*" -> "*corsivo*"
-            "> " -> "\n> citazione"
-            "- " -> "\n- elemento"
-            else -> marker
-        }
-        _body.value = if (_body.value.isBlank()) addition else _body.value + addition
-        dirty = true
-    }
-
     fun removeCover() {
         _coverImage.value = ""
         dirty = true
