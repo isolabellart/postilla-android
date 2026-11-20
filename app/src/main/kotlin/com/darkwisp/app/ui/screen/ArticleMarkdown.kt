@@ -76,7 +76,7 @@ internal fun formatArticleMarkdownSelection(
             if (line.isEmpty()) blockMarker.trimEnd() else blockMarker + line
         }
         val updated = text.replaceRange(start, end, replacement)
-        return ArticleMarkdownEdit(updated, start, start + replacement.length)
+        return ArticleMarkdownEdit(updated, start + blockMarker.length, start + replacement.length)
     }
 
     val lineStart = text.lastIndexOf('\n', start - 1) + 1
