@@ -1169,4 +1169,29 @@
     <string name="marketplace_image_counter">%1$d of %2$d</string>
     <string name="compose_resize_text_area">Resize text field</string>
     <string name="article_draft_label">Article</string>
+
+    <!-- NIP-23 long-form articles -->
+    <string name="article_compose_button">Write article</string>
+    <string name="article_compose_title">New article</string>
+    <string name="article_title_hint">Article title</string>
+    <string name="article_summary_hint">Summary (optional)</string>
+    <string name="article_cover">Cover image</string>
+    <string name="article_choose_cover">Choose cover image</string>
+    <string name="article_remove_cover">Remove cover image</string>
+    <string name="article_body_hint">Write your article in Markdown</string>
+    <string name="article_hashtags_hint">Hashtags, separated by commas</string>
+    <string name="article_preview">Preview</string>
+    <string name="article_edit">Edit article</string>
+    <string name="article_save_draft">Save draft</string>
+    <string name="article_publish">Publish article</string>
+    <string name="article_publishing">Publishing…</string>
+    <string name="article_title_required">Add a title before publishing.</string>
+    <string name="article_body_required">Add the article text before publishing.</string>
+    <string name="article_uploading_cover">Uploading cover…</string>
+    <string name="article_copy_address">Copy article address</string>
+    <string name="article_address_copied">Article address copied</string>
+    <string name="article_publish_unconfirmed">No relay confirmed the article. Your text is still here; try again.</string>
+    <string name="article_not_signed_in">Sign in to publish an article.</string>
+    <string name="article_draft_label">Article</string>
+
 </resources>

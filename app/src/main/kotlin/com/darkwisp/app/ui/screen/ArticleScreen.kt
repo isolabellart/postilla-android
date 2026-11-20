@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.text.Placeholder
@@ -65,6 +67,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import android.widget.Toast
+import com.darkwisp.app.R
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.TranslationRepository
 import com.darkwisp.app.repo.TranslationState

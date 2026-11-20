@@ -1002,4 +1002,29 @@
     <string name="marketplace_image_counter">%1$d di %2$d</string>
     <string name="compose_resize_text_area">Ridimensiona il campo di testo</string>
     <string name="article_draft_label">Articolo</string>
+
+    <!-- Articoli NIP-23 -->
+    <string name="article_compose_button">Scrivi articolo</string>
+    <string name="article_compose_title">Nuovo articolo</string>
+    <string name="article_title_hint">Titolo dell'articolo</string>
+    <string name="article_summary_hint">Sommario (facoltativo)</string>
+    <string name="article_cover">Immagine di copertina</string>
+    <string name="article_choose_cover">Scegli immagine di copertina</string>
+    <string name="article_remove_cover">Rimuovi immagine di copertina</string>
+    <string name="article_body_hint">Scrivi il tuo articolo in Markdown</string>
+    <string name="article_hashtags_hint">Hashtag separati da virgole</string>
+    <string name="article_preview">Anteprima</string>
+    <string name="article_edit">Modifica articolo</string>
+    <string name="article_save_draft">Salva bozza</string>
+    <string name="article_publish">Pubblica articolo</string>
+    <string name="article_publishing">Pubblicazione…</string>
+    <string name="article_title_required">Inserisci un titolo prima di pubblicare.</string>
+    <string name="article_body_required">Inserisci il testo dell'articolo prima di pubblicare.</string>
+    <string name="article_uploading_cover">Caricamento copertina…</string>
+    <string name="article_copy_address">Copia indirizzo articolo</string>
+    <string name="article_address_copied">Indirizzo articolo copiato</string>
+    <string name="article_publish_unconfirmed">Nessun relay ha confermato l'articolo. Il testo è ancora qui: riprova.</string>
+    <string name="article_not_signed_in">Accedi per pubblicare un articolo.</string>
+    <string name="article_draft_label">Articolo</string>
+
 </resources>
