@@ -1,0 +1,376 @@
+name: Postilla v1.0.42 official release
+
+on:
+  push:
+    branches:
+      - "release/postilla-v1.0.42"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postilla-official-release-v1.0.42
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Test, build, verify and publish Postilla v1.0.42
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      RELEASE_TAG: v1.0.42
+      EXPECTED_STAGING_COMMIT: b3071cc9619e7d7cf0d73f760b1dd4034afacecb
+      EXPECTED_CERT_SHA256: 86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify branch, approved staging source and unused release tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/release/postilla-v1.0.42" ]]
+          git cat-file -e "$EXPECTED_STAGING_COMMIT^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_STAGING_COMMIT" HEAD
+
+          # The application and build inputs must be identical to the tested staging commit.
+          git diff --quiet "$EXPECTED_STAGING_COMMIT" HEAD -- \
+            app/ gradle/ build.gradle.kts settings.gradle.kts gradle.properties || {
+              echo "::error::Application or build inputs changed after staging approval."
+              exit 1
+            }
+
+          if [[ -n "$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")" ]]; then
+            echo "::error::Tag $RELEASE_TAG already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::A GitHub Release for $RELEASE_TAG already exists."
+            exit 1
+          fi
+          echo "Approved application source and unused tag verified."
+
+      - name: Check signing, GitHub release and Zapstore credentials
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+          RELEASE_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+          BUNKER_CLIENT_KEY: ${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$KEYSTORE_B64" ]] && missing+=("DARK_WISP_ENHANCED_KEYSTORE_BASE64")
+          [[ -z "$STORE_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_STORE_PASSWORD")
+          [[ -z "$KEY_ALIAS" ]] && missing+=("DARK_WISP_ENHANCED_KEY_ALIAS")
+          [[ -z "$KEY_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_KEY_PASSWORD")
+          [[ -z "$RELEASE_TOKEN" ]] && missing+=("DARK_WISP_ENHANCED_RELEASE_TOKEN")
+          [[ -z "$SIGN_WITH" || "$SIGN_WITH" != bunker://* ]] && missing+=("ZAPSTORE_SIGN_WITH")
+          [[ ! "$BUNKER_CLIENT_KEY" =~ ^[0-9a-fA-F]{64}$ ]] && missing+=("ZAPSTORE_BUNKER_CLIENT_KEY")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required release credentials: ${missing[*]}"
+            exit 1
+          fi
+          echo "All required release and Zapstore credentials are configured."
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: false
+
+      - name: Install pinned Zapstore CLI and fetch NIP-46 implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/zapstore/zsp/v2/cmd/zsp@v2.0.1
+          "$(go env GOPATH)/bin/zsp" --version
+          git clone --depth 1 --branch v2.0.1 https://github.com/zapstore/zsp.git "$RUNNER_TEMP/zsp"
+
+      - name: Verify Zapstore Bunker identity with read-only NIP-46 handshake
+        shell: bash
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGN_WITH }}
+          BUNKER_CLIENT_KEY: ${{ secrets.ZAPSTORE_BUNKER_CLIENT_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$SIGN_WITH" == bunker://* ]]
+          [[ "$BUNKER_CLIENT_KEY" =~ ^[0-9a-fA-F]{64}$ ]]
+
+          BUNKER_TARGET="${SIGN_WITH#bunker://}"
+          BUNKER_TARGET="${BUNKER_TARGET%%\?*}"
+          BUNKER_TARGET="${BUNKER_TARGET,,}"
+          [[ "$BUNKER_TARGET" =~ ^[0-9a-f]{64}$ ]]
+
+          install -d -m 700 "$HOME/.config/zsp/bunker-keys"
+          printf '%s\n' "$BUNKER_CLIENT_KEY" > "$HOME/.config/zsp/bunker-keys/$BUNKER_TARGET.key"
+          chmod 600 "$HOME/.config/zsp/bunker-keys/$BUNKER_TARGET.key"
+          unset BUNKER_CLIENT_KEY
+
+          mkdir -p "$RUNNER_TEMP/zsp/.ci-bunker-check"
+          cat > "$RUNNER_TEMP/zsp/.ci-bunker-check/main.go" <<'GO'
+          package main
+          import (
+            "context"
+            "fmt"
+            "os"
+            "time"
+            zspnostr "github.com/zapstore/zsp/v2/internal/nostr"
+          )
+          func main() {
+            ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+            defer cancel()
+            signer, err := zspnostr.NewSigner(ctx, os.Getenv("SIGN_WITH"))
+            if err != nil { fmt.Fprintln(os.Stderr, "NIP-46 connection failed:", err); os.Exit(1) }
+            defer signer.Close()
+            const expected = "8af9683c5868749cc3a261a0e006f3f53e4bea0aa81f31f0f027d684e7f0c0c8"
+            if signer.PublicKey() != expected {
+              fmt.Fprintln(os.Stderr, "Unexpected Zapstore delegate identity.")
+              os.Exit(1)
+            }
+            fmt.Println("NIP-46 handshake successful. Postilla delegate identity verified.")
+          }
+          GO
+          cd "$RUNNER_TEMP/zsp"
+          go run ./.ci-bunker-check
+          echo "Zapstore signer verified before any public release is created."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode permanent signing keystore
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DARK_WISP_ENHANCED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/postilla-release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          {
+            echo "RELEASE_STORE_FILE=$KEYSTORE_PATH"
+            echo "RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Run staging unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            testStagingUnitTest --stacktrace
+
+      - name: Build signed production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --no-build-cache --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            assembleRelease --stacktrace
+
+      - name: Verify production package, version, signature and certificate
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)"
+          test -x "$APKANALYZER"
+          PACKAGE_ID="$("$APKANALYZER" manifest application-id "$APK")"
+          VERSION_NAME="$("$APKANALYZER" manifest version-name "$APK")"
+          VERSION_CODE="$("$APKANALYZER" manifest version-code "$APK")"
+          echo "Package: $PACKAGE_ID"
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+          [[ "$PACKAGE_ID" == "com.isolabellart.darkwispenhanced" ]]
+          [[ "$VERSION_NAME" == "1.0.42" ]]
+          [[ "$VERSION_CODE" == "42" ]]
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1)"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | tee "$RUNNER_TEMP/postilla-release-signature.txt"
+          ACTUAL_CERT_SHA256="$(
+            printf '%s\n' "$SIGNATURE_OUTPUT" \
+              | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
+              | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ACTUAL_CERT_SHA256" == "$EXPECTED_CERT_SHA256" ]] || {
+            echo "::error::Production APK certificate mismatch."
+            exit 1
+          }
+
+          cp "$APK" "Postilla-v1.0.42.apk"
+          APK_SHA256="$(sha256sum "Postilla-v1.0.42.apk" | awk '{print $1}')"
+          echo "sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          echo "Production APK SHA-256: $APK_SHA256"
+
+      - name: Upload signed production APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: postilla-v1.0.42-production-apk
+          path: Postilla-v1.0.42.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Prepare bilingual release notes
+        shell: bash
+        env:
+          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          NOTES="$RUNNER_TEMP/postilla-v1.0.42-release-notes.md"
+          cat > "$NOTES" <<'EOF'
+          # Postilla v1.0.42
+
+          **A more expressive space for writing, reading and joining conversations on Nostr.**
+
+          ## What's new
+          - **Long-form articles (NIP-23):** write, save drafts and publish articles, then read them in a dedicated article view.
+          - **Markdown writing tools:** format selected text as headings, bold, italic, quotations and lists, with a rendered preview before publication.
+          - **Article conversations (NIP-22):** comments and nested replies stay connected to the article they belong to.
+          - **More consistent article feeds:** revisions are handled more cleanly and duplicate versions are filtered across feed refreshes and app restarts.
+          - **A more comfortable composer:** improved keyboard-aware layout keeps the writing area, cursor and publication actions accessible while editing.
+
+          ## Compatibility and installation
+          - Android package: com.isolabellart.darkwispenhanced
+          - Version: **1.0.42 (42)**
+          - Install directly over the existing Postilla / Dark Wisp Enhanced installation. The application ID and permanent signing certificate are unchanged.
+          - Keep account and wallet recovery material offline. Never share a private key, recovery phrase or NWC connection string.
+
+          Signed APK: Postilla-v1.0.42.apk
+          SHA-256: @@APK_SHA256@@
+
+          ---
+
+          # Postilla v1.0.42 (Italiano)
+
+          **Uno spazio più completo per scrivere, leggere e partecipare alle conversazioni su Nostr.**
+
+          ## Novità
+          - **Articoli lunghi (NIP-23):** scrivi, salva bozze e pubblica articoli, poi leggili in una schermata dedicata.
+          - **Strumenti di scrittura Markdown:** formatta il testo selezionato con titoli, grassetto, corsivo, citazioni ed elenchi; l'anteprima mostra il risultato già impaginato.
+          - **Conversazioni sugli articoli (NIP-22):** commenti e risposte annidate restano collegati all'articolo corretto.
+          - **Feed degli articoli più coerenti:** le revisioni vengono gestite con maggiore precisione e le versioni duplicate sono filtrate anche dopo aggiornamenti e riavvii dell'app.
+          - **Composizione più comoda:** la disposizione adattiva alla tastiera mantiene accessibili area di scrittura, cursore e comandi di salvataggio e pubblicazione.
+
+          ## Compatibilità e installazione
+          - Package Android: com.isolabellart.darkwispenhanced
+          - Versione: **1.0.42 (42)**
+          - Installazione diretta sopra Postilla / Dark Wisp Enhanced esistente. Package Android e certificato di firma permanente restano invariati.
+          - Conserva offline i dati di recupero di account e wallet. Non condividere mai chiavi private, frasi di recupero o stringhe di connessione NWC.
+
+          APK firmato: Postilla-v1.0.42.apk
+          SHA-256: @@APK_SHA256@@
+          EOF
+          sed -i "s|@@APK_SHA256@@|$APK_SHA256|g" "$NOTES"
+          test -s "$NOTES"
+
+      - name: Create or safely reuse the GitHub Release draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          EXPECTED_APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          # Draft releases without a Git tag have an untagged-* browser URL.
+          # The Releases collection still exposes their intended tag_name,
+          # so locate the exact draft by tag and verify its existing APK.
+          EXISTING_DRAFT_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '.[] | select(.tag_name == "v1.0.42" and .draft == true and .prerelease == false) | .id' | head -n 1)"
+
+          if [[ -n "$EXISTING_DRAFT_ID" ]]; then
+            RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_DRAFT_ID")"
+            ASSET_DATA="$(jq -c --arg name "Postilla-v1.0.42.apk" '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+            [[ -n "$ASSET_DATA" ]] || {
+              echo "::error::An existing v1.0.42 draft has no uploaded production APK."
+              exit 1
+            }
+            EXISTING_DIGEST="$(jq -r '.digest // empty' <<< "$ASSET_DATA")"
+            if [[ "$EXISTING_DIGEST" != "sha256:$EXPECTED_APK_SHA256" ]]; then
+              echo "::error::An existing v1.0.42 draft contains a different APK digest; refusing to replace it."
+              exit 1
+            fi
+            echo "Reusing exact verified v1.0.42 draft ID $EXISTING_DRAFT_ID with matching APK digest."
+          else
+            gh release create "$RELEASE_TAG" "Postilla-v1.0.42.apk#Postilla-v1.0.42.apk" \
+              --draft --title "Postilla v1.0.42" \
+              --target "$GITHUB_SHA" \
+              --notes-file "$RUNNER_TEMP/postilla-v1.0.42-release-notes.md"
+          fi
+
+      - name: Verify draft asset, then publish stable GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DARK_WISP_ENHANCED_RELEASE_TOKEN }}
+          EXPECTED_APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          # A draft is intentionally looked up by tag_name in the Releases
+          # collection: GitHub can expose an untagged-* URL until publication.
+          RELEASE_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '.[] | select(.tag_name == "v1.0.42" and .draft == true and .prerelease == false) | .id' | head -n 1)"
+          [[ -n "$RELEASE_ID" ]] || {
+            echo "::error::Could not find the v1.0.42 draft release."
+            exit 1
+          }
+          RELEASE_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
+          [[ "$(jq -r '.tag_name' <<< "$RELEASE_DATA")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.draft' <<< "$RELEASE_DATA")" == "true" ]]
+          [[ "$(jq -r '.prerelease' <<< "$RELEASE_DATA")" == "false" ]]
+
+          ASSET_DATA="$(jq -c --arg name "Postilla-v1.0.42.apk" '.assets[]? | select(.name == $name and .state == "uploaded")' <<< "$RELEASE_DATA")"
+          [[ -n "$ASSET_DATA" ]] || {
+            echo "::error::The production APK is not attached to the draft release."
+            exit 1
+          }
+          ASSET_SIZE="$(jq -r '.size' <<< "$ASSET_DATA")"
+          ASSET_DIGEST="$(jq -r '.digest // empty' <<< "$ASSET_DATA")"
+          (( ASSET_SIZE > 0 ))
+          if [[ "$ASSET_DIGEST" != "sha256:$EXPECTED_APK_SHA256" ]]; then
+            echo "::error::GitHub's uploaded APK digest does not match the verified production build."
+            exit 1
+          fi
+
+          # Use the repository PAT, not GITHUB_TOKEN, so the published event starts Zapstore.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false -F prerelease=false -f make_latest=true >/dev/null
+
+          FINAL_DATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
+          [[ "$(jq -r '.draft' <<< "$FINAL_DATA")" == "false" ]]
+          [[ "$(jq -r '.prerelease' <<< "$FINAL_DATA")" == "false" ]]
+          [[ "$(jq -r '.tag_name' <<< "$FINAL_DATA")" == "$RELEASE_TAG" ]]
+          RELEASE_URL="$(jq -r '.html_url' <<< "$FINAL_DATA")"
+          echo "Published stable GitHub Release: $RELEASE_URL"
+
+          {
+            echo "## GitHub Release published"
+            echo "- Version: Postilla 1.0.42 (39)"
+            echo "- Tag: $RELEASE_TAG"
+            echo "- APK: Postilla-v1.0.42.apk"
+            echo "- APK SHA-256: $EXPECTED_APK_SHA256"
+            echo "- Signing certificate SHA-256: $EXPECTED_CERT_SHA256"
+            echo "- URL: $RELEASE_URL"
+            echo "- The published event will start the Zapstore workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Postilla v1.0.42 is published as a stable GitHub Release."
