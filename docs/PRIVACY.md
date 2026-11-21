@@ -1,6 +1,6 @@
 # Postilla — Privacy & Security
 
-**Last reviewed:** 20 November 2026  
+**Last reviewed:** 21 November 2026  
 **Project:** [Postilla for Android](https://github.com/isolabellart/postilla-android)  
 **Publisher:** IsolabellArt  
 **Application ID:** `com.isolabellart.darkwispenhanced`
@@ -42,6 +42,10 @@ Source: [DeepL Privacy Policy](https://www.deepl.com/privacy).
 Depending on the features used and the user's configuration, Postilla may contact:
 
 - **Nostr relays:** retrieve and publish Nostr events, including public content and encrypted message envelopes.
+- **NIP-50 search relays:** when the user searches for people or notes, the app sends a search filter (including the search term and requested event kind) to the selected public search relays. Profile sorting may send the viewed public key and a sort expression such as `sort:hot`, `sort:rising`, or `sort:zaps` to Ditto's public relay. Relay operators can observe these queries and normal connection metadata.
+- **Ditto public relay:** Postilla reads NIP-85 kind-30383 event-stat assertions from `wss://relay.ditto.pub`. The request includes the target event IDs being looked up. Incoming assertions are accepted only after relay signature verification and a publisher-key check in the app.
+- **Nostr.wine REST API:** search queries are sent over HTTPS to `api.nostr.wine/search`. The request can include the text query, event kind, optional author public key, sort mode, page, and result limit. Trending requests to `api.nostr.wine/trending` include the requested metric, time window (up to 48 hours), and result limit. The API therefore receives search terms and query parameters, but not the message bodies of private NIP-17 conversations. Its public documentation states a free quota of one request per second; this is a published service limit, not a guarantee of future availability or terms.
+- **NIP-02 follower discovery:** when a user opens a profile's followers list, Postilla may ask connected read relays and public indexer relays for kind-3 contact-list events containing that profile's public key in a `p` tag. This reveals the public key being looked up to those relays. The app then requests the corresponding public kind-0 profile metadata.
 - **Blossom media servers:** upload and retrieve media selected by the user. The chosen server receives the uploaded file and connection metadata. The user can configure Blossom servers.
 - **Google ML Kit:** download translation language models and provide SDK diagnostic/usage data; its barcode-scanning component supports QR scanning.
 - **DeepL:** receive text explicitly selected for cloud translation.
@@ -51,7 +55,7 @@ Depending on the features used and the user's configuration, Postilla may contac
 - **Breez SDK / Spark:** provide the integrated Lightning wallet. Wallet connection, synchronization, invoices, and payments require communication with Breez/Spark infrastructure. Their services may process wallet and payment-related data according to their own terms.
 - **Nostr Wallet Connect providers:** if configured, process wallet requests and related payment information.
 
-The exact relay and Blossom servers depend on defaults, user settings, and the event data being accessed. Postilla cannot control the retention or onward disclosure practices of these independent operators.
+The exact relay and Blossom servers depend on defaults, user settings, and the event data being accessed. The current experimental search architecture uses public NIP-50 relays, Ditto's public relay and Nostr.wine's REST API; the paid Nostr.wine WebSocket relay is not used by this build. Postilla cannot control the availability, logging, retention or onward disclosure practices of these independent operators. Their current operational availability and retention practices have not been independently audited by Postilla.
 
 ## 4. Local data and diagnostics
 
@@ -95,3 +99,4 @@ Postilla is open source under the MIT license. A source-code review or a success
 ## 8. Change history
 
 - **20 November 2026:** initial privacy and data-flow notice. Clarified the distinction between on-device ML Kit translation and DeepL cloud translation, including explicit per-message consent for private-message translation.
+- **21 November 2026:** documented experimental NIP-50 search relays, Nostr.wine REST search/trending requests, Ditto NIP-85 statistic lookups, and NIP-02 follower discovery used by staging 1.0.44.
