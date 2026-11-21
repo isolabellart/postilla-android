@@ -22,7 +22,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -173,24 +172,6 @@ fun RelayScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(buttonLabel)
-                        }
-                    }
-
-                    if (selectedTab == RelaySetType.SEARCH) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                val added = viewModel.addDefaultSearchRelays()
-                                val message = if (added > 0) {
-                                    context.getString(R.string.default_search_relays_added, added)
-                                } else {
-                                    context.getString(R.string.default_search_relays_already_present)
-                                }
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.default_search_relays_button))
                         }
                     }
 

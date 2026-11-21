@@ -49,14 +49,6 @@ class RelayViewModel(app: Application) : AndroidViewModel(app) {
         _newRelayUrl.value = value
     }
 
-    fun addDefaultSearchRelays(): Int {
-        val current = searchRelays.value
-        val additions = RelayConfig.DEFAULT_SEARCH_RELAYS.filterNot(current::contains)
-        if (additions.isEmpty()) return 0
-        keyRepo.saveSearchRelays(RelayConfig.mergeDefaultSearchRelays(current))
-        return additions.size
-    }
-
     fun addRelay(): Boolean {
         val url = _newRelayUrl.value.trim().trimEnd('/')
         if (url.isBlank()) return false

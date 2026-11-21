@@ -641,10 +641,6 @@
     <string name="broadcast_nip65">Broadcast Relay List (NIP-65)</string>
     <string name="broadcast_dm_relays">Broadcast DM Relays</string>
     <string name="broadcast_search_relays">Broadcast Search Relays</string>
-    <string name="default_search_relays_button">Add default search relays</string>
-    <string name="default_search_relays_added">Added %1$d default search relays.</string>
-    <string name="default_search_relays_already_present">All default search relays are already present.</string>
-    <string name="search_no_results_relay_hint">Some relays do not support full-text search. Open Relay settings, choose Search, and add the default search relays to improve coverage.</string>
     <string name="broadcast_blocked_relays">Broadcast Blocked Relays</string>
 
     <!-- Local Relay -->

@@ -545,10 +545,6 @@
     <string name="broadcast_nip65">Broadcast Lista Relay (NIP-65)</string>
     <string name="broadcast_dm_relays">Broadcast Relay DM</string>
     <string name="broadcast_search_relays">Broadcast Relay Ricerca</string>
-    <string name="default_search_relays_button">Aggiungi relay di ricerca predefiniti</string>
-    <string name="default_search_relays_added">Aggiunti %1$d relay di ricerca predefiniti.</string>
-    <string name="default_search_relays_already_present">I relay di ricerca predefiniti sono già presenti.</string>
-    <string name="search_no_results_relay_hint">Alcuni relay non supportano la ricerca testuale. Apri Impostazioni Relay, scegli Ricerca e aggiungi i relay predefiniti per ampliare i risultati.</string>
     <string name="broadcast_blocked_relays">Broadcast Relay Bloccati</string>
 
     <!-- Post Card -->

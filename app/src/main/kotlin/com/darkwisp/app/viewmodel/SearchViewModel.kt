@@ -36,6 +36,16 @@ enum class RelayOption {
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val keyRepo = KeyRepository(app)
 
+    init {
+        // Keep this ViewModel in sync with Relay settings, including changes
+        // made by the separate RelayViewModel instance.
+        viewModelScope.launch {
+            keyRepo.searchRelaysFlow.collect { relays ->
+                _searchRelays.value = relays
+            }
+        }
+    }
+
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 

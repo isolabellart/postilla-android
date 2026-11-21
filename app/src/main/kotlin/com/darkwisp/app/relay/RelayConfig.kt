@@ -40,21 +40,14 @@ data class RelayConfig(
             "wss://auth.nostr1.com"
         )
 
-        // Default search set shown in Relay > Search. nostr.wine is the public
-        // read endpoint used here; this does not add the separate paid filter.nostr.wine.
+        // Free public relays only: the paid nostr.wine WebSocket relay is intentionally excluded.
         val DEFAULT_SEARCH_RELAYS = listOf(
-            "wss://nostr.wine",
             "wss://relay.noswhere.com",
             "wss://search.nos.today",
             "wss://antiprimal.net",
             "wss://relay.ditto.pub",
-            "wss://search.brainstorm.world",
-            "wss://scores.brainstorm.world"
+            "wss://search.brainstorm.world"
         )
-
-        /** Preserve custom relay order and append each missing default exactly once. */
-        fun mergeDefaultSearchRelays(existing: List<String>): List<String> =
-            (existing + DEFAULT_SEARCH_RELAYS).distinct()
 
         val DEFAULT_INDEXER_RELAYS = listOf(
             "wss://purplepag.es",
