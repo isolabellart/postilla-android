@@ -22,12 +22,15 @@ import com.darkwisp.app.repo.ListRepository
 import com.darkwisp.app.repo.MetadataFetcher
 import com.darkwisp.app.repo.NotificationRepository
 import com.darkwisp.app.repo.ProfileRepository
+import com.darkwisp.app.repo.NostrWineApiClient
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.RelaySet
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -182,10 +185,8 @@ class FeedSubscriptionManager(
     fun markLoadingComplete() { _loadingScreenComplete.value = true }
 
     /** Resolve indexer relays: user's search relays (kind 10007) with default fallback. */
-    private fun getIndexerRelays(): List<String> {
-        val userSearchRelays = keyRepo.getSearchRelays()
-        return userSearchRelays.ifEmpty { RelayConfig.DEFAULT_INDEXER_RELAYS }
-    }
+    private fun getIndexerRelays(): List<String> =
+        (keyRepo.getSearchRelays() + RelayConfig.DEFAULT_INDEXER_RELAYS).distinct()
 
     /** Blocked + bad relay URLs combined for outbox routing exclusion. */
     private fun getExcludedRelayUrls(): Set<String> =
@@ -697,56 +698,45 @@ class FeedSubscriptionManager(
         invalidateDisplayedFeed()
         val oldSubId = relayFeedSubId
         relayFeedGeneration++
-        relayFeedSubId = "trending-feed-$relayFeedGeneration"
+        relayFeedSubId = "trending-feed-${relayFeedGeneration}"
         relayPool.closeOnAllRelays(oldSubId)
         relayFeedEoseJob?.cancel()
         relayStatusMonitorJob?.cancel()
-
-        val url = buildTrendingRelayUrl(_trendingMetric.value, _trendingTimeframe.value)
-        _relayFeedStatus.value = RelayFeedStatus.Connecting
-
-        val filter = Filter(kinds = FEED_KINDS, limit = 100)
-        val currentGen = relayFeedGeneration
-        val subId = relayFeedSubId
-
+        val generation = relayFeedGeneration
+        _relayFeedStatus.value = RelayFeedStatus.Subscribing
         relayFeedEoseJob = scope.launch {
-            // The relay may already be pre-connecting (via onPreReconnect) or may
-            // need to be created fresh. sendToRelayOrEphemeral handles both cases
-            // and queues the REQ as a pending message if the WebSocket isn't open yet.
-            // If the relay fails to connect (stale DNS after sleep, etc.), retry with
-            // a fresh ephemeral connection.
-            var connected = false
-            for (attempt in 0..2) {
-                if (relayFeedGeneration != currentGen) return@launch
-                if (attempt > 0) {
-                    relayPool.disconnectRelay(url)
-                    delay(1500L)
+            try {
+                val apiEvents = NostrWineApiClient.trending(
+                    _trendingMetric.value.apiOrder,
+                    _trendingTimeframe.value.hours,
+                    200
+                )
+                if (relayFeedGeneration != generation) return@launch
+                val events = withContext(processingContext) {
+                    apiEvents.filter {
+                        it.kind in FEED_KINDS && runCatching { it.verifySignature() }.getOrDefault(false)
+                    }.distinctBy { it.id }
                 }
-                val msg = ClientMessage.req(subId, filter)
-                relayPool.sendToRelayOrEphemeral(url, msg, skipBadCheck = true)
-
-                // Wait for relay to connect — pending messages drain on WebSocket open
-                val deadline = System.currentTimeMillis() + 5_000
-                while (System.currentTimeMillis() < deadline) {
-                    if (relayFeedGeneration != currentGen) return@launch
-                    if (relayPool.isRelayConnected(url)) {
-                        connected = true
-                        break
-                    }
-                    delay(200)
+                if (relayFeedGeneration != generation) return@launch
+                events.forEach { event ->
+                    eventRepo.addRelayFeedEvent(event)
+                    eventRepo.requestProfileIfMissing(event.pubkey)
                 }
-                if (connected) break
-            }
-            if (!connected) {
-                _relayFeedStatus.value = RelayFeedStatus.ConnectionFailed("Failed to connect to trending relay")
-                return@launch
-            }
-
-            subManager.awaitEoseCount(subId, 1)
-            onRelayFeedEose()
-            subscribeEngagementForFeed()
-            withContext(processingContext) {
-                metadataFetcher.sweepMissingProfiles()
+                if (events.isEmpty()) {
+                    _relayFeedStatus.value = RelayFeedStatus.NoEvents
+                    return@launch
+                }
+                _relayFeedStatus.value = RelayFeedStatus.Streaming
+                fetchDittoEventStats(events.map { it.id }, generation)
+                if (relayFeedGeneration != generation) return@launch
+                subscribeEngagementForFeed()
+                withContext(processingContext) { metadataFetcher.sweepMissingProfiles() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("RLC", "Nostr.wine trending unavailable", error)
+                if (relayFeedGeneration == generation) _relayFeedStatus.value =
+                    RelayFeedStatus.ConnectionFailed("Nostr.wine unavailable: ${error.message ?: "network error"}")
             }
         }
     }
@@ -755,84 +745,103 @@ class FeedSubscriptionManager(
         invalidateDisplayedFeed()
         val oldSubId = relayFeedSubId
         relayFeedGeneration++
-        relayFeedSubId = "trending-users-$relayFeedGeneration"
+        relayFeedSubId = "trending-users-${relayFeedGeneration}"
         relayPool.closeOnAllRelays(oldSubId)
         relayFeedEoseJob?.cancel()
         relayStatusMonitorJob?.cancel()
-
-        val url = TRENDING_USERS_RELAY_URL
+        val generation = relayFeedGeneration
         _trendingUsersLoading.value = true
         _trendingUsers.value = emptyList()
-        _relayFeedStatus.value = RelayFeedStatus.Connecting
-
-        val filter = Filter(kinds = listOf(0), limit = 100)
-        val currentGen = relayFeedGeneration
-        val subId = relayFeedSubId
-
+        _relayFeedStatus.value = RelayFeedStatus.Subscribing
         relayFeedEoseJob = scope.launch {
-            var connected = false
-            for (attempt in 0..2) {
-                if (relayFeedGeneration != currentGen) return@launch
-                if (attempt > 0) {
-                    relayPool.disconnectRelay(url)
-                    delay(1500L)
+            try {
+                // Derived discovery list: authors of recent trending notes, not the old
+                // provider-specific "up-and-coming" ranking.
+                val events = NostrWineApiClient.trending("reactions", 24, 200)
+                if (relayFeedGeneration != generation) return@launch
+                val authors = withContext(processingContext) {
+                    events.filter { it.kind == 1 && runCatching { it.verifySignature() }.getOrDefault(false) }
+                        .map { it.pubkey }.distinct().take(100)
                 }
-                val msg = ClientMessage.req(subId, filter)
-                relayPool.sendToRelayOrEphemeral(url, msg, skipBadCheck = true)
-
-                val deadline = System.currentTimeMillis() + 5_000
-                while (System.currentTimeMillis() < deadline) {
-                    if (relayFeedGeneration != currentGen) return@launch
-                    if (relayPool.isRelayConnected(url)) {
-                        connected = true
-                        break
-                    }
-                    delay(200)
+                if (authors.isEmpty()) {
+                    _relayFeedStatus.value = RelayFeedStatus.NoEvents
+                    return@launch
                 }
-                if (connected) break
+                val profiles = fetchProfileMetadata(authors, "trending-users-profiles-$generation", generation)
+                if (relayFeedGeneration != generation) return@launch
+                _trendingUsers.value = profiles
+                _relayFeedStatus.value = if (profiles.isEmpty()) RelayFeedStatus.NoEvents else RelayFeedStatus.Streaming
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("RLC", "Trending author discovery failed", error)
+                if (relayFeedGeneration == generation) _relayFeedStatus.value =
+                    RelayFeedStatus.ConnectionFailed("Trending people unavailable: ${error.message ?: "network error"}")
+            } finally {
+                if (relayFeedGeneration == generation) _trendingUsersLoading.value = false
             }
-            if (!connected) {
-                _relayFeedStatus.value = RelayFeedStatus.ConnectionFailed("Failed to connect to trending users relay")
-                _trendingUsersLoading.value = false
-                return@launch
-            }
-
-            _relayFeedStatus.value = RelayFeedStatus.Subscribing
-
-            // Collect kind 0 events as they arrive
-            val collected = mutableListOf<ProfileData>()
-            val seenPubkeys = mutableSetOf<String>()
-            val collectJob = launch {
-                relayPool.relayEvents.collect { relayEvent ->
-                    if (relayEvent.subscriptionId != subId) return@collect
-                    if (relayFeedGeneration != currentGen) return@collect
-                    val event = relayEvent.event
-                    if (event.kind == 0 && seenPubkeys.add(event.pubkey)) {
-                        val profile = ProfileData.fromEvent(event)
-                        if (profile != null) {
-                            profileRepo.updateFromEvent(event)
-                            collected.add(profile)
-                            _trendingUsers.value = collected.toList()
-                            if (collected.size == 1) {
-                                _relayFeedStatus.value = RelayFeedStatus.Streaming
-                            }
-                        }
-                    }
-                }
-            }
-
-            subManager.awaitEoseCount(subId, 1)
-            collectJob.cancel()
-
-            if (collected.isEmpty()) {
-                _relayFeedStatus.value = RelayFeedStatus.NoEvents
-            } else {
-                _relayFeedStatus.value = RelayFeedStatus.Streaming
-            }
-            _trendingUsersLoading.value = false
         }
     }
 
+    private suspend fun fetchProfileMetadata(authors: List<String>, subId: String, generation: Long): List<ProfileData> {
+        val profiles = authors.mapNotNull { profileRepo.get(it) }.associateBy { it.pubkey }.toMutableMap()
+        val missing = authors.filterNot { it in profiles }.take(100)
+        if (missing.isNotEmpty()) {
+            val collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEvents.collect { re ->
+                    if (re.subscriptionId != subId || relayFeedGeneration != generation) return@collect
+                    if (re.event.kind == 0 && re.event.pubkey in missing) {
+                        eventRepo.cacheEvent(re.event)
+                        profileRepo.updateFromEvent(re.event)?.let { profiles[re.event.pubkey] = it }
+                    }
+                }
+            }
+            try {
+                val message = ClientMessage.req(subId, Filter(kinds = listOf(0), authors = missing, limit = missing.size))
+                (relayPool.getReadRelayUrls() + RelayConfig.DEFAULT_INDEXER_RELAYS).distinct().take(12).forEach { url ->
+                    runCatching { relayPool.sendToRelayOrEphemeral(url, message, skipBadCheck = true) }
+                }
+                subManager.awaitEoseWithTimeout(subId, timeoutMs = 12_000)
+            } finally {
+                collector.cancel()
+                relayPool.closeOnAllRelays(subId)
+            }
+        }
+        return authors.mapNotNull { profiles[it] ?: profileRepo.get(it) }
+    }
+
+    private suspend fun fetchDittoEventStats(ids: List<String>, generation: Long) {
+        ids.distinct().take(200).chunked(100).forEachIndexed { index, chunk ->
+            if (relayFeedGeneration != generation) return
+            val subId = "trending-ditto-stats-$generation-$index"
+            val collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEvents.collect { re ->
+                    if (re.subscriptionId == subId && relayFeedGeneration == generation) {
+                        eventRepo.updateDittoEventStats(re.event)
+                    }
+                }
+            }
+            try {
+                val filter = Filter(
+                    kinds = listOf(30383),
+                    authors = listOf(RelayConfig.DITTO_STATS_PUBKEY),
+                    dTags = chunk,
+                    limit = chunk.size
+                )
+                relayPool.sendToRelayOrEphemeral(
+                    RelayConfig.DITTO_RELAY_URL,
+                    ClientMessage.req(subId, filter),
+                    skipBadCheck = true
+                )
+                subManager.awaitEoseWithTimeout(subId, timeoutMs = 8_000)
+            } finally {
+                collector.cancel()
+                relayPool.closeOnAllRelays(subId)
+            }
+        }
+    }
+
+    // -- Isolated relay feed subscription --
     // -- Isolated relay feed subscription --
 
     private fun subscribeRelayFeed() {
@@ -1415,24 +1424,21 @@ class FeedSubscriptionManager(
     }
 
     private suspend fun fetchTrendingForForYou(metric: TrendingMetric, gen: Long) {
-        val url = buildTrendingRelayUrl(metric, TrendingTimeframe.TODAY)
-        val subId = "foryou-trending-${metric.slug}-$gen"
-        val filter = Filter(kinds = FEED_KINDS, limit = 100)
-        val collector = scope.launch {
-            relayPool.relayEvents.collect { re ->
-                if (re.subscriptionId == subId && gen == forYouGeneration) {
-                    eventRepo.addEvent(re.event)
-                    eventRepo.requestProfileIfMissing(re.event.pubkey)
-                }
-            }
-        }
         try {
-            relayPool.sendToRelayOrEphemeral(url, ClientMessage.req(subId, filter), skipBadCheck = true)
-            subManager.awaitEoseWithTimeout(subId, timeoutMs = 10_000)
-            delay(1_500)
-        } finally {
-            collector.cancel()
-            subManager.closeSubscription(subId)
+            val events = NostrWineApiClient.trending(metric.apiOrder, 24, 100)
+            if (gen != forYouGeneration) return
+            val verified = withContext(processingContext) {
+                events.filter { it.kind in FEED_KINDS && runCatching { it.verifySignature() }.getOrDefault(false) }
+            }
+            if (gen != forYouGeneration) return
+            verified.forEach { event ->
+                eventRepo.addEvent(event)
+                eventRepo.requestProfileIfMissing(event.pubkey)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("RLC", "For You REST trending supplement unavailable for ${metric.slug}", error)
         }
     }
 

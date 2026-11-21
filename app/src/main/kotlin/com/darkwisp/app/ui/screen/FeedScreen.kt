@@ -130,7 +130,7 @@ import com.darkwisp.app.viewmodel.RelayFeedStatus
 import com.darkwisp.app.viewmodel.TrendingMetric
 import com.darkwisp.app.viewmodel.TrendingMode
 import com.darkwisp.app.viewmodel.TrendingTimeframe
-import com.darkwisp.app.viewmodel.buildTrendingRelayUrl
+import com.darkwisp.app.viewmodel.buildTrendingApiUrl
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
@@ -169,7 +169,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.repo.AccountInfo
 import com.darkwisp.app.ui.component.FollowButton
-import com.darkwisp.app.viewmodel.TRENDING_USERS_RELAY_URL
+import com.darkwisp.app.viewmodel.TRENDING_USERS_SOURCE_LABEL
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -369,7 +369,6 @@ fun FeedScreen(
     var showRelayDropdown by remember { mutableStateOf(false) }
     var showOnlineSheet by remember { mutableStateOf(false) }
     val onlinePubkeys by viewModel.eventRepo.onlinePubkeys.collectAsState()
-    val globalOnlineCount by viewModel.globalOnlineCount.collectAsState()
     var showFeedTypeDropdown by remember { mutableStateOf(false) }
     var showContentFilterDropdown by remember { mutableStateOf(false) }
     var showSocialGraphDialog by remember { mutableStateOf(false) }
@@ -548,20 +547,7 @@ fun FeedScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                if (globalOnlineCount != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.foundation.Canvas(modifier = Modifier.size(8.dp)) {
-                            drawCircle(color = greenColor)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(R.string.online_all_nostr, globalOnlineCount ?: 0),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
+
                 Spacer(Modifier.height(16.dp))
                 FlowRow(
                     modifier = Modifier
@@ -1375,7 +1361,7 @@ fun FeedScreen(
                             feedType == FeedType.TRENDING -> {
                                 RelayFeedEmptyState(
                                     status = relayFeedStatus,
-                                    relayUrl = buildTrendingRelayUrl(trendingMetric, trendingTimeframe),
+                                    relayUrl = buildTrendingApiUrl(trendingMetric, trendingTimeframe),
                                     onRetry = { viewModel.setFeedType(FeedType.TRENDING) }
                                 )
                             }
@@ -3130,7 +3116,7 @@ private fun TrendingUsersContent(
         ) {
             RelayFeedEmptyState(
                 status = relayFeedStatus,
-                relayUrl = TRENDING_USERS_RELAY_URL,
+                relayUrl = TRENDING_USERS_SOURCE_LABEL,
                 onRetry = onRetry
             )
         }

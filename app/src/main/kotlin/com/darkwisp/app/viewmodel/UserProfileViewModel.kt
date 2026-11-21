@@ -32,6 +32,7 @@ import com.darkwisp.app.repo.RelayHintStore
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.relay.SubscriptionManager
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -47,18 +48,18 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 enum class ProfileSortMode(val labelResId: Int) {
     RECENCY(com.darkwisp.app.R.string.profile_sort_recent),
-    LIKES(com.darkwisp.app.R.string.profile_sort_likes),
-    REPOSTS(com.darkwisp.app.R.string.profile_sort_reposts),
-    ZAPS(com.darkwisp.app.R.string.profile_sort_zaps),
-    REPLIES(com.darkwisp.app.R.string.profile_sort_replies)
+    POPULAR(com.darkwisp.app.R.string.profile_sort_popular),
+    HOT(com.darkwisp.app.R.string.profile_sort_hot),
+    RISING(com.darkwisp.app.R.string.profile_sort_rising),
+    ZAPS(com.darkwisp.app.R.string.profile_sort_zaps)
 }
 
-private fun ProfileSortMode.relaySlug() = when (this) {
-    ProfileSortMode.LIKES -> "likes"
-    ProfileSortMode.REPOSTS -> "reposts"
-    ProfileSortMode.ZAPS -> "zaps"
-    ProfileSortMode.REPLIES -> "replies"
-    ProfileSortMode.RECENCY -> error("No relay URL for recency")
+private fun ProfileSortMode.dittoSortQuery() = when (this) {
+    ProfileSortMode.POPULAR -> "sort:top"
+    ProfileSortMode.HOT -> "sort:hot"
+    ProfileSortMode.RISING -> "sort:rising"
+    ProfileSortMode.ZAPS -> "sort:zaps"
+    ProfileSortMode.RECENCY -> error("No Ditto query for recency")
 }
 
 class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
@@ -789,8 +790,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             _sortedNotes.value = emptyList()
             _sortedNotesLoading.value = false
         } else {
-            val url = "wss://feeds.nostrarchives.com/profiles/root/${mode.relaySlug()}"
-            subscribeProfileRelayFeed(url, isReplies = false)
+            subscribeProfileRelayFeed(mode.dittoSortQuery(), isReplies = false)
         }
     }
 
@@ -802,67 +802,84 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             _sortedReplies.value = emptyList()
             _sortedRepliesLoading.value = false
         } else {
-            val url = "wss://feeds.nostrarchives.com/profiles/replies/${mode.relaySlug()}"
-            subscribeProfileRelayFeed(url, isReplies = true)
+            subscribeProfileRelayFeed(mode.dittoSortQuery(), isReplies = true)
         }
     }
 
     fun loadFollowers() {
         val pool = relayPoolRef ?: return
         if (_followersLoading.value && _followers.value.isNotEmpty()) return
-
         profileFollowersJob?.cancel()
         _followers.value = emptyList()
         _followersLoading.value = true
-
         val pubkey = targetPubkey
         profileFollowersGen++
-        val gen = profileFollowersGen
-        val subId = "profile-followers-$gen"
-
+        val generation = profileFollowersGen
+        val sources = (pool.getReadRelayUrls() + RelayConfig.DEFAULT_INDEXER_RELAYS).distinct().take(12)
         profileFollowersJob = viewModelScope.launch {
-            val filter = Filter(kinds = listOf(0), authors = listOf(pubkey), limit = 500)
-            var connected = false
-            val url = "wss://feeds.nostrarchives.com/profiles/followers"
-            for (attempt in 0..2) {
-                if (profileFollowersGen != gen) { _followersLoading.value = false; return@launch }
-                if (attempt > 0) { pool.disconnectRelay(url); delay(1500L) }
-                pool.sendToRelayOrEphemeral(url, ClientMessage.req(subId, filter), skipBadCheck = true)
-                val deadline = System.currentTimeMillis() + 5_000
-                while (System.currentTimeMillis() < deadline) {
-                    if (profileFollowersGen != gen) { _followersLoading.value = false; return@launch }
-                    if (pool.isRelayConnected(url)) { connected = true; break }
-                    delay(200)
-                }
-                if (connected) break
-            }
-            if (!connected) { _followersLoading.value = false; return@launch }
-
-            val seenPubkeys = mutableSetOf<String>()
-            val collectJob = launch {
-                pool.relayEvents.collect { (event, _, subscriptionId) ->
-                    if (subscriptionId != subId) return@collect
-                    if (profileFollowersGen != gen) return@collect
-                    if (event.kind == 0 && seenPubkeys.add(event.pubkey)) {
-                        eventRepoRef?.cacheEvent(event)
-                        val profileData = ProfileData.fromEvent(event) ?: return@collect
-                        val current = _followers.value.toMutableList()
-                        current.add(profileData)
-                        _followers.value = current
+            val followerPubkeys = linkedSetOf<String>()
+            try {
+                val subId = "profile-followers-lists-$generation"
+                val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                    pool.relayEvents.collect { re ->
+                        if (re.subscriptionId != subId || profileFollowersGen != generation) return@collect
+                        val event = re.event
+                        if (event.kind == 3 && event.pubkey != pubkey &&
+                            event.tags.any { it.size >= 2 && it[0] == "p" && it[1] == pubkey }
+                        ) {
+                            followerPubkeys.add(event.pubkey)
+                            eventRepoRef?.cacheEvent(event)
+                        }
                     }
                 }
+                try {
+                    val filter = Filter(kinds = listOf(3), pTags = listOf(pubkey), limit = 500)
+                    val request = ClientMessage.req(subId, filter)
+                    sources.forEach { url -> runCatching { pool.sendToRelayOrEphemeral(url, request, skipBadCheck = true) } }
+                    val sm = subManagerRef
+                    if (sm != null) sm.awaitEoseWithTimeout(subId, timeoutMs = 12_000)
+                    else withTimeoutOrNull(12_000) { pool.eoseSignals.first { it == subId } }
+                } finally {
+                    collector.cancel()
+                    pool.closeOnAllRelays(subId)
+                }
+                if (profileFollowersGen != generation) return@launch
+                val authors = followerPubkeys.take(200)
+                val missing = authors.filter { eventRepoRef?.getProfileData(it) == null }
+                if (missing.isNotEmpty()) {
+                    val metadataSubId = "profile-followers-metadata-$generation"
+                    val metadataCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                        pool.relayEvents.collect { re ->
+                            if (re.subscriptionId == metadataSubId && profileFollowersGen == generation &&
+                                re.event.kind == 0 && re.event.pubkey in missing
+                            ) eventRepoRef?.cacheEvent(re.event)
+                        }
+                    }
+                    try {
+                        val filter = Filter(kinds = listOf(0), authors = missing, limit = missing.size)
+                        val request = ClientMessage.req(metadataSubId, filter)
+                        sources.forEach { url -> runCatching { pool.sendToRelayOrEphemeral(url, request, skipBadCheck = true) } }
+                        val sm = subManagerRef
+                        if (sm != null) sm.awaitEoseWithTimeout(metadataSubId, timeoutMs = 12_000)
+                        else withTimeoutOrNull(12_000) { pool.eoseSignals.first { it == metadataSubId } }
+                    } finally {
+                        metadataCollector.cancel()
+                        pool.closeOnAllRelays(metadataSubId)
+                    }
+                }
+                if (profileFollowersGen == generation) _followers.value = authors.mapNotNull { eventRepoRef?.getProfileData(it) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("UserProfileVM", "NIP-02 reverse follower lookup failed", error)
+            } finally {
+                if (profileFollowersGen == generation) _followersLoading.value = false
             }
-
-            val sm = subManagerRef
-            if (sm != null) sm.awaitEoseCount(subId, 1)
-            else withTimeoutOrNull(15_000) { pool.eoseSignals.first { it == subId } }
-            collectJob.cancel()
-            pool.closeOnAllRelays(subId)
-            _followersLoading.value = false
         }
     }
 
-    private fun subscribeProfileRelayFeed(url: String, isReplies: Boolean) {
+    private fun subscribeProfileRelayFeed(sortQuery: String, isReplies: Boolean) {
+        val url = RelayConfig.DITTO_RELAY_URL
         val pool = relayPoolRef ?: return
         if (isReplies) {
             profileFeedRepliesGen++
@@ -871,7 +888,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             profileFeedRepliesJob?.cancel()
             _sortedReplies.value = emptyList()
             _sortedRepliesLoading.value = true
-            profileFeedRepliesJob = viewModelScope.launch { runProfileFeedSub(pool, url, subId, gen, isReplies = true) }
+            profileFeedRepliesJob = viewModelScope.launch { runProfileFeedSub(pool, url, subId, gen, isReplies = true, sortQuery = sortQuery) }
         } else {
             profileFeedNotesGen++
             val gen = profileFeedNotesGen
@@ -879,16 +896,19 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             profileFeedNotesJob?.cancel()
             _sortedNotes.value = emptyList()
             _sortedNotesLoading.value = true
-            profileFeedNotesJob = viewModelScope.launch { runProfileFeedSub(pool, url, subId, gen, isReplies = false) }
+            profileFeedNotesJob = viewModelScope.launch { runProfileFeedSub(pool, url, subId, gen, isReplies = false, sortQuery = sortQuery) }
         }
     }
 
-    private suspend fun runProfileFeedSub(pool: RelayPool, url: String, subId: String, gen: Int, isReplies: Boolean) {
+    private suspend fun runProfileFeedSub(pool: RelayPool, url: String, subId: String, gen: Int, isReplies: Boolean, sortQuery: String) {
         val genCheck = { if (isReplies) profileFeedRepliesGen == gen else profileFeedNotesGen == gen }
         val setLoading = { v: Boolean -> if (isReplies) _sortedRepliesLoading.value = v else _sortedNotesLoading.value = v }
         val pubkey = targetPubkey
-        val filter = if (isReplies) Filter(kinds = listOf(1, Nip22.KIND_COMMENT), authors = listOf(pubkey), limit = 100)
-        else Filter(kinds = listOf(1), authors = listOf(pubkey), limit = 100)
+        val filter = if (isReplies) {
+            Filter(kinds = listOf(1, Nip22.KIND_COMMENT), authors = listOf(pubkey), search = sortQuery, limit = 100)
+        } else {
+            Filter(kinds = listOf(1), authors = listOf(pubkey), search = sortQuery, limit = 100)
+        }
 
         var connected = false
         for (attempt in 0..2) {
