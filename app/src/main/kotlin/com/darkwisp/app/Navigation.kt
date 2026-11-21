@@ -1072,7 +1072,7 @@ fun WispNavHost(
                 onArticleClick = { kind, author, dTag ->
                     navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
                 },
-misplaced legacy tab args                onGroupRoom = { relayUrl, groupId ->
+                onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
                         relayUrl.toByteArray(Charsets.UTF_8),
                         android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
