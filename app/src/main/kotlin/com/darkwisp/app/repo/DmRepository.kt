@@ -496,7 +496,7 @@ class DmRepository(
         }
     }
 
-    /** Pop a single pending kind-4 event and decrypt it through the active NIP-55 signer. */
+    /** Decrypt one pending kind-4 event through NIP-55; failed decryptions stay queued for a later retry. */
     suspend fun decryptNextPendingLegacyDm(signer: NostrSigner, muteRepository: MuteRepository? = null): Boolean {
         val pending = synchronized(pendingLock) {
             val next = pendingLegacyDms.removeFirstOrNull()
