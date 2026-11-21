@@ -1214,4 +1214,12 @@
     <string name="postilla_update_allow_install">Allow Postilla to install updates in Android settings, then tap Update now again.</string>
     <string name="postilla_update_failed">The update could not be downloaded or verified. Please try again later.</string>
     <string name="postilla_update_preview_only">The updater preview is active. Installing an update from a Preview build is disabled.</string>
+    <string name="tab_dm_private">Private</string>
+    <string name="tab_dm_classic">Classic</string>
+    <string name="settings_chat_compatibility">Chat compatibility</string>
+    <string name="settings_legacy_dm_title">Classic direct messages (NIP-04)</string>
+    <string name="settings_legacy_dm_description">Enable sending and receiving legacy NIP-04 direct messages. New conversations in Private continue to use NIP-17.</string>
+    <string name="action_new_legacy_dm">New classic conversation</string>
+    <string name="new_legacy_dm_title">New classic DM</string>
+    <string name="new_legacy_dm_start">Start classic conversation</string>
 </resources>

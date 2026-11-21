@@ -931,4 +931,12 @@
     <string name="marketplace_image_next">Imagen siguiente</string>
     <string name="marketplace_image_counter">%1$d de %2$d</string>
     <string name="compose_resize_text_area">Cambiar el tamaño del campo de texto</string>
+    <string name="tab_dm_private">Privados</string>
+    <string name="tab_dm_classic">Clásicos</string>
+    <string name="settings_chat_compatibility">Compatibilidad del chat</string>
+    <string name="settings_legacy_dm_title">Mensajes directos clásicos (NIP-04)</string>
+    <string name="settings_legacy_dm_description">Activa el envío y la recepción de mensajes directos NIP-04 heredados. Las nuevas conversaciones en Privados seguirán usando NIP-17.</string>
+    <string name="action_new_legacy_dm">Nueva conversación clásica</string>
+    <string name="new_legacy_dm_title">Nuevo mensaje clásico</string>
+    <string name="new_legacy_dm_start">Iniciar conversación clásica</string>
 </resources>

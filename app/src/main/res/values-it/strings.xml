@@ -1044,4 +1044,12 @@
     <string name="postilla_update_allow_install">Consenti a Postilla di installare gli aggiornamenti nelle impostazioni Android, poi tocca di nuovo Aggiorna ora.</string>
     <string name="postilla_update_failed">Non è stato possibile scaricare o verificare l’aggiornamento. Riprova più tardi.</string>
     <string name="postilla_update_preview_only">La funzione di aggiornamento è in anteprima. L’installazione da una versione Preview è disabilitata.</string>
+    <string name="tab_dm_private">Privati</string>
+    <string name="tab_dm_classic">Classici</string>
+    <string name="settings_chat_compatibility">Compatibilità chat</string>
+    <string name="settings_legacy_dm_title">Messaggi diretti classici (NIP-04)</string>
+    <string name="settings_legacy_dm_description">Attiva l'invio e la ricezione dei messaggi diretti legacy NIP-04. Le nuove conversazioni in Privati continueranno a utilizzare NIP-17.</string>
+    <string name="action_new_legacy_dm">Nuova conversazione classica</string>
+    <string name="new_legacy_dm_title">Nuovo DM classico</string>
+    <string name="new_legacy_dm_start">Inizia conversazione classica</string>
 </resources>
