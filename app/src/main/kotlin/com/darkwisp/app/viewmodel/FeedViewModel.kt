@@ -348,7 +348,8 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         getFeedSubId = { feedSub.feedSubId },
         getRelayFeedSubId = { feedSub.relayFeedSubId },
         getIsTrendingFeed = { feedSub.feedType.value == FeedType.TRENDING },
-        onRelayFeedEventReceived = { feedSub.onRelayFeedEventReceived() }
+        onRelayFeedEventReceived = { feedSub.onRelayFeedEventReceived() },
+        isNip04Enabled = { interfacePrefs.isLegacyDmEnabled() }
     )
 
     val socialActions: SocialActionManager = SocialActionManager(
@@ -376,7 +377,8 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         getUserPubkey = { getUserPubkey() },
         registerAuthSigner = { registerAuthSigner() },
         fetchEmojiSets = { listCrud.fetchEmojiSets() },
-        getSigner = { signer }
+        getSigner = { signer },
+        isNip04Enabled = { interfacePrefs.isLegacyDmEnabled() }
     )
 
     // The global Nostr online counter has no verified free replacement; Postilla retains the user's own network count.

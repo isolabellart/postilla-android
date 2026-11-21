@@ -84,7 +84,8 @@ fun InterfaceScreen(
     onBack: () -> Unit,
     onChanged: () -> Unit,
     isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit
+    onToggleTheme: () -> Unit,
+    onLegacyDmChanged: (Boolean) -> Unit = {}
 ) {
     var isLargeText by remember { mutableStateOf(interfacePrefs.isLargeText()) }
     var newNotesHidden by remember { mutableStateOf(interfacePrefs.isNewNotesButtonHidden()) }
@@ -97,6 +98,7 @@ fun InterfaceScreen(
     var selectedLanguage by remember { mutableStateOf(interfacePrefs.getLanguage()) }
     var languagesExpanded by remember { mutableStateOf(false) }
     var drawerOnRight by remember { mutableStateOf(interfacePrefs.isDrawerOnRight()) }
+    var legacyDmEnabled by remember { mutableStateOf(interfacePrefs.isLegacyDmEnabled()) }
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -500,6 +502,35 @@ fun InterfaceScreen(
                         }
                     }
                 }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                text = stringResource(R.string.settings_chat_compatibility),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_legacy_dm_title), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.settings_legacy_dm_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = legacyDmEnabled,
+                    onCheckedChange = { enabled ->
+                        legacyDmEnabled = enabled
+                        interfacePrefs.setLegacyDmEnabled(enabled)
+                        onLegacyDmChanged(enabled)
+                        onChanged()
+                    },
+                    colors = wispSwitchColors()
+                )
             }
 
             Spacer(Modifier.height(24.dp))

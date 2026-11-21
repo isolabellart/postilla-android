@@ -11,7 +11,6 @@ class InterfacePreferences(context: Context) {
         DEEPL("deepl");
 
         companion object {
-        private const val KEY_LEGACY_DM_ENABLED = "legacy_dm_enabled"
             fun fromKey(key: String?): TranslationEngine =
                 values().firstOrNull { it.key == key } ?: ON_DEVICE
         }
@@ -214,6 +213,7 @@ class InterfacePreferences(context: Context) {
          */
         const val KEY_NOTIFICATION_FEED_STYLE = "notification_feed_style"
         const val KEY_DRAWER_ON_RIGHT = "drawer_on_right"
+        private const val KEY_LEGACY_DM_ENABLED = "legacy_dm_enabled"
     }
 
     /** Reset all interface preferences to defaults (called on full logout). */

@@ -3527,14 +3527,15 @@ fun WispNavHost(
         composable(Routes.INTERFACE_SETTINGS) {
             val context = LocalContext.current
             val app = context.applicationContext as android.app.Application
-            val interfacePrefs = remember { com.darkwisp.app.repo.InterfacePreferences(context) }
+            val interfacePrefs = feedViewModel.interfacePrefs
             InterfaceScreen(
                 application = app,
                 interfacePrefs = interfacePrefs,
                 onBack = { navController.popBackStack() },
                 onChanged = onInterfaceChanged,
                 isDarkTheme = isDarkTheme,
-                onToggleTheme = onToggleTheme
+                onToggleTheme = onToggleTheme,
+                onLegacyDmChanged = { feedViewModel.refreshDmsAndNotifications() }
             )
         }
 
