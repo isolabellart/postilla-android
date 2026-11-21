@@ -137,7 +137,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val pool = relayPool ?: return
         val repo = eventRepoRef ?: return
         val trimmed = newQuery.trim().removePrefix("nostr:")
-        if (trimmed.length < 2) {
+        // Do not launch a search while the user has just entered a separator.
+        // Searching on a trailing space can interrupt the IME composition and eat
+        // the space before the next word is typed.
+        if (newQuery.lastOrNull()?.isWhitespace() == true || trimmed.length < 2) {
             searchJob?.cancel()
             relayPool?.let { closeSubscriptions(it) }
             _users.value = emptyList()
