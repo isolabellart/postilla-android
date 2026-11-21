@@ -786,7 +786,7 @@ fun WispDrawerContent(
                     label = { Text(stringResource(R.string.drawer_privacy_security)) },
                     selected = false,
                     onClick = {
-                        uriHandler.openUri("https://github.com/isolabellart/postilla-android/blob/staging/postilla-audit-remediation-20261120/docs/PRIVACY.md")
+                        uriHandler.openUri("https://github.com/isolabellart/postilla-android/blob/staging/postilla-indexer-migration-20261121/docs/PRIVACY.md")
                     },
                     modifier = Modifier.height(48.dp).padding(start = 36.dp, end = 12.dp)
                 )
