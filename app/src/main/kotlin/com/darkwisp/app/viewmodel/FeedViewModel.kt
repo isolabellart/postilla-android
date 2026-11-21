@@ -86,11 +86,11 @@ enum class FeedType { FOR_YOU, FOLLOWS, WITH_REPLIES, EXTENDED_FOLLOWS, RELAY, L
 
 enum class TrendingMode { NOTES, USERS }
 
-enum class TrendingMetric(val slug: String, val label: String, val apiOrder: String) {
-    REACTIONS("reactions", "Reactions", "reactions"),
-    REPLIES("replies", "Replies", "replies"),
-    REPOSTS("reposts", "Reposts", "reposts"),
-    ZAPS("zaps", "Zaps", "zap_count")
+enum class TrendingMetric(val slug: String, val label: String) {
+    REACTIONS("reactions", "Reactions"),
+    REPLIES("replies", "Replies"),
+    REPOSTS("reposts", "Reposts"),
+    ZAPS("zaps", "Zaps")
 }
 
 enum class TrendingTimeframe(val slug: String, val label: String, val hours: Int) {
@@ -99,9 +99,6 @@ enum class TrendingTimeframe(val slug: String, val label: String, val hours: Int
 }
 
 const val TRENDING_USERS_SOURCE_LABEL = "Authors of recent trending notes"
-
-fun buildTrendingApiUrl(metric: TrendingMetric, timeframe: TrendingTimeframe): String =
-    "https://api.nostr.wine/trending?order=${metric.apiOrder}&hours=${timeframe.hours}&limit=200"
 
 sealed interface RelayFeedStatus {
     data object Idle : RelayFeedStatus

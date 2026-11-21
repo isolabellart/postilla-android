@@ -258,7 +258,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         noteSubId = "search-notes-$searchCounter"
         metricsSubId = "engage-search-$searchCounter"
 
-        _query.value = trimmed
+        // Keep _query exactly as typed: trimming here erases a trailing space from the live TextField.
         _isSearching.value = true
         _users.value = emptyList()
         _notes.value = emptyList()

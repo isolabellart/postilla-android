@@ -22,7 +22,8 @@ import com.darkwisp.app.repo.ListRepository
 import com.darkwisp.app.repo.MetadataFetcher
 import com.darkwisp.app.repo.NotificationRepository
 import com.darkwisp.app.repo.ProfileRepository
-import com.darkwisp.app.repo.NostrWineApiClient
+import com.darkwisp.app.repo.DittoTrendingQuery
+import com.darkwisp.app.repo.DittoTrendingSort
 import com.darkwisp.app.nostr.Nip57
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
@@ -672,9 +673,13 @@ class FeedSubscriptionManager(
 
     fun setTrendingTimeframe(timeframe: TrendingTimeframe) {
         _trendingTimeframe.value = timeframe
-        if (_feedType.value == FeedType.TRENDING && _trendingMode.value == TrendingMode.NOTES) {
-            eventRepo.clearRelayFeed()
-            subscribeTrendingFeed()
+        if (_feedType.value == FeedType.TRENDING) {
+            if (_trendingMode.value == TrendingMode.USERS) {
+                subscribeTrendingUsers()
+            } else {
+                eventRepo.clearRelayFeed()
+                subscribeTrendingFeed()
+            }
         }
     }
 
@@ -703,40 +708,53 @@ class FeedSubscriptionManager(
         relayFeedEoseJob?.cancel()
         relayStatusMonitorJob?.cancel()
         val generation = relayFeedGeneration
+        val timeframe = _trendingTimeframe.value
+        val metric = _trendingMetric.value
+        val sort = if (metric == TrendingMetric.ZAPS) DittoTrendingSort.ZAPS else DittoTrendingSort.HOT
         _relayFeedStatus.value = RelayFeedStatus.Subscribing
         relayFeedEoseJob = scope.launch {
             try {
-                val apiEvents = NostrWineApiClient.trending(
-                    _trendingMetric.value.apiOrder,
-                    _trendingTimeframe.value.hours,
-                    200
+                val events = fetchDittoTrendingNotes(
+                    generation = generation,
+                    subscriptionId = relayFeedSubId,
+                    timeframe = timeframe,
+                    sort = sort
                 )
                 if (relayFeedGeneration != generation) return@launch
-                val events = withContext(processingContext) {
-                    apiEvents.filter {
-                        it.kind in FEED_KINDS && runCatching { it.verifySignature() }.getOrDefault(false)
-                    }.distinctBy { it.id }
-                }
-                if (relayFeedGeneration != generation) return@launch
-                events.forEach { event ->
-                    eventRepo.addRelayFeedEvent(event)
-                    eventRepo.requestProfileIfMissing(event.pubkey)
-                }
                 if (events.isEmpty()) {
                     _relayFeedStatus.value = RelayFeedStatus.NoEvents
                     return@launch
                 }
+
+                // Show the relay's ranked results immediately while NIP-85 counts are fetched.
+                events.forEach { event ->
+                    eventRepo.addTrendingFeedEvent(event)
+                }
                 _relayFeedStatus.value = RelayFeedStatus.Streaming
+
                 fetchDittoEventStats(events.map { it.id }, generation)
                 if (relayFeedGeneration != generation) return@launch
+
+                // Ditto's NIP-85 event stats let us rank the same recent candidate set by
+                // the selected metric rather than pretending every metric is the same score.
+                val rankedEvents = events.sortedWith(
+                    compareByDescending<NostrEvent> { trendingMetricScore(it, metric) }
+                        .thenByDescending { it.created_at }
+                )
+                eventRepo.clearRelayFeed()
+                rankedEvents.forEach { event ->
+                    eventRepo.addTrendingFeedEvent(event)
+                    eventRepo.requestProfileIfMissing(event.pubkey)
+                }
+
                 subscribeEngagementForFeed()
                 withContext(processingContext) { metadataFetcher.sweepMissingProfiles() }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.w("RLC", "Nostr.wine trending unavailable", error)
+                Log.w("RLC", "Ditto trending unavailable", error)
                 if (relayFeedGeneration == generation) _relayFeedStatus.value =
-                    RelayFeedStatus.ConnectionFailed("Nostr.wine unavailable: ${error.message ?: "network error"}")
+                    RelayFeedStatus.ConnectionFailed("Ditto trends unavailable: ${error.message ?: "relay error"}")
             }
         }
     }
@@ -755,14 +773,15 @@ class FeedSubscriptionManager(
         _relayFeedStatus.value = RelayFeedStatus.Subscribing
         relayFeedEoseJob = scope.launch {
             try {
-                // Derived discovery list: authors of recent trending notes, not the old
-                // provider-specific "up-and-coming" ranking.
-                val events = NostrWineApiClient.trending("reactions", 24, 200)
+                // Discover authors from Ditto's NIP-50 rising feed; no third-party trends API.
+                val events = fetchDittoTrendingNotes(
+                    generation = generation,
+                    subscriptionId = relayFeedSubId,
+                    timeframe = _trendingTimeframe.value,
+                    sort = DittoTrendingSort.RISING
+                )
                 if (relayFeedGeneration != generation) return@launch
-                val authors = withContext(processingContext) {
-                    events.filter { it.kind == 1 && runCatching { it.verifySignature() }.getOrDefault(false) }
-                        .map { it.pubkey }.distinct().take(100)
-                }
+                val authors = events.map { it.pubkey }.distinct().take(100)
                 if (authors.isEmpty()) {
                     _relayFeedStatus.value = RelayFeedStatus.NoEvents
                     return@launch
@@ -774,13 +793,64 @@ class FeedSubscriptionManager(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.w("RLC", "Trending author discovery failed", error)
+                Log.w("RLC", "Ditto trending author discovery failed", error)
                 if (relayFeedGeneration == generation) _relayFeedStatus.value =
-                    RelayFeedStatus.ConnectionFailed("Trending people unavailable: ${error.message ?: "network error"}")
+                    RelayFeedStatus.ConnectionFailed("Ditto trending people unavailable: ${error.message ?: "relay error"}")
             } finally {
                 if (relayFeedGeneration == generation) _trendingUsersLoading.value = false
             }
         }
+    }
+
+    private suspend fun fetchDittoTrendingNotes(
+        generation: Int,
+        subscriptionId: String,
+        timeframe: TrendingTimeframe,
+        sort: DittoTrendingSort
+    ): List<NostrEvent> {
+        val collected = linkedMapOf<String, NostrEvent>()
+        val collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            relayPool.relayEvents.collect { relayEvent ->
+                if (relayEvent.subscriptionId != subscriptionId || relayFeedGeneration != generation) return@collect
+                val event = relayEvent.event
+                if (event.kind == 1) {
+                    synchronized(collected) {
+                        if (event.id !in collected) collected[event.id] = event
+                    }
+                }
+            }
+        }
+        try {
+            val since = System.currentTimeMillis() / 1000L - timeframe.hours * 3600L
+            val filter = DittoTrendingQuery.buildFilter(since = since, sort = sort, limit = 200)
+            val sent = relayPool.sendToRelayOrEphemeral(
+                RelayConfig.DITTO_RELAY_URL,
+                ClientMessage.req(subscriptionId, filter),
+                skipBadCheck = true
+            )
+            if (!sent) throw IllegalStateException("Unable to connect to Ditto relay")
+
+            val eoseReceived = subManager.awaitEoseWithTimeout(subscriptionId, timeoutMs = 12_000)
+            val snapshot = synchronized(collected) { collected.values.toList() }
+            val verified = withContext(processingContext) {
+                snapshot.filter { it.kind == 1 && runCatching { it.verifySignature() }.getOrDefault(false) }
+                    .distinctBy { it.id }
+            }
+            if (verified.isEmpty() && !eoseReceived) {
+                throw IllegalStateException("Ditto relay did not answer before the timeout")
+            }
+            return verified
+        } finally {
+            collector.cancel()
+            relayPool.closeOnAllRelays(subscriptionId)
+        }
+    }
+
+    private fun trendingMetricScore(event: NostrEvent, metric: TrendingMetric): Int = when (metric) {
+        TrendingMetric.REACTIONS -> eventRepo.getReactionCount(event.id)
+        TrendingMetric.REPLIES -> eventRepo.getReplyCount(event.id)
+        TrendingMetric.REPOSTS -> eventRepo.getRepostCount(event.id)
+        TrendingMetric.ZAPS -> eventRepo.getDittoZapCount(event.id)
     }
 
     private suspend fun fetchProfileMetadata(authors: List<String>, subId: String, generation: Int): List<ProfileData> {

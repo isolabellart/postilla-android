@@ -15,7 +15,7 @@ import okhttp3.HttpUrl
 import okhttp3.Request
 import java.io.IOException
 
-/** Read-only Nostr.wine REST client. All returned events must be signature-verified by callers. */
+/** Read-only Nostr.wine search client. All returned events must be signature-verified by callers. */
 object NostrWineApiClient {
     private const val TAG = "NostrWineApi"
     private const val HOST = "api.nostr.wine"
@@ -33,17 +33,6 @@ object NostrWineApiClient {
             .addQueryParameter("limit", limit.coerceIn(1, 100).toString())
             .addQueryParameter("page", "1")
             .apply { pubkey?.takeIf { it.length == 64 }?.let { addQueryParameter("pubkey", it) } }
-            .build()
-        return getEvents(url)
-    }
-
-    suspend fun trending(order: String, hours: Int, limit: Int = 200): List<NostrEvent> {
-        require(order in setOf("replies", "reposts", "reactions", "zap_count", "zap_amount"))
-        require(hours in 1..48)
-        val url = HttpUrl.Builder().scheme("https").host(HOST).addPathSegment("trending")
-            .addQueryParameter("order", order)
-            .addQueryParameter("hours", hours.toString())
-            .addQueryParameter("limit", limit.coerceIn(1, 200).toString())
             .build()
         return getEvents(url)
     }
