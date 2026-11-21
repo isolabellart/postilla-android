@@ -515,10 +515,8 @@ class DmRepository(
         try {
             val event = pending.event
             val taggedPeer = event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+            val peerPubkey = com.darkwisp.app.nostr.Nip04DmRouting.peerPubkey(owner, event.pubkey, taggedPeer)
                 ?: return true
-            val isOutgoing = event.pubkey == owner
-            val peerPubkey = if (isOutgoing) taggedPeer else event.pubkey
-            if (peerPubkey == owner || (!isOutgoing && taggedPeer != owner)) return true
             if (muteRepository?.isBlocked(peerPubkey) == true) return true
 
             // NIP-55 decrypt uses the other party's pubkey in both directions:
