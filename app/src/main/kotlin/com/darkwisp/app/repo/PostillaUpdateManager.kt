@@ -66,7 +66,7 @@ object PostillaUpdateManager {
             // Each new Preview build gets a fresh visual update offer, even if the
             // previous Preview was snoozed with "Later". The same build still respects
             // its three-day snooze interval.
-            val previewVersion = "1.0.50"
+            val previewVersion = "1.0.51"
             val saved = readOffer(prefs)
             if (saved == null || !saved.previewOnly || saved.versionName != previewVersion) {
                 prefs.edit().putLong(KEY_SNOOZE_UNTIL, 0L).apply()
