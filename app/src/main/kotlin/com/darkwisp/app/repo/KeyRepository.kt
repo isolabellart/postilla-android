@@ -363,8 +363,13 @@ class KeyRepository(private val context: Context) {
     fun getSearchRelays(): List<String> = _searchRelays.value
 
     private fun loadSearchRelays(): List<String> {
-        val str = prefs.getString("search_relays", null) ?: return emptyList()
-        return try { json.decodeFromString(str) } catch (_: Exception) { emptyList() }
+        val str = prefs.getString("search_relays", null)
+            ?: return RelayConfig.DEFAULT_SEARCH_RELAYS
+        return try {
+            json.decodeFromString(str)
+        } catch (_: Exception) {
+            RelayConfig.DEFAULT_SEARCH_RELAYS
+        }
     }
 
     fun saveBlockedRelays(urls: List<String>) {
