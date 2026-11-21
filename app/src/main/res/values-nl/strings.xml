@@ -645,7 +645,7 @@
 
     <!-- NIP-29 Chat Rooms -->
     <string name="tab_direct_messages">Directe berichten</string>
-    <string name="tab_chat_rooms">Chatruimten</string>
+    <string name="tab_chat_rooms">Kamers</string>
     <string name="title_join_chat_room">Chatruimte samenvoegen</string>
     <string name="title_create_group">Chatruimte maken</string>
     <string name="label_relay_url">Relay-URL</string>
@@ -941,4 +941,11 @@
     <string name="new_legacy_dm_start">Klassiek gesprek starten</string>
     <string name="dm_legacy_chat_disabled">Klassieke NIP-04-berichten zijn uitgeschakeld in Instellingen.</string>
     <string name="dm_legacy_delivery_unconfirmed">Geen relay van de ontvanger heeft de bezorging van dit klassieke bericht bevestigd. Controleer de NIP-65-relaylijst van de ontvanger en je verbinding en probeer het opnieuw.</string>
+    <string name="dm_search_hint">Personen of gesprekken zoeken</string>
+    <string name="dm_chat_menu">Chatopties</string>
+    <string name="dm_mark_all_read">Alles als gelezen markeren</string>
+    <string name="dm_show_hidden">Verborgen chats tonen</string>
+    <string name="dm_hide_hidden">Verborgen chats verbergen</string>
+    <string name="dm_hide_selected">Verbergen</string>
+    <string name="dm_restore_selected">Herstellen</string>
 </resources>
