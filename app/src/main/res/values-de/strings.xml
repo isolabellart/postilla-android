@@ -940,4 +940,6 @@
     <string name="action_new_legacy_dm">Neue klassische Unterhaltung</string>
     <string name="new_legacy_dm_title">Neue klassische Direktnachricht</string>
     <string name="new_legacy_dm_start">Klassische Unterhaltung starten</string>
+    <string name="dm_legacy_chat_disabled">Klassische NIP-04-Nachrichten sind in den Einstellungen deaktiviert.</string>
+    <string name="dm_legacy_delivery_unconfirmed">Kein Relay des Empfängers hat die Zustellung dieser klassischen Nachricht bestätigt. Prüfe die NIP-65-Relayliste des Empfängers und deine Verbindung und versuche es erneut.</string>
 </resources>
