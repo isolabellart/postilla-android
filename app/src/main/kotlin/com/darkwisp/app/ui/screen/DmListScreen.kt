@@ -260,6 +260,20 @@ fun DmListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .pointerInput(selectedTab, legacyDmEnabled) {
+                    var drag = 0f
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { _, amount -> drag += amount },
+                        onDragEnd = {
+                            val tabs = if (legacyDmEnabled) listOf("private", "classic", "rooms") else listOf("private", "rooms")
+                            val index = tabs.indexOf(selectedTab).coerceAtLeast(0)
+                            if (drag < -70f && index < tabs.lastIndex) selectedTab = tabs[index + 1]
+                            if (drag > 70f && index > 0) selectedTab = tabs[index - 1]
+                            drag = 0f
+                        },
+                        onDragCancel = { drag = 0f }
+                    )
+                }
         ) {
             val selectedTabIndex = when (selectedTab) {
                 "private" -> 0
@@ -305,8 +319,22 @@ fun DmListScreen(
             val notifiedGroups by groupListViewModel.notifiedGroups.collectAsState()
 
             when (selectedTab) {
-                "private" -> DmListContent(conversations.filter { it.protocol == DmProtocol.NIP17 }, eventRepo, onConversation)
-                "classic" -> DmListContent(conversations.filter { it.protocol == DmProtocol.NIP04 }, eventRepo, onConversation)
+                "private" -> DmListContent(
+                    conversations.filter { it.protocol == DmProtocol.NIP17 }, eventRepo, onConversation,
+                    hiddenConversationKeys, showHiddenChats, searchQuery, selectedConversationKeys,
+                    onToggleSelection = { key ->
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        selectedConversationKeys = if (key in selectedConversationKeys) selectedConversationKeys - key else selectedConversationKeys + key
+                    }
+                )
+                "classic" -> DmListContent(
+                    conversations.filter { it.protocol == DmProtocol.NIP04 }, eventRepo, onConversation,
+                    hiddenConversationKeys, showHiddenChats, searchQuery, selectedConversationKeys,
+                    onToggleSelection = { key ->
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        selectedConversationKeys = if (key in selectedConversationKeys) selectedConversationKeys - key else selectedConversationKeys + key
+                    }
+                )
                 "rooms" -> GroupListContent(
                     groups = groups,
                     eventRepo = eventRepo,
