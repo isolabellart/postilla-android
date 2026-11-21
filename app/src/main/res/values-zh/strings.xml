@@ -932,4 +932,12 @@
     <string name="marketplace_image_next">下一张图片</string>
     <string name="marketplace_image_counter">第 %1$d 张，共 %2$d 张</string>
     <string name="compose_resize_text_area">调整文本框大小</string>
+    <string name="tab_dm_private">私密</string>
+    <string name="tab_dm_classic">经典</string>
+    <string name="settings_chat_compatibility">聊天兼容性</string>
+    <string name="settings_legacy_dm_title">经典私信（NIP-04）</string>
+    <string name="settings_legacy_dm_description">启用旧版 NIP-04 私信的发送和接收。私密选项卡中的新对话仍将使用 NIP-17。</string>
+    <string name="action_new_legacy_dm">新建经典对话</string>
+    <string name="new_legacy_dm_title">新建经典私信</string>
+    <string name="new_legacy_dm_start">开始经典对话</string>
 </resources>
