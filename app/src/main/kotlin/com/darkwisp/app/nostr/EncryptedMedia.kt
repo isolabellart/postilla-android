@@ -10,8 +10,8 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * AES-256-GCM file encryption for NIP-17 Kind 15 encrypted file messages.
- * Interoperable with Amethyst's implementation.
+ * AES-256-GCM file encryption for NIP-17 Kind 15 messages and private NIP-04 image attachments.
+ * Kind 15 remains interoperable with Amethyst; the NIP-04 metadata envelope is a Postilla extension.
  */
 object EncryptedMedia {
     private const val AES_GCM = "AES/GCM/NoPadding"
