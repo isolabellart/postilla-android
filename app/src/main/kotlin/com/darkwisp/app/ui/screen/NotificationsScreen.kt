@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import coil3.compose.AsyncImage
 import com.darkwisp.app.nostr.FlatNotificationItem
+import com.darkwisp.app.nostr.DmProtocol
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip30
@@ -183,7 +184,7 @@ fun NotificationsScreen(
     onDmReact: (peerPubkey: String, rumorId: String, senderPubkey: String, emoji: String) -> Unit = { _, _, _, _ -> },
     onDmZap: (peerPubkey: String, rumorId: String, senderPubkey: String) -> Unit = { _, _, _ -> },
     dmZapSats: (senderPubkey: String) -> Long = { 0L },
-    onDmConversationClick: (conversationKey: String) -> Unit = {},
+    onDmConversationClick: (conversationKey: String, protocol: DmProtocol) -> Unit = { _, _ -> },
     onPayInvoice: (suspend (String) -> Boolean)? = null,
     onGroupRoom: ((String, String) -> Unit)? = null,
     /** Navigate to a group room and scroll to a specific message (from group notification click). */
@@ -429,8 +430,8 @@ fun NotificationsScreen(
                         postCardParams = postCardParams,
                         resolvedEmojis = resolvedEmojis,
                         onClick = {
-                            if (item.type == NotificationType.DM_REACTION && item.dmPeerPubkey != null) {
-                                onDmConversationClick(item.dmPeerPubkey)
+                            if (item.type in setOf(NotificationType.DM, NotificationType.DM_REACTION, NotificationType.DM_ZAP) && item.dmPeerPubkey != null) {
+                                onDmConversationClick(item.dmPeerPubkey, item.dmProtocol)
                             } else {
                                 viewModel.toggleRowExpansion(item)
                             }

@@ -49,6 +49,7 @@ import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip01EventOrder
 import com.darkwisp.app.nostr.NostrUriData
 import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.nostr.DmProtocol
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.nostr.LocalSigner
 import com.darkwisp.app.nostr.RemoteSigner
@@ -161,9 +162,9 @@ object Routes {
     const val USER_PROFILE = "profile/{pubkey}"
     const val THREAD = "thread/{eventId}"
     const val DM_LIST = "dms"
-    const val DM_CONVERSATION = "dm/{pubkey}?prefill={prefill}&strictDm={strictDm}"
+    const val DM_CONVERSATION = "dm/{pubkey}?prefill={prefill}&strictDm={strictDm}&protocol={protocol}"
     const val DM_CONVERSATION_GROUP = "dm/group/{conversationKey}"
-    const val CONTACT_PICKER = "contact_picker"
+    const val CONTACT_PICKER = "contact_picker?legacyDm={legacyDm}"
     const val GROUP_ROOM = "group_room/{encodedRelay}/{groupId}?scrollTo={scrollTo}"
     const val GROUP_DETAIL = "group_detail/{encodedRelay}/{groupId}"
     const val NOTIFICATIONS = "notifications"
@@ -1071,6 +1072,8 @@ fun WispNavHost(
                 onArticleClick = { kind, author, dTag ->
                     navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
                 },
+                legacyDmEnabled = feedViewModel.interfacePrefs.isLegacyDmEnabled(),
+                onNewLegacyDm = { navController.navigate("contact_picker?legacyDm=true") },
                 onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
                         relayUrl.toByteArray(Charsets.UTF_8),
@@ -2086,11 +2089,11 @@ fun WispNavHost(
                     if (convo.isGroup) {
                         navController.navigate("dm/group/${convo.conversationKey.replace(",", "~")}")
                     } else {
-                        navController.navigate("dm/${convo.peerPubkey}")
+                        navController.navigate("dm/${convo.peerPubkey}?protocol=${convo.protocol.key}")
                     }
                 },
                 onNewGroupDm = {
-                    navController.navigate(Routes.CONTACT_PICKER)
+                    navController.navigate("contact_picker?legacyDm=false")
                 },
                 onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
@@ -2102,7 +2105,11 @@ fun WispNavHost(
             )
         }
 
-        composable(Routes.CONTACT_PICKER) {
+        composable(
+            Routes.CONTACT_PICKER,
+            arguments = listOf(navArgument("legacyDm") { type = NavType.BoolType; defaultValue = false })
+        ) { backStackEntry ->
+            val legacyDm = backStackEntry.arguments?.getBoolean("legacyDm") ?: false
             val userPubkey = feedViewModel.getUserPubkey() ?: return@composable
             ContactPickerScreen(
                 viewModel = dmListViewModel,
@@ -2111,9 +2118,14 @@ fun WispNavHost(
                 onBack = { navController.popBackStack() },
                 onConfirm = { conversationKey ->
                     navController.popBackStack()
-                    navController.navigate("dm/group/${conversationKey.replace(",", "~")}")
+                    if (legacyDm) {
+                        navController.navigate("dm/$conversationKey?protocol=nip04")
+                    } else {
+                        navController.navigate("dm/group/${conversationKey.replace(",", "~")}")
+                    }
                 },
-                myPubkey = userPubkey
+                myPubkey = userPubkey,
+                legacyDm = legacyDm
             )
         }
 
@@ -2122,15 +2134,17 @@ fun WispNavHost(
             arguments = listOf(
                 navArgument("pubkey") { type = NavType.StringType },
                 navArgument("prefill") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("strictDm") { type = NavType.BoolType; defaultValue = false }
+                navArgument("strictDm") { type = NavType.BoolType; defaultValue = false },
+                navArgument("protocol") { type = NavType.StringType; defaultValue = "nip17" }
             )
         ) { backStackEntry ->
             val pubkey = backStackEntry.arguments?.getString("pubkey") ?: return@composable
             val prefill = backStackEntry.arguments?.getString("prefill")
             val strictDm = backStackEntry.arguments?.getBoolean("strictDm") ?: false
+            val protocol = DmProtocol.fromKey(backStackEntry.arguments?.getString("protocol"))
             val dmConvoViewModel: DmConversationViewModel = viewModel()
             val userPubkey = feedViewModel.getUserPubkey()
-            LaunchedEffect(pubkey, prefill, strictDm) {
+            LaunchedEffect(pubkey, prefill, strictDm, protocol) {
                 refreshInboxSubscriptionsIfStale()
                 dmConvoViewModel.init(
                     peerPubkeyHex = pubkey,
@@ -2140,7 +2154,8 @@ fun WispNavHost(
                     powPreferences = feedViewModel.powPrefs,
                     myPubkeyHex = userPubkey,
                     initialMessage = prefill,
-                    requireRecipientDmRelays = strictDm
+                    requireRecipientDmRelays = strictDm,
+                    protocol = protocol
                 )
                 activeSigner?.let { dmConvoViewModel.decryptPending(it, feedViewModel.muteRepo, feedViewModel.eventRepo, feedViewModel.notifRepo) }
             }
@@ -2163,6 +2178,7 @@ fun WispNavHost(
                 onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
                 peerPubkey = pubkey,
                 signer = activeSigner,
+                protocol = protocol,
                 socialActionManager = feedViewModel.socialActions,
                 fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
                 isWalletConnected = feedViewModel.activeWalletProvider.hasConnection(),
@@ -4226,11 +4242,11 @@ fun WispNavHost(
                     notifDmZapTarget = NotifDmZapInfo(peerPubkey, rumorId, senderPubkey)
                 },
                 dmZapSats = { senderPubkey -> notifDmZapSatsMap[senderPubkey] ?: 0L },
-                onDmConversationClick = { conversationKey ->
+                onDmConversationClick = { conversationKey, protocol ->
                     if (conversationKey.contains(",")) {
                         navController.navigate("dm/group/${conversationKey.replace(",", "~")}")
                     } else {
-                        navController.navigate("dm/$conversationKey")
+                        navController.navigate("dm/$conversationKey?protocol=${protocol.key}")
                     }
                 },
                 onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },

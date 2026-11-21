@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.darkwisp.app.nostr.DmMessage
+import com.darkwisp.app.nostr.DmProtocol
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -122,6 +123,7 @@ fun DmConversationScreen(
     onNoteClick: ((String) -> Unit)? = null,
     peerPubkey: String? = null,
     participants: List<String> = emptyList(),
+    protocol: DmProtocol = DmProtocol.NIP17,
     signer: NostrSigner? = null,
     socialActionManager: SocialActionManager? = null,
     isWalletConnected: Boolean = false,
@@ -147,6 +149,7 @@ fun DmConversationScreen(
     val selectedMessageId by viewModel.selectedMessageId.collectAsState()
     val translationVersion by translationRepo?.version?.collectAsState() ?: remember { mutableStateOf(0) }
     val isGroup = participants.size > 1
+    val isLegacyDm = protocol == DmProtocol.NIP04
     val listState = rememberLazyListState()
     var showRelayInfo by remember { mutableStateOf(false) }
     var debugMessage by remember { mutableStateOf<DmMessage?>(null) }
@@ -176,7 +179,7 @@ fun DmConversationScreen(
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
-        if (uris.isNotEmpty()) viewModel.uploadMedia(uris, context.contentResolver, relayPool, signer)
+        if (!isLegacyDm && uris.isNotEmpty()) viewModel.uploadMedia(uris, context.contentResolver, relayPool, signer)
     }
 
     // Auto-scroll to bottom when new messages arrive
@@ -426,9 +429,9 @@ fun DmConversationScreen(
                                 }
                             },
                             onSelect = { viewModel.selectMessage(msg.id) },
-                            onReply = { viewModel.setReplyingTo(it) },
-                            onReact = { m, emoji -> viewModel.sendReaction(m.rumorId, emoji, relayPool, signer, resolvedEmojis); onEmojiUsed?.invoke(emoji) },
-                            onZap = { m -> zapTargetMessage = m },
+                            onReply = { if (!isLegacyDm) viewModel.setReplyingTo(it) },
+                            onReact = { m, emoji -> if (!isLegacyDm) { viewModel.sendReaction(m.rumorId, emoji, relayPool, signer, resolvedEmojis); onEmojiUsed?.invoke(emoji) } },
+                            onZap = { m -> if (!isLegacyDm) zapTargetMessage = m },
                             isZapInProgress = msg.senderPubkey in zapInProgress,
                             zapSats = msg.zaps.sumOf { it.sats }.coerceAtLeast(zapSatsMap[msg.id] ?: 0L),
                             onProfileClick = onProfileClick,
@@ -504,7 +507,7 @@ fun DmConversationScreen(
                     Column(modifier = Modifier.padding(8.dp)) {
                         // Reply preview inside the composer surface
                         val replyMsg = replyingTo
-                        if (replyMsg != null) {
+                        if (replyMsg != null && !isLegacyDm) {
                             val senderName = remember(replyMsg.senderPubkey) {
                                 if (replyMsg.senderPubkey == userPubkey) "You"
                                 else eventRepo?.getProfileData(replyMsg.senderPubkey)?.displayString
@@ -553,7 +556,7 @@ fun DmConversationScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Surface(
+                            if (!isLegacyDm) Surface(
                                 onClick = {
                                     photoPickerLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
