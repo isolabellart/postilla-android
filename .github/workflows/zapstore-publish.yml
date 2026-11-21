@@ -107,7 +107,7 @@ jobs:
           tag, asset_name, source_path, target_path = sys.argv[1:]
           source = pathlib.Path(source_path).read_text(encoding="utf-8")
           updated, count = re.subn(
-              r"(?m)^release_filter:\\s*.*$",
+              r"(?m)^release_filter:\s*.*$",
               "release_filter: '^" + re.escape(tag) + "
 
           zsp --json check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" > "$RUNNER_TEMP/zsp-preflight.json"
@@ -319,9 +319,9 @@ jobs:
 
           # The current v1.0.46 asset is named app-release.apk; its display
           # label does not participate in Zapstore's release-asset matching.
-          match_pattern = "(?i)^" + asset_name.replace(".", r"\\.") + "$"
+          match_pattern = "(?i)^" + asset_name.replace(".", r"\.") + "$"
           updated, count = re.subn(
-              r"(?m)^match:\\s*.*$",
+              r"(?m)^match:\s*.*$",
               "match: '" + match_pattern + "'",
               updated,
           )
