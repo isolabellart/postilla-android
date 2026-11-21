@@ -1222,4 +1222,6 @@
     <string name="action_new_legacy_dm">New classic conversation</string>
     <string name="new_legacy_dm_title">New classic DM</string>
     <string name="new_legacy_dm_start">Start classic conversation</string>
+    <string name="dm_legacy_chat_disabled">Classic NIP-04 messaging is disabled in Settings.</string>
+    <string name="dm_legacy_delivery_unconfirmed">No recipient relay confirmed delivery of this classic message. Check the recipient's NIP-65 relay list and your connection, then retry.</string>
 </resources>
