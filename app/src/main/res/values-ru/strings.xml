@@ -606,7 +606,7 @@
 
     <!-- NIP-29 Chat Rooms -->
     <string name="tab_direct_messages">Личные сообщения</string>
-    <string name="tab_chat_rooms">Чат-комнаты</string>
+    <string name="tab_chat_rooms">Комнаты</string>
     <string name="title_join_chat_room">Войти в чат-комнату</string>
     <string name="title_create_group">Создать чат-комнату</string>
     <string name="label_relay_url">URL ретранслятора</string>
@@ -902,4 +902,11 @@
     <string name="new_legacy_dm_start">Начать классическую беседу</string>
     <string name="dm_legacy_chat_disabled">Классические сообщения NIP-04 отключены в настройках.</string>
     <string name="dm_legacy_delivery_unconfirmed">Ни один ретранслятор получателя не подтвердил доставку этого классического сообщения. Проверьте список ретрансляторов NIP-65 получателя и подключение, затем повторите попытку.</string>
+    <string name="dm_search_hint">Поиск людей или переписок</string>
+    <string name="dm_chat_menu">Настройки чата</string>
+    <string name="dm_mark_all_read">Отметить всё как прочитанное</string>
+    <string name="dm_show_hidden">Показать скрытые чаты</string>
+    <string name="dm_hide_hidden">Скрыть скрытые чаты</string>
+    <string name="dm_hide_selected">Скрыть</string>
+    <string name="dm_restore_selected">Восстановить</string>
 </resources>
