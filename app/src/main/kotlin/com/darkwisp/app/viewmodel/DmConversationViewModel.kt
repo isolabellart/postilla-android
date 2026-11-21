@@ -33,6 +33,7 @@ import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.DmRepository
 import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.KeyRepository
+import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.repo.PowPreferences
 import com.darkwisp.app.repo.RelayListRepository
 import com.darkwisp.app.ui.util.GifToMp4Converter
@@ -661,6 +662,10 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendMessage(relayPool: RelayPool, signer: NostrSigner? = null, resolvedEmojis: Map<String, String> = emptyMap()) {
+        if (protocol == DmProtocol.NIP04 && !InterfacePreferences(getApplication()).isLegacyDmEnabled()) {
+            _sendError.value = getApplication<Application>().getString(R.string.dm_legacy_chat_disabled)
+            return
+        }
         val text = _messageText.value.trim()
         if (text.isBlank() || _sending.value) return
         if (protocol == DmProtocol.NIP04) {
