@@ -52,7 +52,8 @@ fun ContactPickerScreen(
     contactRepo: ContactRepository,
     onBack: () -> Unit,
     onConfirm: (conversationKey: String) -> Unit,
-    myPubkey: String
+    myPubkey: String,
+    legacyDm: Boolean = false
 ) {
     val followList by contactRepo.followList.collectAsState()
     val selected by viewModel.selectedContacts.collectAsState()
@@ -75,7 +76,7 @@ fun ContactPickerScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.new_group_dm)) },
+                title = { Text(stringResource(if (legacyDm) R.string.new_legacy_dm_title else R.string.new_group_dm)) },
                 navigationIcon = {
                     IconButton(onClick = {
                         viewModel.clearContactSelection()
@@ -93,7 +94,11 @@ fun ContactPickerScreen(
             if (selected.isNotEmpty()) {
                 Button(
                     onClick = {
-                        val convKey = viewModel.createGroupConversation(selected.toList(), myPubkey)
+                        val convKey = if (legacyDm) {
+                            viewModel.createLegacyConversation(selected.single(), myPubkey)
+                        } else {
+                            viewModel.createGroupConversation(selected.toList(), myPubkey)
+                        }
                         viewModel.clearContactSelection()
                         onConfirm(convKey)
                     },
@@ -101,7 +106,7 @@ fun ContactPickerScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Text("Start Group DM (${selected.size} selected)")
+                    Text(if (legacyDm) stringResource(R.string.new_legacy_dm_start) else "Start Group DM (${selected.size} selected)")
                 }
             }
         }
@@ -135,12 +140,18 @@ fun ContactPickerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { viewModel.toggleContactSelection(entry.pubkey) }
+                        .clickable {
+                            if (legacyDm) viewModel.selectSingleContact(entry.pubkey)
+                            else viewModel.toggleContactSelection(entry.pubkey)
+                        }
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Checkbox(
                         checked = isSelected,
-                        onCheckedChange = { viewModel.toggleContactSelection(entry.pubkey) }
+                        onCheckedChange = {
+                            if (legacyDm) viewModel.selectSingleContact(entry.pubkey)
+                            else viewModel.toggleContactSelection(entry.pubkey)
+                        }
                     )
                     Spacer(Modifier.width(12.dp))
                     ProfilePicture(url = profile?.picture, size = 40)

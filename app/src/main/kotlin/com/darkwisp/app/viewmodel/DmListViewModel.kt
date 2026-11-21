@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.DmConversation
 import com.darkwisp.app.nostr.DmMessage
+import com.darkwisp.app.nostr.DmProtocol
 import com.darkwisp.app.nostr.DmReaction
 import com.darkwisp.app.nostr.EncryptedMedia
 import com.darkwisp.app.nostr.Nip17
@@ -143,6 +144,17 @@ class DmListViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearContactSelection() {
         _selectedContacts.value = emptySet()
+    }
+
+    fun selectSingleContact(pubkey: String) {
+        _selectedContacts.value = setOf(pubkey)
+    }
+
+    fun createLegacyConversation(peerPubkey: String, myPubkey: String): String {
+        val repo = dmRepo ?: return ""
+        val conversationKey = DmRepository.conversationKey(listOf(peerPubkey, myPubkey))
+        repo.initConversation(conversationKey, listOf(peerPubkey), DmProtocol.NIP04)
+        return conversationKey
     }
 
     /**

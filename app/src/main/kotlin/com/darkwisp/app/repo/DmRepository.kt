@@ -383,8 +383,8 @@ class DmRepository(
      * Pre-create an empty conversation entry (for group DMs initiated locally before
      * any message has been sent/received).
      */
-    fun initConversation(convKey: String, participants: List<String>) {
-        val keyedConversation = storageKey(convKey, DmProtocol.NIP17)
+    fun initConversation(convKey: String, participants: List<String>, protocol: DmProtocol = DmProtocol.NIP17) {
+        val keyedConversation = storageKey(convKey, protocol)
         synchronized(lock) {
             conversations.getOrPut(keyedConversation) { mutableListOf() }
             conversationParticipants[keyedConversation] = participants

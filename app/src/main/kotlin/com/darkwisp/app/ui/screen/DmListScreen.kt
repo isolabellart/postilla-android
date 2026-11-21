@@ -22,6 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,6 +64,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.DmConversation
+import com.darkwisp.app.nostr.DmProtocol
+import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.GroupRoom
@@ -84,12 +89,17 @@ fun DmListScreen(
     onBack: (() -> Unit)? = null,
     onConversation: (DmConversation) -> Unit,
     onNewGroupDm: () -> Unit = {},
-    onGroupRoom: (relayUrl: String, groupId: String) -> Unit = { _, _ -> }
+    onGroupRoom: (relayUrl: String, groupId: String) -> Unit = { _, _ -> },
+    legacyDmEnabled: Boolean = true,
+    onNewLegacyDm: () -> Unit = {}
 ) {
     val conversations by viewModel.conversationList.collectAsState()
     val groups by groupListViewModel.groups.collectAsState()
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableStateOf("private") }
+    LaunchedEffect(legacyDmEnabled) {
+        if (!legacyDmEnabled && selectedTab == "classic") selectedTab = "private"
+    }
     var showJoinDialog by remember { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showDiscoverSheet by remember { mutableStateOf(false) }
@@ -134,18 +144,21 @@ fun DmListScreen(
             Box {
                 FloatingActionButton(
                     onClick = {
-                        if (selectedTab == 0) onNewGroupDm()
-                        else showFabMenu = true
+                        when (selectedTab) {
+                            "private" -> onNewGroupDm()
+                            "classic" -> onNewLegacyDm()
+                            else -> showFabMenu = true
+                        }
                     },
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
-                    if (selectedTab == 0) {
-                        Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
-                    } else {
-                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
+                    when (selectedTab) {
+                        "private" -> Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
+                        "classic" -> Icon(Icons.Outlined.MailOutline, contentDescription = stringResource(R.string.action_new_legacy_dm))
+                        else -> Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
                     }
                 }
-                if (selectedTab == 1) {
+                if (selectedTab == "rooms") {
                     DropdownMenu(
                         expanded = showFabMenu,
                         onDismissRequest = { showFabMenu = false }
@@ -172,16 +185,43 @@ fun DmListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
+            val selectedTabIndex = when (selectedTab) {
+                "private" -> 0
+                "classic" -> 1
+                else -> if (legacyDmEnabled) 2 else 1
+            }
+            TabRow(selectedTabIndex = selectedTabIndex) {
                 Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text(stringResource(R.string.tab_direct_messages)) }
+                    selected = selectedTab == "private",
+                    onClick = { selectedTab = "private" },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Text(stringResource(R.string.tab_dm_private), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 )
+                if (legacyDmEnabled) {
+                    Tab(
+                        selected = selectedTab == "classic",
+                        onClick = { selectedTab = "classic" },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Icon(Icons.Outlined.MailOutline, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Text(stringResource(R.string.tab_dm_classic), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    )
+                }
                 Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text(stringResource(R.string.tab_chat_rooms)) }
+                    selected = selectedTab == "rooms",
+                    onClick = { selectedTab = "rooms" },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Icon(Icons.Outlined.Groups, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Text(stringResource(R.string.tab_chat_rooms), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 )
             }
 
@@ -189,8 +229,9 @@ fun DmListScreen(
             val notifiedGroups by groupListViewModel.notifiedGroups.collectAsState()
 
             when (selectedTab) {
-                0 -> DmListContent(conversations, eventRepo, onConversation)
-                1 -> GroupListContent(
+                "private" -> DmListContent(conversations.filter { it.protocol == DmProtocol.NIP17 }, eventRepo, onConversation)
+                "classic" -> DmListContent(conversations.filter { it.protocol == DmProtocol.NIP04 }, eventRepo, onConversation)
+                "rooms" -> GroupListContent(
                     groups = groups,
                     eventRepo = eventRepo,
                     onGroupRoom = onGroupRoom,
@@ -330,7 +371,7 @@ private fun DmListContent(
         }
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(items = conversations, key = { it.conversationKey }, contentType = { "conversation" }) { convo ->
+            items(items = conversations, key = { "${it.protocol.key}:${it.conversationKey}" }, contentType = { "conversation" }) { convo ->
                 ConversationRow(
                     convo = convo,
                     eventRepo = eventRepo,
