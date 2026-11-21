@@ -1072,9 +1072,7 @@ fun WispNavHost(
                 onArticleClick = { kind, author, dTag ->
                     navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
                 },
-                legacyDmEnabled = feedViewModel.interfacePrefs.isLegacyDmEnabled(),
-                onNewLegacyDm = { navController.navigate("contact_picker?legacyDm=true") },
-                onGroupRoom = { relayUrl, groupId ->
+misplaced legacy tab args                onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
                         relayUrl.toByteArray(Charsets.UTF_8),
                         android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
@@ -2067,6 +2065,7 @@ fun WispNavHost(
         }
 
         composable(Routes.DM_LIST) {
+            val legacyDmEnabled by feedViewModel.interfacePrefs.legacyDmEnabled.collectAsState()
             LaunchedEffect(Unit) {
                 refreshInboxSubscriptionsIfStale()
                 // Decrypt pending gift wraps when signer is available
@@ -2095,6 +2094,8 @@ fun WispNavHost(
                 onNewGroupDm = {
                     navController.navigate("contact_picker?legacyDm=false")
                 },
+                legacyDmEnabled = legacyDmEnabled,
+                onNewLegacyDm = { navController.navigate("contact_picker?legacyDm=true") },
                 onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
                         relayUrl.toByteArray(Charsets.UTF_8),

@@ -146,15 +146,15 @@ class DmListViewModel(app: Application) : AndroidViewModel(app) {
         _selectedContacts.value = emptySet()
     }
 
-    fun selectSingleContact(pubkey: String) {
-        _selectedContacts.value = setOf(pubkey)
+    fun toggleSingleContact(pubkey: String) {
+        _selectedContacts.value = if (_selectedContacts.value == setOf(pubkey)) emptySet() else setOf(pubkey)
     }
 
     fun createLegacyConversation(peerPubkey: String, myPubkey: String): String {
         val repo = dmRepo ?: return ""
         val conversationKey = DmRepository.conversationKey(listOf(peerPubkey, myPubkey))
         repo.initConversation(conversationKey, listOf(peerPubkey), DmProtocol.NIP04)
-        return conversationKey
+        return peerPubkey
     }
 
     /**

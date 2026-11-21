@@ -141,7 +141,7 @@ fun ContactPickerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            if (legacyDm) viewModel.selectSingleContact(entry.pubkey)
+                            if (legacyDm) viewModel.toggleSingleContact(entry.pubkey)
                             else viewModel.toggleContactSelection(entry.pubkey)
                         }
                         .padding(horizontal = 16.dp, vertical = 10.dp)
