@@ -149,7 +149,7 @@ fun ContactPickerScreen(
                     Checkbox(
                         checked = isSelected,
                         onCheckedChange = {
-                            if (legacyDm) viewModel.selectSingleContact(entry.pubkey)
+                            if (legacyDm) viewModel.toggleSingleContact(entry.pubkey)
                             else viewModel.toggleContactSelection(entry.pubkey)
                         }
                     )
