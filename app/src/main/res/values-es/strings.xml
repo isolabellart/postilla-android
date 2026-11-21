@@ -939,4 +939,6 @@
     <string name="action_new_legacy_dm">Nueva conversación clásica</string>
     <string name="new_legacy_dm_title">Nuevo mensaje clásico</string>
     <string name="new_legacy_dm_start">Iniciar conversación clásica</string>
+    <string name="dm_legacy_chat_disabled">La mensajería clásica NIP-04 está desactivada en Ajustes.</string>
+    <string name="dm_legacy_delivery_unconfirmed">Ningún relay del destinatario confirmó la entrega de este mensaje clásico. Comprueba la lista de relays NIP-65 del destinatario y tu conexión, e inténtalo de nuevo.</string>
 </resources>
