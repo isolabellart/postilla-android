@@ -940,4 +940,6 @@
     <string name="action_new_legacy_dm">새 클래식 대화</string>
     <string name="new_legacy_dm_title">새 클래식 DM</string>
     <string name="new_legacy_dm_start">클래식 대화 시작</string>
+    <string name="dm_legacy_chat_disabled">설정에서 기존 NIP-04 메시지가 비활성화되어 있습니다.</string>
+    <string name="dm_legacy_delivery_unconfirmed">이 기존 메시지의 전달을 확인한 수신자 릴레이가 없습니다. 수신자의 NIP-65 릴레이 목록과 연결을 확인한 후 다시 시도하세요.</string>
 </resources>
