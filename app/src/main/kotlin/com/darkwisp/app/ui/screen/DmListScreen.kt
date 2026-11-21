@@ -452,9 +452,25 @@ fun DmListScreen(
 private fun DmListContent(
     conversations: List<DmConversation>,
     eventRepo: EventRepository,
-    onConversation: (DmConversation) -> Unit
+    onConversation: (DmConversation) -> Unit,
+    hiddenKeys: Set<String>,
+    showHidden: Boolean,
+    searchQuery: String,
+    selectedKeys: Set<String>,
+    onToggleSelection: (String) -> Unit
 ) {
-    if (conversations.isEmpty()) {
+    val visibleConversations = conversations.filter { convo ->
+        val key = "${convo.protocol.key}:${convo.conversationKey}"
+        (if (showHidden) key in hiddenKeys else key !in hiddenKeys) &&
+            (searchQuery.isBlank() ||
+                convo.conversationKey.contains(searchQuery, ignoreCase = true) ||
+                convo.participants.any { pk ->
+                    pk.contains(searchQuery, ignoreCase = true) ||
+                        (eventRepo.getProfileData(pk)?.displayString?.contains(searchQuery, ignoreCase = true) == true)
+                } ||
+                convo.messages.lastOrNull()?.content?.contains(searchQuery, ignoreCase = true) == true)
+    }
+    if (visibleConversations.isEmpty()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -475,11 +491,14 @@ private fun DmListContent(
         }
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(items = conversations, key = { "${it.protocol.key}:${it.conversationKey}" }, contentType = { "conversation" }) { convo ->
+            items(items = visibleConversations, key = { "${it.protocol.key}:${it.conversationKey}" }, contentType = { "conversation" }) { convo ->
+                val key = "${convo.protocol.key}:${convo.conversationKey}"
                 ConversationRow(
                     convo = convo,
                     eventRepo = eventRepo,
-                    onClick = { onConversation(convo) }
+                    selected = key in selectedKeys,
+                    onLongClick = { onToggleSelection(key) },
+                    onClick = { if (selectedKeys.isNotEmpty()) onToggleSelection(key) else onConversation(convo) }
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
             }
@@ -768,6 +787,8 @@ private fun GroupFlagSwitch(
 private fun ConversationRow(
     convo: DmConversation,
     eventRepo: EventRepository,
+    selected: Boolean = false,
+    onLongClick: () -> Unit = {},
     onClick: () -> Unit
 ) {
     val lastMsg = convo.messages.lastOrNull()
@@ -776,7 +797,8 @@ private fun ConversationRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.background)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         if (convo.isGroup) {
