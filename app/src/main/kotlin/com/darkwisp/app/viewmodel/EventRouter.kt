@@ -9,6 +9,9 @@ import com.darkwisp.app.nostr.DmZap
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip17
+import com.darkwisp.app.nostr.Nip04
+import com.darkwisp.app.nostr.DmProtocol
+import com.darkwisp.app.nostr.wipe
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip53
 import com.darkwisp.app.nostr.Nip30
@@ -81,7 +84,8 @@ class EventRouter(
     private val getFeedSubId: () -> String,
     private val getRelayFeedSubId: () -> String,
     private val getIsTrendingFeed: () -> Boolean,
-    private val onRelayFeedEventReceived: () -> Unit
+    private val onRelayFeedEventReceived: () -> Unit,
+    private val isNip04Enabled: () -> Boolean = { true }
 ) {
     /**
      * IDs of the user's own recent events used to build the notif-replies-etag subscription.
@@ -115,7 +119,10 @@ class EventRouter(
             Log.d("GALLERY", "[EventRouter] received kind=${event.kind} id=${event.id.take(12)} pubkey=${event.pubkey.take(8)} sub=$subscriptionId relay=$relayUrl")
         }
         if (subscriptionId == "dms") {
-            if (event.kind == 1059) processGiftWrap(event, relayUrl)
+            when (event.kind) {
+                1059 -> processGiftWrap(event, relayUrl)
+                4 -> if (isNip04Enabled()) processLegacyDm(event, relayUrl)
+            }
             return
         }
         if (subscriptionId == "notif") {
@@ -603,6 +610,38 @@ class EventRouter(
             Nip51.KIND_INTEREST_SET, Nip51.KIND_BOOKMARK_SET, Nip51.KIND_RELAY_SET,
             Nip51.KIND_FAVORITE_RELAYS, Nip30.KIND_USER_EMOJI_LIST, Nip30.KIND_EMOJI_SET
         )
+    }
+
+    private suspend fun processLegacyDm(event: NostrEvent, relayUrl: String) {
+        val myPubkey = getUserPubkey() ?: return
+        if (event.pubkey == myPubkey || muteRepo.isBlocked(event.pubkey)) return
+        if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == myPubkey }) return
+
+        val plaintext = try {
+            val signer = getSigner()
+            if (signer != null) {
+                signer.nip04Decrypt(event.content, event.pubkey)
+            } else {
+                val keypair = keyRepo.getKeypair() ?: return
+                val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, event.pubkey.hexToByteArray())
+                try { Nip04.decrypt(event.content, sharedSecret) } finally { sharedSecret.wipe() }
+            }
+        } catch (error: Exception) {
+            Log.w("EventRouter", "Failed to decrypt NIP-04 event ${event.id.take(12)}: ${error.message}")
+            return
+        }
+
+        val msg = DmMessage(
+            id = event.id,
+            senderPubkey = event.pubkey,
+            content = plaintext,
+            createdAt = event.created_at,
+            giftWrapId = event.id,
+            relayUrls = if (relayUrl.isNotEmpty()) setOf(relayUrl) else emptySet(),
+            participants = listOf(event.pubkey),
+            protocol = DmProtocol.NIP04
+        )
+        dmRepo.addMessage(msg, DmRepository.conversationKey(listOf(event.pubkey, myPubkey)))
     }
 
     private fun processGiftWrap(event: NostrEvent, relayUrl: String) {

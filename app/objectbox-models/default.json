@@ -203,7 +203,7 @@
     },
     {
       "id": "4:7887606620514562424",
-      "lastPropertyId": "19:4886434588165198685",
+      "lastPropertyId": "20:6344903751029113741",
       "name": "DmMessageEntity",
       "properties": [
         {
@@ -307,6 +307,11 @@
           "id": "19:4886434588165198685",
           "name": "debugRumorJson",
           "type": 9
+        },
+        {
+          "id": "20:6344903751029113741",
+          "name": "protocol",
+          "type": 9
         }
       ],
       "relations": []
@@ -316,7 +321,7 @@
   "lastIndexId": "11:2796688777436521560",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
-  "modelVersion": 5,
+  "modelVersion": 6,
   "modelVersionParserMinimum": 5,
   "retiredEntityUids": [],
   "retiredIndexUids": [],

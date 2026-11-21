@@ -118,7 +118,8 @@ class StartupCoordinator(
     private val getUserPubkey: () -> String?,
     private val registerAuthSigner: () -> Unit,
     private val fetchEmojiSets: () -> Unit,
-    private val getSigner: () -> NostrSigner?
+    private val getSigner: () -> NostrSigner?,
+    private val isNip04Enabled: () -> Boolean = { true }
 ) {
     private var eventProcessingJob: Job? = null
     private var metadataSweepJob: Job? = null
@@ -577,7 +578,8 @@ class StartupCoordinator(
                 val myPubkey = getUserPubkey() ?: return@collect
                 val dmRelayUrls = relayPool.getDmRelayUrls()
                 if (relayUrl in dmRelayUrls || relayUrl in relayPool.getRelayUrls()) {
-                    val dmFilter = Filter(kinds = listOf(1059), pTags = listOf(myPubkey))
+                    val dmKinds = if (isNip04Enabled()) listOf(1059, 4) else listOf(1059)
+                    val dmFilter = Filter(kinds = dmKinds, pTags = listOf(myPubkey))
                     relayPool.sendToRelay(relayUrl, ClientMessage.req("dms", dmFilter))
                 }
             }
@@ -966,7 +968,8 @@ class StartupCoordinator(
         // NIP-17 gift wraps use randomized timestamps (up to 2 days in the past), making
         // a `since` filter unreliable — it would silently drop DMs from older conversations
         // and suppress the unread badge. DMs are low-volume; fetch without restriction.
-        val dmReqMsg = ClientMessage.req("dms", Filter(kinds = listOf(1059), pTags = listOf(myPubkey)))
+        val dmKinds = if (isNip04Enabled()) listOf(1059, 4) else listOf(1059)
+        val dmReqMsg = ClientMessage.req("dms", Filter(kinds = dmKinds, pTags = listOf(myPubkey)))
         relayPool.sendToAll(dmReqMsg)
         relayPool.sendToDmRelays(dmReqMsg)
         scope.launch {
