@@ -1206,4 +1206,12 @@
     <string name="article_publish_unconfirmed">No relay confirmed the article. Your text is still here; try again.</string>
     <string name="article_not_signed_in">Sign in to publish an article.</string>
 
+    <string name="postilla_update_available">Postilla %1$s is available</string>
+    <string name="postilla_update_description">A new version is ready. You can update now or do it later.</string>
+    <string name="postilla_update_now">Update now</string>
+    <string name="postilla_update_later">Later</string>
+    <string name="postilla_update_downloading">Downloading…</string>
+    <string name="postilla_update_allow_install">Allow Postilla to install updates in Android settings, then tap Update now again.</string>
+    <string name="postilla_update_failed">The update could not be downloaded or verified. Please try again later.</string>
+    <string name="postilla_update_preview_only">The updater preview is active. Installing an update from a Preview build is disabled.</string>
 </resources>

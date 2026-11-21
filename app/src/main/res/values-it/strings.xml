@@ -1036,4 +1036,12 @@
     <string name="article_publish_unconfirmed">Nessun relay ha confermato l\'articolo. Il testo è ancora qui: riprova.</string>
     <string name="article_not_signed_in">Accedi per pubblicare un articolo.</string>
 
+    <string name="postilla_update_available">È disponibile Postilla %1$s</string>
+    <string name="postilla_update_description">È pronta una nuova versione. Puoi aggiornare adesso oppure farlo più tardi.</string>
+    <string name="postilla_update_now">Aggiorna ora</string>
+    <string name="postilla_update_later">Più tardi</string>
+    <string name="postilla_update_downloading">Download in corso…</string>
+    <string name="postilla_update_allow_install">Consenti a Postilla di installare gli aggiornamenti nelle impostazioni Android, poi tocca di nuovo Aggiorna ora.</string>
+    <string name="postilla_update_failed">Non è stato possibile scaricare o verificare l’aggiornamento. Riprova più tardi.</string>
+    <string name="postilla_update_preview_only">La funzione di aggiornamento è in anteprima. L’installazione da una versione Preview è disabilitata.</string>
 </resources>
