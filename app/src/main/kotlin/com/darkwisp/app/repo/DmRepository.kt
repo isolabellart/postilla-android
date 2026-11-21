@@ -514,9 +514,16 @@ class DmRepository(
         }
         try {
             val event = pending.event
-            if (event.pubkey == owner || muteRepository?.isBlocked(event.pubkey) == true) return true
-            if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == owner }) return true
-            val plaintext = signer.nip04Decrypt(event.content, event.pubkey)
+            val taggedPeer = event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+                ?: return true
+            val isOutgoing = event.pubkey == owner
+            val peerPubkey = if (isOutgoing) taggedPeer else event.pubkey
+            if (peerPubkey == owner || (!isOutgoing && taggedPeer != owner)) return true
+            if (muteRepository?.isBlocked(peerPubkey) == true) return true
+
+            // NIP-55 decrypt uses the other party's pubkey in both directions:
+            // sender for incoming events, recipient for events authored by this account.
+            val plaintext = signer.nip04Decrypt(event.content, peerPubkey)
             val (displayText, encryptedMedia) = com.darkwisp.app.nostr.EncryptedMedia.decodeNip04Content(plaintext)
             val msg = DmMessage(
                 id = event.id,
@@ -525,11 +532,11 @@ class DmRepository(
                 createdAt = event.created_at,
                 giftWrapId = event.id,
                 relayUrls = if (pending.relayUrl.isNotEmpty()) setOf(pending.relayUrl) else emptySet(),
-                participants = listOf(event.pubkey),
+                participants = listOf(peerPubkey),
                 encryptedFileMetadata = encryptedMedia,
                 protocol = DmProtocol.NIP04
             )
-            addMessage(msg, conversationKey(listOf(event.pubkey, owner)))
+            addMessage(msg, conversationKey(listOf(peerPubkey, owner)))
         } catch (error: Exception) {
             // Keep the encrypted event for a later retry (e.g. signer approval/cancellation).
             // Returning false stops the current drain loop instead of retrying forever.
