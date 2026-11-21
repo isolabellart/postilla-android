@@ -348,6 +348,10 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
 
     fun uploadMedia(uris: List<Uri>, contentResolver: ContentResolver, relayPool: RelayPool, signer: NostrSigner? = null) {
         if (protocol != DmProtocol.NIP17 && protocol != DmProtocol.NIP04) return
+        if (protocol == DmProtocol.NIP04 && !InterfacePreferences(getApplication()).isLegacyDmEnabled()) {
+            _sendError.value = getApplication<Application>().getString(R.string.dm_legacy_chat_disabled)
+            return
+        }
         if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.Default) {
             val selectedUris = if (protocol == DmProtocol.NIP04) uris.take(1) else uris
@@ -950,6 +954,10 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
      * Send a private DM reaction (gift-wrapped kind 14) to all conversation participants.
      */
     private fun sendLegacyMessage(relayPool: RelayPool, signer: NostrSigner?, text: String, fileMetadata: EncryptedMedia.EncryptedFileMetadata? = null) {
+        if (!InterfacePreferences(getApplication()).isLegacyDmEnabled()) {
+            _sendError.value = getApplication<Application>().getString(R.string.dm_legacy_chat_disabled)
+            return
+        }
         if (text.isBlank() && fileMetadata == null) return
         if (participants.size != 1) {
             _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
