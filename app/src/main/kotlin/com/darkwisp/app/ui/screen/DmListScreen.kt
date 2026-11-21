@@ -2,6 +2,14 @@ package com.darkwisp.app.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -96,6 +104,27 @@ fun DmListScreen(
 ) {
     val conversations by viewModel.conversationList.collectAsState()
     val groups by groupListViewModel.groups.collectAsState()
+
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val hiddenPrefs = remember(context) { context.getSharedPreferences("wisp_settings", android.content.Context.MODE_PRIVATE) }
+    val hiddenPrefKey = "hidden_dm_conversations_${userPubkey ?: "default"}"
+    var hiddenConversationKeys by remember(userPubkey) { mutableStateOf(emptySet<String>()) }
+    var showHiddenChats by rememberSaveable { mutableStateOf(false) }
+    var selectedConversationKeys by remember { mutableStateOf(emptySet<String>()) }
+    var searchVisible by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showChatMenu by remember { mutableStateOf(false) }
+    LaunchedEffect(userPubkey) {
+        hiddenConversationKeys = hiddenPrefs.getStringSet(hiddenPrefKey, emptySet())?.toSet() ?: emptySet()
+        selectedConversationKeys = emptySet()
+        showHiddenChats = false
+    }
+    fun persistHidden(next: Set<String>) {
+        hiddenConversationKeys = next
+        hiddenPrefs.edit().putStringSet(hiddenPrefKey, next).apply()
+        selectedConversationKeys = emptySet()
+    }
 
     var selectedTab by rememberSaveable { mutableStateOf("private") }
     LaunchedEffect(legacyDmEnabled) {
