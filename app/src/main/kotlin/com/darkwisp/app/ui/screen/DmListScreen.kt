@@ -784,6 +784,7 @@ private fun GroupFlagSwitch(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ConversationRow(
     convo: DmConversation,
     eventRepo: EventRepository,
