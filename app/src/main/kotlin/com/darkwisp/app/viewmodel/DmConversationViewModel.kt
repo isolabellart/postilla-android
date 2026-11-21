@@ -961,7 +961,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (deliveryRelays.isEmpty()) {
                     _messageText.value = text
-                    _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                    _sendError.value = getApplication<Application>().getString(R.string.dm_legacy_delivery_unconfirmed)
                     return@launch
                 }
 
@@ -997,7 +997,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (!outcome.confirmed) {
                     _messageText.value = text
-                    _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                    _sendError.value = getApplication<Application>().getString(R.string.dm_legacy_delivery_unconfirmed)
                     return@launch
                 }
 
@@ -1016,7 +1016,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 clearReply()
             } catch (error: Exception) {
                 _messageText.value = text
-                _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                _sendError.value = getApplication<Application>().getString(R.string.dm_legacy_delivery_unconfirmed)
                 Log.w("DmConversation", "NIP-04 send failed", error)
             } finally {
                 _sending.value = false
