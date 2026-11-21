@@ -347,26 +347,50 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun uploadMedia(uris: List<Uri>, contentResolver: ContentResolver, relayPool: RelayPool, signer: NostrSigner? = null) {
-        if (protocol != DmProtocol.NIP17) return
+        if (protocol != DmProtocol.NIP17 && protocol != DmProtocol.NIP04) return
+        if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.Default) {
-            val total = uris.size
-            for ((index, uri) in uris.withIndex()) {
+            val selectedUris = if (protocol == DmProtocol.NIP04) uris.take(1) else uris
+            val total = selectedUris.size
+            val legacyCaption = _messageText.value.trim()
+            for ((index, uri) in selectedUris.withIndex()) {
                 try {
                     _uploadProgress.value = if (total > 1) "Encrypting & uploading ${index + 1}/$total..." else "Encrypting & uploading..."
                     val rawBytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                         ?: throw Exception("Cannot read file")
                     val srcMime = contentResolver.getType(uri) ?: "application/octet-stream"
+                    if (protocol == DmProtocol.NIP04 && !srcMime.startsWith("image/")) {
+                        throw IllegalArgumentException("NIP-04 supports image attachments only")
+                    }
 
                     val (bytes, mimeType, _) = when {
+                        protocol == DmProtocol.NIP04 && srcMime.startsWith("image/") ->
+                            MediaCompressor.compressForContent(rawBytes, srcMime).asTriple()
                         srcMime == "image/gif" -> GifToMp4Converter.convert(rawBytes, getApplication())
                         srcMime.startsWith("image/") -> MediaCompressor.compressForContent(rawBytes, srcMime).asTriple()
                         else -> Triple(rawBytes, srcMime, "")
                     }
 
                     val dimensions = dimsTagFor(bytes, mimeType)
-
                     val result = blossomRepo.uploadEncryptedMedia(bytes, mimeType, signer)
-                    sendFileMessage(result, mimeType, dimensions, bytes.size.toLong(), relayPool, signer)
+                    if (protocol == DmProtocol.NIP04) {
+                        val metadata = EncryptedMedia.EncryptedFileMetadata(
+                            fileUrl = result.url,
+                            mimeType = mimeType,
+                            algorithm = EncryptedMedia.ALGORITHM,
+                            keyHex = result.keyHex,
+                            nonceHex = result.nonceHex,
+                            encryptedHash = result.encryptedSha256Hex,
+                            originalHash = result.originalSha256Hex,
+                            size = bytes.size.toLong(),
+                            dimensions = dimensions,
+                            thumbhash = null,
+                            blurhash = null
+                        )
+                        sendLegacyMessage(relayPool, signer, legacyCaption, metadata)
+                    } else {
+                        sendFileMessage(result, mimeType, dimensions, bytes.size.toLong(), relayPool, signer)
+                    }
                 } catch (e: Exception) {
                     _sendError.value = "Upload failed: ${e.message}"
                     break
@@ -925,7 +949,8 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Send a private DM reaction (gift-wrapped kind 14) to all conversation participants.
      */
-    private fun sendLegacyMessage(relayPool: RelayPool, signer: NostrSigner?, text: String) {
+    private fun sendLegacyMessage(relayPool: RelayPool, signer: NostrSigner?, text: String, fileMetadata: EncryptedMedia.EncryptedFileMetadata? = null) {
+        if (text.isBlank() && fileMetadata == null) return
         if (participants.size != 1) {
             _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
             return
@@ -965,12 +990,13 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
 
+                val nip04Plaintext = EncryptedMedia.encodeNip04Content(text, fileMetadata)
                 val encryptedContent = if (signer != null) {
-                    signer.nip04Encrypt(text, peerPubkey)
+                    signer.nip04Encrypt(nip04Plaintext, peerPubkey)
                 } else {
                     val keypair = localKeypair ?: return@launch
                     val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, peerPubkey.hexToByteArray())
-                    try { Nip04.encrypt(text, sharedSecret) } finally { sharedSecret.wipe() }
+                    try { Nip04.encrypt(nip04Plaintext, sharedSecret) } finally { sharedSecret.wipe() }
                 }
                 val tags = listOf(listOf("p", peerPubkey))
                 val event = if (signer != null) {
@@ -1010,6 +1036,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                     giftWrapId = event.id,
                     relayUrls = acknowledgedRelays,
                     participants = listOf(peerPubkey),
+                    encryptedFileMetadata = fileMetadata,
                     protocol = DmProtocol.NIP04
                 )
                 dmRepo?.addMessage(message, conversationKey)
