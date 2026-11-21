@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
@@ -820,6 +821,9 @@ class FeedSubscriptionManager(
                 }
             }
         }
+        val eoseAwaiter = scope.async(start = CoroutineStart.UNDISPATCHED) {
+            subManager.awaitEoseWithTimeout(subscriptionId, timeoutMs = 12_000)
+        }
         try {
             val since = System.currentTimeMillis() / 1000L - timeframe.hours * 3600L
             val filter = DittoTrendingQuery.buildFilter(since = since, sort = sort, limit = 200)
@@ -830,7 +834,7 @@ class FeedSubscriptionManager(
             )
             if (!sent) throw IllegalStateException("Unable to connect to Ditto relay")
 
-            val eoseReceived = subManager.awaitEoseWithTimeout(subscriptionId, timeoutMs = 12_000)
+            val eoseReceived = eoseAwaiter.await()
             val snapshot = synchronized(collected) { collected.values.toList() }
             val verified = withContext(processingContext) {
                 snapshot.filter { it.kind == 1 && runCatching { it.verifySignature() }.getOrDefault(false) }
@@ -841,6 +845,7 @@ class FeedSubscriptionManager(
             }
             return verified
         } finally {
+            eoseAwaiter.cancel()
             collector.cancel()
             relayPool.closeOnAllRelays(subscriptionId)
         }
@@ -891,6 +896,9 @@ class FeedSubscriptionManager(
                     }
                 }
             }
+            val eoseAwaiter = scope.async(start = CoroutineStart.UNDISPATCHED) {
+                subManager.awaitEoseWithTimeout(subId, timeoutMs = 8_000)
+            }
             try {
                 val filter = Filter(
                     kinds = listOf(30383),
@@ -898,13 +906,14 @@ class FeedSubscriptionManager(
                     dTags = chunk,
                     limit = chunk.size
                 )
-                relayPool.sendToRelayOrEphemeral(
+                val sent = relayPool.sendToRelayOrEphemeral(
                     RelayConfig.DITTO_RELAY_URL,
                     ClientMessage.req(subId, filter),
                     skipBadCheck = true
                 )
-                subManager.awaitEoseWithTimeout(subId, timeoutMs = 8_000)
+                if (sent) eoseAwaiter.await()
             } finally {
+                eoseAwaiter.cancel()
                 collector.cancel()
                 relayPool.closeOnAllRelays(subId)
             }
