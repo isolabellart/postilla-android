@@ -517,14 +517,16 @@ class DmRepository(
             if (event.pubkey == owner || muteRepository?.isBlocked(event.pubkey) == true) return true
             if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == owner }) return true
             val plaintext = signer.nip04Decrypt(event.content, event.pubkey)
+            val (displayText, encryptedMedia) = com.darkwisp.app.nostr.EncryptedMedia.decodeNip04Content(plaintext)
             val msg = DmMessage(
                 id = event.id,
                 senderPubkey = event.pubkey,
-                content = plaintext,
+                content = displayText,
                 createdAt = event.created_at,
                 giftWrapId = event.id,
                 relayUrls = if (pending.relayUrl.isNotEmpty()) setOf(pending.relayUrl) else emptySet(),
                 participants = listOf(event.pubkey),
+                encryptedFileMetadata = encryptedMedia,
                 protocol = DmProtocol.NIP04
             )
             addMessage(msg, conversationKey(listOf(event.pubkey, owner)))
