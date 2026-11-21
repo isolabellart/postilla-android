@@ -130,7 +130,6 @@ import com.darkwisp.app.viewmodel.RelayFeedStatus
 import com.darkwisp.app.viewmodel.TrendingMetric
 import com.darkwisp.app.viewmodel.TrendingMode
 import com.darkwisp.app.viewmodel.TrendingTimeframe
-import com.darkwisp.app.viewmodel.buildTrendingApiUrl
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
@@ -169,7 +168,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.repo.AccountInfo
 import com.darkwisp.app.ui.component.FollowButton
-import com.darkwisp.app.viewmodel.TRENDING_USERS_SOURCE_LABEL
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -1361,7 +1359,7 @@ fun FeedScreen(
                             feedType == FeedType.TRENDING -> {
                                 RelayFeedEmptyState(
                                     status = relayFeedStatus,
-                                    relayUrl = buildTrendingApiUrl(trendingMetric, trendingTimeframe),
+                                    relayUrl = "Nostr.wine",
                                     onRetry = { viewModel.setFeedType(FeedType.TRENDING) }
                                 )
                             }
@@ -3116,7 +3114,7 @@ private fun TrendingUsersContent(
         ) {
             RelayFeedEmptyState(
                 status = relayFeedStatus,
-                relayUrl = TRENDING_USERS_SOURCE_LABEL,
+                relayUrl = "Nostr.wine",
                 onRetry = onRetry
             )
         }
@@ -3291,7 +3289,7 @@ private fun RelayFeedBar(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = info?.name ?: domain,
+                        text = info?.name ?: sourceName,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -3299,7 +3297,7 @@ private fun RelayFeedBar(
                     )
                     if (info?.name != null) {
                         Text(
-                            text = domain,
+                            text = sourceName,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
@@ -3498,7 +3496,7 @@ private fun RelayFeedEmptyState(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Contacting $sourceName...",
+                    "Contacting $domain...",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3510,14 +3508,14 @@ private fun RelayFeedEmptyState(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Loading results from $sourceName...",
+                    "Loading results from $domain...",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             is RelayFeedStatus.NoEvents -> {
                 Text(
-                    "No results available from $sourceName",
+                    "No results available from $domain",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )

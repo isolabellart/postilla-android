@@ -783,7 +783,7 @@ class FeedSubscriptionManager(
         }
     }
 
-    private suspend fun fetchProfileMetadata(authors: List<String>, subId: String, generation: Long): List<ProfileData> {
+    private suspend fun fetchProfileMetadata(authors: List<String>, subId: String, generation: Int): List<ProfileData> {
         val profiles = authors.mapNotNull { profileRepo.get(it) }.associateBy { it.pubkey }.toMutableMap()
         val missing = authors.filterNot { it in profiles }.take(100)
         if (missing.isNotEmpty()) {
@@ -810,7 +810,7 @@ class FeedSubscriptionManager(
         return authors.mapNotNull { profiles[it] ?: profileRepo.get(it) }
     }
 
-    private suspend fun fetchDittoEventStats(ids: List<String>, generation: Long) {
+    private suspend fun fetchDittoEventStats(ids: List<String>, generation: Int) {
         ids.distinct().take(200).chunked(100).forEachIndexed { index, chunk ->
             if (relayFeedGeneration != generation) return
             val subId = "trending-ditto-stats-$generation-$index"

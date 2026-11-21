@@ -915,7 +915,6 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         nwcRepo.disconnect()
         sparkRepo.disconnect()
         relayPool.disconnectAll()
-        liveMetricsSocket?.close(1000, null)
         notifRepo.shutdown()
         eventRepo.shutdown()
         // viewModelScope is already cancelled here, so drain writers on a detached IO scope.
