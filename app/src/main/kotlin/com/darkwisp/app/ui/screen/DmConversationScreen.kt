@@ -179,7 +179,9 @@ fun DmConversationScreen(
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
-        if (!isLegacyDm && uris.isNotEmpty()) viewModel.uploadMedia(uris, context.contentResolver, relayPool, signer)
+        if (uris.isNotEmpty()) {
+            viewModel.uploadMedia(if (isLegacyDm) uris.take(1) else uris, context.contentResolver, relayPool, signer)
+        }
     }
 
     // Auto-scroll to bottom when new messages arrive
@@ -556,10 +558,10 @@ fun DmConversationScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            if (!isLegacyDm) Surface(
+                            Surface(
                                 onClick = {
                                     photoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                                        PickVisualMediaRequest(if (isLegacyDm) ActivityResultContracts.PickVisualMedia.ImageOnly else ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                                     )
                                 },
                                 enabled = uploadProgress == null && !sending,
