@@ -3241,8 +3241,11 @@ private fun RelayFeedBar(
 ) {
     val info = remember(relayUrl) { relayInfoRepo.getInfo(relayUrl) }
     val iconUrl = remember(relayUrl) { relayInfoRepo.getIconUrl(relayUrl) }
-    val domain = remember(relayUrl) {
-        relayUrl.removePrefix("wss://").removePrefix("ws://").removeSuffix("/")
+    val sourceName = remember(relayUrl) {
+        relayUrl.removePrefix("wss://").removePrefix("ws://")
+            .removePrefix("https://").removePrefix("http://")
+            .substringBefore("/").substringBefore("?")
+            .ifBlank { relayUrl }
     }
     var showSetPicker by remember { mutableStateOf(false) }
     var newSetName by remember { mutableStateOf("") }
@@ -3495,7 +3498,7 @@ private fun RelayFeedEmptyState(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Connecting to $domain...",
+                    "Contacting $sourceName...",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3507,14 +3510,14 @@ private fun RelayFeedEmptyState(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Connected. Waiting for events...",
+                    "Loading results from $sourceName...",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             is RelayFeedStatus.NoEvents -> {
                 Text(
-                    "No events found on this relay",
+                    "No results available from $sourceName",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3530,7 +3533,7 @@ private fun RelayFeedEmptyState(
             }
             is RelayFeedStatus.RateLimited -> {
                 Text(
-                    "This relay is rate limiting you",
+                    "This source is rate limiting requests",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3539,7 +3542,7 @@ private fun RelayFeedEmptyState(
             }
             is RelayFeedStatus.BadRelay -> {
                 Text(
-                    "This relay has been marked unreliable",
+                    "This source has been marked unreliable",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3554,7 +3557,7 @@ private fun RelayFeedEmptyState(
             }
             is RelayFeedStatus.Cooldown -> {
                 Text(
-                    "Relay on cooldown",
+                    "Source on cooldown",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3582,7 +3585,7 @@ private fun RelayFeedEmptyState(
             }
             is RelayFeedStatus.Disconnected -> {
                 Text(
-                    "Relay disconnected",
+                    "Source disconnected",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )

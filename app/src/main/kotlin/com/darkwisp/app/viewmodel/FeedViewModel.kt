@@ -13,6 +13,7 @@ import com.darkwisp.app.relay.Relay
 import com.darkwisp.app.relay.RelayLifecycleManager
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayConfig
+import com.darkwisp.app.relay.HttpClientFactory
 import com.darkwisp.app.relay.RelayHealthTracker
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.RelayScoreBoard
