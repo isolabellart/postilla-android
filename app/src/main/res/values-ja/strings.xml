@@ -645,7 +645,7 @@
 
     <!-- NIP-29 Chat Rooms -->
     <string name="tab_direct_messages">ダイレクトメッセージ</string>
-    <string name="tab_chat_rooms">チャットルーム</string>
+    <string name="tab_chat_rooms">ルーム</string>
     <string name="title_join_chat_room">チャットルームに参加</string>
     <string name="title_create_group">チャットルームを作成</string>
     <string name="label_relay_url">リレーURL</string>
@@ -941,4 +941,11 @@
     <string name="new_legacy_dm_start">クラシック会話を開始</string>
     <string name="dm_legacy_chat_disabled">設定で従来のNIP-04メッセージ機能が無効になっています。</string>
     <string name="dm_legacy_delivery_unconfirmed">この従来型メッセージの配信を確認した受信者リレーがありません。受信者のNIP-65リレーリストと接続を確認して、もう一度お試しください。</string>
+    <string name="dm_search_hint">ユーザーまたは会話を検索</string>
+    <string name="dm_chat_menu">チャットのオプション</string>
+    <string name="dm_mark_all_read">すべて既読にする</string>
+    <string name="dm_show_hidden">非表示のチャットを表示</string>
+    <string name="dm_hide_hidden">非表示のチャットを隠す</string>
+    <string name="dm_hide_selected">非表示</string>
+    <string name="dm_restore_selected">元に戻す</string>
 </resources>
