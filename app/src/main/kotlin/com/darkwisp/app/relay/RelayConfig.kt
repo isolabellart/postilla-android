@@ -40,8 +40,8 @@ data class RelayConfig(
             "wss://auth.nostr1.com"
         )
 
+        // Free public relays only: the paid nostr.wine WebSocket relay is intentionally excluded.
         val DEFAULT_SEARCH_RELAYS = listOf(
-            "wss://nostr.wine",
             "wss://relay.noswhere.com",
             "wss://search.nos.today",
             "wss://antiprimal.net",
