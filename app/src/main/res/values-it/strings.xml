@@ -366,7 +366,7 @@
     <string name="social_computing_network">Calcolo rete...</string>
     <string name="social_filtering">Filtraggio...</string>
     <string name="social_fetching_relays">Recupero lista relays...</string>
-    <string name="social_warning">Questo può richiedere 2\u20135 minuti. Per favore resta su questa schermata fino al termine.</string>
+    <string name="social_warning">Questo può richiedere 2–5 minuti. Per favore resta su questa schermata fino al termine.</string>
     <string name="social_top_accounts">Account Principali</string>
     <string name="social_qualified_from">%1$d qualificati da %2$d following</string>
     <string name="social_recompute">Ricalcola</string>
@@ -470,7 +470,7 @@
     <string name="new_notes_hide_forever">Nascondi per sempre</string>
     <string name="broadcast_mining">Mining PoW (%dk)…</string>
     <string name="broadcast_cancel_mining">Annulla mining</string>
-    <string name="broadcast_broadcasting">Broadcasting (%d/%d)</string>
+    <string name="broadcast_broadcasting">Broadcasting (%1$d/%2$d)</string>
     <string name="broadcast_published">Pubblicato su %d relay</string>
     <string name="broadcast_published_plural">Pubblicato su %d relay</string>
     <string name="settings_media">Media</string>
@@ -512,8 +512,8 @@
     <!-- Loading -->
     <string name="loading_searching_profile">Ricerca del tuo profilo…</string>
     <string name="loading_finding_friends">Trovare i tuoi amici…</string>
-    <string name="loading_finding_friends_progress">Trovare i tuoi amici… %d/%d</string>
-    <string name="loading_discovering_network">Scoperta della rete estesa… %d/%d</string>
+    <string name="loading_finding_friends_progress">Trovare i tuoi amici… %1$d/%2$d</string>
+    <string name="loading_discovering_network">Scoperta della rete estesa… %1$d/%2$d</string>
     <string name="loading_expanding_relays">Connessione a %d relay estesi…</string>
     <string name="loading_subscribing">Iscrizione al feed…</string>
     <string name="loading_notes">Caricamento note…</string>
@@ -1048,7 +1048,7 @@
     <string name="tab_dm_classic">Classici</string>
     <string name="settings_chat_compatibility">Compatibilità chat</string>
     <string name="settings_legacy_dm_title">Messaggi diretti classici (NIP-04)</string>
-    <string name="settings_legacy_dm_description">Attiva l'invio e la ricezione dei messaggi diretti legacy NIP-04. Le nuove conversazioni in Privati continueranno a utilizzare NIP-17.</string>
+    <string name="settings_legacy_dm_description">Attiva invio e ricezione dei messaggi diretti classici NIP-04. Le nuove conversazioni in Privati continueranno a utilizzare NIP-17.</string>
     <string name="action_new_legacy_dm">Nuova conversazione classica</string>
     <string name="new_legacy_dm_title">Nuovo DM classico</string>
     <string name="new_legacy_dm_start">Inizia conversazione classica</string>
