@@ -942,4 +942,11 @@
     <string name="new_legacy_dm_start">开始经典对话</string>
     <string name="dm_legacy_chat_disabled">经典 NIP-04 消息功能已在设置中关闭。</string>
     <string name="dm_legacy_delivery_unconfirmed">没有接收方中继确认此经典消息已送达。请检查接收方的 NIP-65 中继列表和网络连接，然后重试。</string>
+    <string name="dm_search_hint">搜索用户或对话</string>
+    <string name="dm_chat_menu">聊天选项</string>
+    <string name="dm_mark_all_read">全部标记为已读</string>
+    <string name="dm_show_hidden">显示隐藏的聊天</string>
+    <string name="dm_hide_hidden">隐藏隐藏的聊天</string>
+    <string name="dm_hide_selected">隐藏</string>
+    <string name="dm_restore_selected">恢复</string>
 </resources>
