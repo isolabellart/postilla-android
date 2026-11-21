@@ -63,9 +63,14 @@ object PostillaUpdateManager {
         // Preview builds show a local test offer, never a production APK for the
         // separate .staging application ID.
         if (BuildConfig.BUILD_TYPE == "staging") {
+            // Each new Preview build gets a fresh visual update offer, even if the
+            // previous Preview was snoozed with "Later". The same build still respects
+            // its three-day snooze interval.
+            val previewVersion = "1.0.50"
             val saved = readOffer(prefs)
-            if (saved == null || !saved.previewOnly || saved.versionName != "1.0.48") {
-                writeOffer(prefs, PostillaUpdateOffer("1.0.48", "", "", previewOnly = true))
+            if (saved == null || !saved.previewOnly || saved.versionName != previewVersion) {
+                prefs.edit().putLong(KEY_SNOOZE_UNTIL, 0L).apply()
+                writeOffer(prefs, PostillaUpdateOffer(previewVersion, "", "", previewOnly = true))
             }
             publishVisibleOffer(appContext)
             return@withContext true
