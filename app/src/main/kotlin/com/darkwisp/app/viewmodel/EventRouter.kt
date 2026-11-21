@@ -10,6 +10,7 @@ import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip17
 import com.darkwisp.app.nostr.Nip04
+import com.darkwisp.app.nostr.Nip04DmRouting
 import com.darkwisp.app.nostr.DmProtocol
 import com.darkwisp.app.nostr.wipe
 import com.darkwisp.app.nostr.Nip22
@@ -615,13 +616,8 @@ class EventRouter(
     @OptIn(kotlin.ExperimentalStdlibApi::class)
     private suspend fun processLegacyDm(event: NostrEvent, relayUrl: String) {
         val myPubkey = getUserPubkey() ?: return
-        val taggedPeer = event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) ?: return
-        val isOutgoing = event.pubkey == myPubkey
-        val peerPubkey = if (isOutgoing) taggedPeer else event.pubkey
-
-        // Incoming kind-4 events target me via #p; outgoing events are authored by me
-        // and target the peer via #p. Both directions belong to the same conversation.
-        if (peerPubkey == myPubkey || (!isOutgoing && taggedPeer != myPubkey)) return
+        val taggedPeer = event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1)
+        val peerPubkey = Nip04DmRouting.peerPubkey(myPubkey, event.pubkey, taggedPeer) ?: return
         if (muteRepo.isBlocked(peerPubkey)) return
 
         if (keyRepo.getSigningMode() == SigningMode.REMOTE) {
