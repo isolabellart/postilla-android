@@ -11,11 +11,14 @@ import android.graphics.BitmapFactory
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.DmMessage
+import com.darkwisp.app.nostr.DmProtocol
 import com.darkwisp.app.nostr.DmReaction
 import com.darkwisp.app.nostr.EncryptedMedia
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip13
 import com.darkwisp.app.nostr.Nip17
+import com.darkwisp.app.nostr.Nip04
+import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.NostrSigner
@@ -23,6 +26,7 @@ import com.darkwisp.app.nostr.SignerCancelledException
 import com.darkwisp.app.repo.MuteRepository
 import com.darkwisp.app.nostr.hexToByteArray
 import com.darkwisp.app.nostr.toHex
+import com.darkwisp.app.nostr.wipe
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayEvent
 import com.darkwisp.app.relay.RelayPool
@@ -97,6 +101,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     val selectedMessageId: StateFlow<String?> = _selectedMessageId
 
     private var peerPubkey: String = ""
+    private var protocol: DmProtocol = DmProtocol.NIP17
     private var requireRecipientDmRelays: Boolean = false
     private var conversationKey: String = ""
     /** All participants in this conversation, excluding the local user. */
@@ -129,9 +134,11 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         myPubkeyHex: String? = null,
         participantPubkeys: List<String> = emptyList(),
         initialMessage: String? = null,
-        requireRecipientDmRelays: Boolean = false
+        requireRecipientDmRelays: Boolean = false,
+        protocol: DmProtocol = DmProtocol.NIP17
     ) {
         peerPubkey = peerPubkeyHex
+        this.protocol = protocol
         this.requireRecipientDmRelays = requireRecipientDmRelays
         if (!initialMessage.isNullOrBlank()) _messageText.value = initialMessage
         participants = participantPubkeys.ifEmpty { listOf(peerPubkeyHex) }
@@ -141,7 +148,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         dmRepo = dmRepository
         relayListRepo = relayListRepository
         powPrefs = powPreferences
-        _messages.value = dmRepository.getConversation(conversationKey)
+        _messages.value = dmRepository.getConversation(conversationKey, protocol)
 
         // Expose user's own DM relays
         if (relayPool != null) {
@@ -191,7 +198,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             dmRepository.conversationList.collect {
-                _messages.value = dmRepository.getConversation(conversationKey)
+                _messages.value = dmRepository.getConversation(conversationKey, protocol)
             }
         }
 
@@ -204,7 +211,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         // Fetch historical zap receipts for messages already in this conversation
-        if (relayPool != null) {
+        if (relayPool != null && protocol == DmProtocol.NIP17) {
             viewModelScope.launch {
                 fetchDmZapReceipts(relayPool)
             }
@@ -336,6 +343,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun uploadMedia(uris: List<Uri>, contentResolver: ContentResolver, relayPool: RelayPool, signer: NostrSigner? = null) {
+        if (protocol != DmProtocol.NIP17) return
         viewModelScope.launch(Dispatchers.Default) {
             val total = uris.size
             for ((index, uri) in uris.withIndex()) {
@@ -652,6 +660,10 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     fun sendMessage(relayPool: RelayPool, signer: NostrSigner? = null, resolvedEmojis: Map<String, String> = emptyMap()) {
         val text = _messageText.value.trim()
         if (text.isBlank() || _sending.value) return
+        if (protocol == DmProtocol.NIP04) {
+            sendLegacyMessage(relayPool, signer, text)
+            return
+        }
         val replyingTo = _replyingToMessage.value
 
         val replyTags: List<List<String>> = if (replyingTo?.rumorId?.isNotEmpty() == true) {
@@ -905,7 +917,100 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Send a private DM reaction (gift-wrapped kind 14) to all conversation participants.
      */
+    private fun sendLegacyMessage(relayPool: RelayPool, signer: NostrSigner?, text: String) {
+        if (participants.size != 1) {
+            _sendError.value = "Classic NIP-04 messages support one-to-one conversations only."
+            return
+        }
+        _messageText.value = ""
+        _sendError.value = null
+        _sending.value = true
+
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
+                if (requireRecipientDmRelays && recipientDmRelays.isEmpty()) {
+                    _messageText.value = text
+                    _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
+                    return@launch
+                }
+                val deliveryRelays = if (requireRecipientDmRelays) {
+                    recipientDmRelays
+                } else {
+                    resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                }
+                if (deliveryRelays.isEmpty()) {
+                    _messageText.value = text
+                    _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                    return@launch
+                }
+
+                val encryptedContent = if (signer != null) {
+                    signer.nip04Encrypt(text, peerPubkey)
+                } else {
+                    val keypair = keyRepo.getKeypair() ?: run {
+                        _messageText.value = text
+                        _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
+                        return@launch
+                    }
+                    val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, peerPubkey.hexToByteArray())
+                    try { Nip04.encrypt(text, sharedSecret) } finally { sharedSecret.wipe() }
+                }
+                val tags = listOf(listOf("p", peerPubkey))
+                val event = if (signer != null) {
+                    signer.signEvent(kind = 4, content = encryptedContent, tags = tags)
+                } else {
+                    val keypair = keyRepo.getKeypair() ?: throw IllegalStateException("Local signing key unavailable")
+                    NostrEvent.create(
+                        privkey = keypair.privkey,
+                        pubkey = keypair.pubkey,
+                        kind = 4,
+                        content = encryptedContent,
+                        tags = tags
+                    )
+                }
+
+                var acknowledgedRelays = emptySet<String>()
+                val outcome = relayPool.publishWithConfirmation(event.id, timeoutMs = 12_000L) {
+                    acknowledgedRelays = sendToDeliveryRelays(
+                        relayPool,
+                        deliveryRelays,
+                        ClientMessage.event(event)
+                    )
+                    acknowledgedRelays.size
+                }
+                if (!outcome.confirmed) {
+                    _messageText.value = text
+                    _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
+                    return@launch
+                }
+
+                val senderPubkey = signer?.pubkeyHex ?: keyRepo.getKeypair()?.pubkey?.toHex() ?: return@launch
+                val message = DmMessage(
+                    id = event.id,
+                    senderPubkey = senderPubkey,
+                    content = text,
+                    createdAt = event.created_at,
+                    giftWrapId = event.id,
+                    relayUrls = acknowledgedRelays,
+                    participants = listOf(peerPubkey),
+                    protocol = DmProtocol.NIP04
+                )
+                dmRepo?.addMessage(message, conversationKey)
+                clearReply()
+            } catch (error: Exception) {
+                _messageText.value = text
+                _sendError.value = "Failed to send classic message"
+                Log.w("DmConversation", "NIP-04 send failed", error)
+            } finally {
+                _sending.value = false
+                _miningStatus.value = PowStatus.Idle
+            }
+        }
+    }
+
     fun sendReaction(targetRumorId: String, emoji: String, relayPool: RelayPool, signer: NostrSigner? = null, resolvedEmojis: Map<String, String> = emptyMap()) {
+        if (protocol != DmProtocol.NIP17) return
         val originalSenderPubkey = _messages.value.firstOrNull { it.rumorId == targetRumorId }?.senderPubkey
             ?: return
 
