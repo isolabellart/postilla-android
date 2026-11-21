@@ -939,4 +939,6 @@
     <string name="action_new_legacy_dm">Nieuw klassiek gesprek</string>
     <string name="new_legacy_dm_title">Nieuw klassiek privébericht</string>
     <string name="new_legacy_dm_start">Klassiek gesprek starten</string>
+    <string name="dm_legacy_chat_disabled">Klassieke NIP-04-berichten zijn uitgeschakeld in Instellingen.</string>
+    <string name="dm_legacy_delivery_unconfirmed">Geen relay van de ontvanger heeft de bezorging van dit klassieke bericht bevestigd. Controleer de NIP-65-relaylijst van de ontvanger en je verbinding en probeer het opnieuw.</string>
 </resources>
