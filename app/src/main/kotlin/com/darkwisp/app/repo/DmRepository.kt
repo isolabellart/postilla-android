@@ -35,6 +35,16 @@ class DmRepository(
          */
         fun conversationKey(participants: List<String>): String =
             participants.toSortedSet().joinToString(",")
+
+        private const val NIP04_KEY_PREFIX = "nip04|"
+        private fun storageKey(conversationKey: String, protocol: DmProtocol): String =
+            if (protocol == DmProtocol.NIP04) NIP04_KEY_PREFIX + conversationKey else conversationKey
+
+        private fun protocolForStorageKey(storageKey: String): DmProtocol =
+            if (storageKey.startsWith(NIP04_KEY_PREFIX)) DmProtocol.NIP04 else DmProtocol.NIP17
+
+        private fun conversationKeyFromStorageKey(storageKey: String): String =
+            storageKey.removePrefix(NIP04_KEY_PREFIX)
     }
 
     private var myPubkey: String? = pubkeyHex
@@ -115,7 +125,8 @@ class DmRepository(
         var newestSeen = 0L
         synchronized(lock) {
             if (generation != accountGeneration || owner != myPubkey) return
-            for ((convKey, msg) in loaded) {
+            for ((persistedConversationKey, msg) in loaded) {
+                val convKey = storageKey(persistedConversationKey, msg.protocol)
                 if (seenGiftWraps.containsKey(msg.giftWrapId)) continue
                 seenGiftWraps[msg.giftWrapId] = msg.id
                 if (msg.rumorId.isNotEmpty()) {
@@ -157,7 +168,8 @@ class DmRepository(
                     timestamp = msg.createdAt,
                     dmContent = msg.content,
                     dmPeerPubkey = peerPubkey,
-                    dmRumorId = msg.rumorId.ifEmpty { null }
+                    dmRumorId = msg.rumorId.ifEmpty { null },
+                    dmProtocol = msg.protocol
                 ))
             }
         } else {
@@ -210,11 +222,12 @@ class DmRepository(
 
     fun addMessage(msg: DmMessage, convKey: String) {
         var isNewIncoming = false
+        val keyedConversation = storageKey(convKey, msg.protocol)
         synchronized(lock) {
             val existingMsgId = seenGiftWraps.get(msg.giftWrapId)
             if (existingMsgId != null) {
                 if (msg.relayUrls.isNotEmpty()) {
-                    mergeRelayUrlsLocked(convKey, existingMsgId, msg.relayUrls)
+                    mergeRelayUrlsLocked(keyedConversation, existingMsgId, msg.relayUrls)
                 }
                 return
             }
@@ -237,7 +250,8 @@ class DmRepository(
                         timestamp = msg.createdAt,
                         dmContent = msg.content,
                         dmPeerPubkey = peerPubkey,
-                        dmRumorId = msg.rumorId.ifEmpty { null }
+                        dmRumorId = msg.rumorId.ifEmpty { null },
+                        dmProtocol = msg.protocol
                     ))
                     val sorted = dmNotifItems.sortedByDescending { it.timestamp }
                     _dmNotifications.value = if (sorted.size > 200) sorted.take(200) else sorted
@@ -248,13 +262,13 @@ class DmRepository(
             }
 
             if (msg.participants.isNotEmpty()) {
-                conversationParticipants[convKey] = msg.participants
+                conversationParticipants[keyedConversation] = msg.participants
             }
             if (msg.rumorId.isNotEmpty()) {
-                rumorIdIndex[msg.rumorId] = Pair(convKey, msg.id)
+                rumorIdIndex[msg.rumorId] = Pair(keyedConversation, msg.id)
             }
-            val messages = conversations.get(convKey) ?: mutableListOf<DmMessage>().also {
-                conversations.put(convKey, it)
+            val messages = conversations.get(keyedConversation) ?: mutableListOf<DmMessage>().also {
+                conversations.put(keyedConversation, it)
             }
             messages.add(msg)
             messages.sortBy { it.createdAt }
@@ -370,9 +384,10 @@ class DmRepository(
      * any message has been sent/received).
      */
     fun initConversation(convKey: String, participants: List<String>) {
+        val keyedConversation = storageKey(convKey, DmProtocol.NIP17)
         synchronized(lock) {
-            conversations.getOrPut(convKey) { mutableListOf() }
-            conversationParticipants[convKey] = participants
+            conversations.getOrPut(keyedConversation) { mutableListOf() }
+            conversationParticipants[keyedConversation] = participants
         }
         updateConversationList()
     }
@@ -384,9 +399,9 @@ class DmRepository(
         }
     }
 
-    fun getConversation(convKey: String): List<DmMessage> {
+    fun getConversation(convKey: String, protocol: DmProtocol = DmProtocol.NIP17): List<DmMessage> {
         return synchronized(lock) {
-            conversations.get(convKey)?.toList() ?: emptyList()
+            conversations.get(storageKey(convKey, protocol))?.toList() ?: emptyList()
         }
     }
 
@@ -430,7 +445,7 @@ class DmRepository(
     fun purgeUser(pubkey: String) {
         synchronized(lock) {
             // Remove all conversations that include this pubkey
-            val keysToRemove = conversations.keys.filter { key -> key.split(",").contains(pubkey) }
+            val keysToRemove = conversations.keys.filter { key -> conversationKeyFromStorageKey(key).split(",").contains(pubkey) }
             keysToRemove.forEach { convKey ->
                 conversations.remove(convKey)?.forEach { msg ->
                     seenGiftWraps.remove(msg.giftWrapId)
@@ -533,10 +548,11 @@ class DmRepository(
                     ?: messages.firstOrNull()?.participants
                     ?: emptyList()
                 DmConversation(
-                    conversationKey = convKey,
+                    conversationKey = conversationKeyFromStorageKey(convKey),
                     participants = participants,
                     messages = messages.toList(),
-                    lastMessageAt = messages.maxOfOrNull { it.createdAt } ?: 0
+                    lastMessageAt = messages.maxOfOrNull { it.createdAt } ?: 0,
+                    protocol = protocolForStorageKey(convKey)
                 )
             }
         }.sortedByDescending { it.lastMessageAt }

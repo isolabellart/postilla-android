@@ -1,5 +1,14 @@
 package com.darkwisp.app.nostr
 
+enum class DmProtocol(val key: String) {
+    NIP17("nip17"),
+    NIP04("nip04");
+
+    companion object {
+        fun fromKey(value: String?): DmProtocol = entries.firstOrNull { it.key == value } ?: NIP17
+    }
+}
+
 data class DmReaction(
     val authorPubkey: String,
     val emoji: String,
@@ -38,7 +47,9 @@ data class DmMessage(
     /** Raw gift wrap event JSON (kind 1059) — for debug inspection only. */
     val debugGiftWrapJson: String? = null,
     /** Decrypted rumor JSON — for debug inspection only. */
-    val debugRumorJson: String? = null
+    val debugRumorJson: String? = null,
+    /** Transport used for this direct-message conversation. */
+    val protocol: DmProtocol = DmProtocol.NIP17
 )
 
 data class DmConversation(
@@ -47,7 +58,8 @@ data class DmConversation(
     /** All participant pubkeys in this conversation, excluding the local user's own pubkey. */
     val participants: List<String>,
     val messages: List<DmMessage>,
-    val lastMessageAt: Long
+    val lastMessageAt: Long,
+    val protocol: DmProtocol = DmProtocol.NIP17
 ) {
     val isGroup: Boolean get() = participants.size > 1
     /** For 1:1 conversations — the peer's pubkey. */

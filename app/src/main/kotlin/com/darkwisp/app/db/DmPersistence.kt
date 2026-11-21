@@ -162,7 +162,8 @@ class DmPersistence {
             emojiMapJson = json.encodeToString(MapSerializer(String.serializer(), String.serializer()), msg.emojiMap),
             encryptedFileMetadataJson = fileJson,
             debugGiftWrapJson = msg.debugGiftWrapJson,
-            debugRumorJson = msg.debugRumorJson
+            debugRumorJson = msg.debugRumorJson,
+            protocol = msg.protocol.name
         )
     }
 
@@ -199,7 +200,8 @@ class DmPersistence {
                 emojiMap = emojiMap,
                 encryptedFileMetadata = fileMeta,
                 debugGiftWrapJson = debugGiftWrapJson,
-                debugRumorJson = debugRumorJson
+                debugRumorJson = debugRumorJson,
+                protocol = com.darkwisp.app.nostr.DmProtocol.valueOf(protocol)
             )
         } catch (e: Exception) {
             Log.w("DmPersistence", "Failed to deserialize DM $giftWrapId: ${e.message}")

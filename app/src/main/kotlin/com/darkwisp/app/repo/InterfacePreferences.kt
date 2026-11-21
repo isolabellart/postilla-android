@@ -2,6 +2,8 @@ package com.darkwisp.app.repo
 
 import android.content.Context
 import android.content.res.Resources
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class InterfacePreferences(context: Context) {
     enum class TranslationEngine(val key: String) {
@@ -9,6 +11,7 @@ class InterfacePreferences(context: Context) {
         DEEPL("deepl");
 
         companion object {
+        private const val KEY_LEGACY_DM_ENABLED = "legacy_dm_enabled"
             fun fromKey(key: String?): TranslationEngine =
                 values().firstOrNull { it.key == key } ?: ON_DEVICE
         }
@@ -41,6 +44,15 @@ class InterfacePreferences(context: Context) {
     }
 
     private val prefs = context.getSharedPreferences("wisp_settings", Context.MODE_PRIVATE)
+    private val _legacyDmEnabled = MutableStateFlow(prefs.getBoolean(KEY_LEGACY_DM_ENABLED, true))
+    val legacyDmEnabled: StateFlow<Boolean> = _legacyDmEnabled
+
+    fun isLegacyDmEnabled(): Boolean = prefs.getBoolean(KEY_LEGACY_DM_ENABLED, true)
+
+    fun setLegacyDmEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_LEGACY_DM_ENABLED, enabled).apply()
+        _legacyDmEnabled.value = enabled
+    }
 
     fun getAccentColor(): Int = prefs.getInt("accent_color", 0xFFFF9800.toInt())
     fun setAccentColor(colorInt: Int) = prefs.edit().putInt("accent_color", colorInt).apply()
@@ -223,6 +235,8 @@ class InterfacePreferences(context: Context) {
             .remove("translation_engine")
             .remove(KEY_NOTIFICATION_FEED_STYLE)
             .remove(KEY_DRAWER_ON_RIGHT)
+            .remove(KEY_LEGACY_DM_ENABLED)
             .apply()
+        _legacyDmEnabled.value = true
     }
 }

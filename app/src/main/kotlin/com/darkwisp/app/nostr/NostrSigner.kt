@@ -16,6 +16,8 @@ interface NostrSigner {
     suspend fun signEvent(kind: Int, content: String, tags: List<List<String>> = emptyList(), createdAt: Long = System.currentTimeMillis() / 1000): NostrEvent
     suspend fun nip44Encrypt(plaintext: String, peerPubkeyHex: String): String
     suspend fun nip44Decrypt(ciphertext: String, peerPubkeyHex: String): String
+    suspend fun nip04Encrypt(plaintext: String, peerPubkeyHex: String): String
+    suspend fun nip04Decrypt(ciphertext: String, peerPubkeyHex: String): String
 }
 
 /**
@@ -46,6 +48,16 @@ class LocalSigner(
     override suspend fun nip44Decrypt(ciphertext: String, peerPubkeyHex: String): String {
         val convKey = Nip44.getConversationKey(privkey, peerPubkeyHex.hexToByteArray())
         return Nip44.decrypt(ciphertext, convKey)
+    }
+
+    override suspend fun nip04Encrypt(plaintext: String, peerPubkeyHex: String): String {
+        val sharedSecret = Nip04.computeSharedSecret(privkey, peerPubkeyHex.hexToByteArray())
+        return try { Nip04.encrypt(plaintext, sharedSecret) } finally { sharedSecret.wipe() }
+    }
+
+    override suspend fun nip04Decrypt(ciphertext: String, peerPubkeyHex: String): String {
+        val sharedSecret = Nip04.computeSharedSecret(privkey, peerPubkeyHex.hexToByteArray())
+        return try { Nip04.decrypt(ciphertext, sharedSecret) } finally { sharedSecret.wipe() }
     }
 }
 
@@ -109,6 +121,16 @@ class RemoteSigner(
     override suspend fun nip44Decrypt(ciphertext: String, peerPubkeyHex: String): String {
         return tryContentResolver("NIP44_DECRYPT", ciphertext, peerPubkeyHex)
             ?: nip44ViaIntent("nip44_decrypt", ciphertext, peerPubkeyHex)
+    }
+
+    override suspend fun nip04Encrypt(plaintext: String, peerPubkeyHex: String): String {
+        return tryContentResolver("NIP04_ENCRYPT", plaintext, peerPubkeyHex)
+            ?: nip44ViaIntent("nip04_encrypt", plaintext, peerPubkeyHex)
+    }
+
+    override suspend fun nip04Decrypt(ciphertext: String, peerPubkeyHex: String): String {
+        return tryContentResolver("NIP04_DECRYPT", ciphertext, peerPubkeyHex)
+            ?: nip44ViaIntent("nip04_decrypt", ciphertext, peerPubkeyHex)
     }
 
     // --- ContentResolver (silent mode) ---
@@ -195,7 +217,12 @@ class RemoteSigner(
         data: String,
         peerPubkeyHex: String
     ): String {
-        val crMethod = if (type == "nip44_encrypt") "NIP44_ENCRYPT" else "NIP44_DECRYPT"
+        val crMethod = when (type) {
+            "nip44_encrypt" -> "NIP44_ENCRYPT"
+            "nip04_encrypt" -> "NIP04_ENCRYPT"
+            "nip04_decrypt" -> "NIP04_DECRYPT"
+            else -> "NIP44_DECRYPT"
+        }
         val intent = buildSignerIntent("nostrsigner:$data", type) {
             putExtra("pubkey", peerPubkeyHex)
         }

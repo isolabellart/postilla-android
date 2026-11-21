@@ -43,5 +43,7 @@ data class DmMessageEntity(
     /** EncryptedFileMetadata as JSON, or null for regular text messages. */
     val encryptedFileMetadataJson: String? = null,
     val debugGiftWrapJson: String? = null,
-    val debugRumorJson: String? = null
+    val debugRumorJson: String? = null,
+    /** "NIP17" for existing rows unless explicitly stored as NIP04. */
+    val protocol: String = "NIP17"
 )

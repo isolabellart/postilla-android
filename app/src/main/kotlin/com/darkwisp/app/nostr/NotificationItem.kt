@@ -21,6 +21,7 @@ data class FlatNotificationItem(
     val dmContent: String? = null,
     val dmPeerPubkey: String? = null,
     val dmRumorId: String? = null,
+    val dmProtocol: DmProtocol = DmProtocol.NIP17,
     /** NIP-29 group ID (from h-tag) — when set, clicking navigates to the group room. */
     val groupChatId: String? = null,
     /** Zap poll option index — when set, this zap was a vote on a kind 6969 zap poll. */
