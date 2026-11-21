@@ -504,8 +504,15 @@ class DmRepository(
             next
         } ?: return false
 
+        val owner = myPubkey
+        if (owner == null) {
+            synchronized(pendingLock) {
+                pendingLegacyDms.add(0, pending)
+                _pendingDecryptCount.value = pendingGiftWraps.size + pendingLegacyDms.size
+            }
+            return false
+        }
         try {
-            val owner = myPubkey ?: return true
             val event = pending.event
             if (event.pubkey == owner || muteRepository?.isBlocked(event.pubkey) == true) return true
             if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == owner }) return true
@@ -522,7 +529,16 @@ class DmRepository(
             )
             addMessage(msg, conversationKey(listOf(event.pubkey, owner)))
         } catch (error: Exception) {
+            // Keep the encrypted event for a later retry (e.g. signer approval/cancellation).
+            // Returning false stops the current drain loop instead of retrying forever.
+            synchronized(pendingLock) {
+                if (pendingLegacyDms.none { it.event.id == pending.event.id }) {
+                    pendingLegacyDms.add(0, pending)
+                }
+                _pendingDecryptCount.value = pendingGiftWraps.size + pendingLegacyDms.size
+            }
             android.util.Log.w("DmRepository", "NIP-04 decrypt failed for ${pending.event.id.take(12)}: ${error.message}")
+            return false
         }
         return true
     }
