@@ -940,4 +940,6 @@
     <string name="action_new_legacy_dm">Nouvelle conversation classique</string>
     <string name="new_legacy_dm_title">Nouveau message classique</string>
     <string name="new_legacy_dm_start">Démarrer la conversation classique</string>
+    <string name="dm_legacy_chat_disabled">La messagerie classique NIP-04 est désactivée dans les paramètres.</string>
+    <string name="dm_legacy_delivery_unconfirmed">Aucun relais du destinataire n’a confirmé la livraison de ce message classique. Vérifiez la liste de relais NIP-65 du destinataire et votre connexion, puis réessayez.</string>
 </resources>
