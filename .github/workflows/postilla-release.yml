@@ -250,11 +250,13 @@ jobs:
           Postilla is an independently maintained downstream project based on the original Dark Wisp Android client. It is not an official upstream release. It brings social feeds, NIP-17 private messaging, translation, Lightning and a NIP-99 marketplace into one native Android app.
 
           ## Highlights
-          - Drawer placement can be chosen on the left or right, with online-user and connected-relay indicators.
-          - DeepL translation integrated into the app.
-          - Improved Conversations feed and event handling, including NIP-22 and NIP-09 safeguards.
-          - Enhanced NIP-99 Marketplace experience, with seller profile/avatar, listing detail recovery and copyable naddr.
-          - The mini-wallet entry, including **Set up wallet**, is available in the drawer.
+          - **Reliable NIP-04 conversation history:** sent and received legacy messages are recovered from relays and correctly restored in their conversations.
+          - **Persistent private messages:** outgoing NIP-04 messages are routed and stored with the correct conversation partner.
+          - **Encrypted photo sharing in NIP-04 chats:** send images with an optional caption.
+          - Improved compatibility with remote signers, including Amber, when decrypting and restoring legacy messages.
+          - Further reliability improvements to private messaging and media recovery.
+
+          Note: encrypted photo metadata is a Postilla extension to NIP-04; other Nostr clients may not display the attached image.
 
           ## Separate installation and wallet safety
           Postilla keeps the established Android application ID: `com.isolabellart.darkwispenhanced`. Existing Dark Wisp Enhanced installations can receive Postilla updates without changing package or losing local app data. Postilla remains a separate app from upstream Dark Wisp. Keep recovery material offline and never share it.
@@ -276,11 +278,13 @@ jobs:
           Postilla è un progetto downstream indipendente basato sul client Android Dark Wisp originale. Non è una release ufficiale upstream. Riunisce feed social, messaggistica privata NIP-17, traduzione, Lightning e marketplace NIP-99 in un'unica app Android nativa.
 
           ## Novità principali
-          - Drawer spostabile a sinistra o a destra, con indicatori di utenti online e relay connessi.
-          - Traduzione DeepL integrata.
-          - Feed Conversations e gestione degli eventi migliorati, con protezioni NIP-22 e NIP-09.
-          - Marketplace NIP-99 arricchito: profilo e avatar del venditore, recupero del dettaglio e copia di naddr.
-          - Mini-wallet nel drawer, compresa la voce **Set up wallet**.
+          - **Cronologia NIP-04 più affidabile:** recupero dai relay dei vecchi messaggi inviati e ricevuti, ricostruiti nella conversazione corretta.
+          - **Messaggi privati persistenti:** i messaggi NIP-04 in uscita vengono associati e salvati con il destinatario corretto.
+          - **Invio di foto cifrate nelle chat NIP-04:** immagini con didascalia facoltativa.
+          - Migliore compatibilità con i signer remoti, incluso Amber, durante la decrittazione e il ripristino dei messaggi legacy.
+          - Ulteriori correzioni di affidabilità per messaggistica privata e recupero dei contenuti multimediali.
+
+          Nota: i metadati delle immagini cifrate sono un'estensione Postilla di NIP-04; altri client Nostr potrebbero non mostrare l'immagine allegata.
 
           ## Installazione separata e sicurezza del wallet
           Postilla conserva l'identificativo Android esistente: `com.isolabellart.darkwispenhanced`. Le installazioni Dark Wisp Enhanced potranno ricevere gli aggiornamenti Postilla senza cambiare package e senza perdere i dati locali. Postilla resta un'app separata da Dark Wisp upstream. Conserva offline il backup della frase di recupero e non condividerlo mai.
