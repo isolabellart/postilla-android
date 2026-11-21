@@ -36,16 +36,6 @@ enum class RelayOption {
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val keyRepo = KeyRepository(app)
 
-    init {
-        // Keep this ViewModel in sync with Relay settings, including changes
-        // made by the separate RelayViewModel instance.
-        viewModelScope.launch {
-            keyRepo.searchRelaysFlow.collect { relays ->
-                _searchRelays.value = relays
-            }
-        }
-    }
-
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
@@ -62,6 +52,16 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     // User's search relays
     private val _searchRelays = MutableStateFlow(keyRepo.getSearchRelays())
     val searchRelays: StateFlow<List<String>> = _searchRelays
+
+    init {
+        // Start collecting only after the backing StateFlow has been initialized.
+        // This also picks up edits made by the separate RelayViewModel instance.
+        viewModelScope.launch {
+            keyRepo.searchRelaysFlow.collect { relays ->
+                _searchRelays.value = relays
+            }
+        }
+    }
 
     // Author filter (for note search)
     private val _authorFilter = MutableStateFlow<ProfileData?>(null)
