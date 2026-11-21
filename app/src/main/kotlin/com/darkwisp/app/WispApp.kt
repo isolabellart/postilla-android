@@ -16,6 +16,7 @@ import com.darkwisp.app.relay.TorManager
 import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.ExchangeRateRepository
 import com.darkwisp.app.repo.TorPreferences
+import com.darkwisp.app.repo.PostillaUpdateScheduler
 import com.darkwisp.app.repo.ZapSender
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -50,6 +51,7 @@ class WispApp : Application(), SingletonImageLoader.Factory {
         MainScope().launch(Dispatchers.IO) {
             ExchangeRateRepository.init(applicationContext)
         }
+        PostillaUpdateScheduler.schedule(this)
         reportBaselineProfileStatus()
     }
 

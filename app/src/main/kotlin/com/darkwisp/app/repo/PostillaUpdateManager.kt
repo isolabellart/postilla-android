@@ -55,7 +55,7 @@ object PostillaUpdateManager {
         _availableUpdate.value = null
     }
 
-    suspend fun checkIfDue(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun checkIfDue(context: Context, forceCheck: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
@@ -68,20 +68,21 @@ object PostillaUpdateManager {
                 writeOffer(prefs, PostillaUpdateOffer("1.0.48", "", "", previewOnly = true))
             }
             publishVisibleOffer(appContext)
-            return@withContext
+            return@withContext true
         }
 
         if (BuildConfig.APPLICATION_ID != STABLE_PACKAGE || BuildConfig.BUILD_TYPE != "release") {
             _availableUpdate.value = null
-            return@withContext
+            return@withContext true
         }
 
         val lastCheck = prefs.getLong(KEY_LAST_CHECK, 0L)
-        if (now - lastCheck < CHECK_INTERVAL_MS) {
+        if (!forceCheck && now - lastCheck < CHECK_INTERVAL_MS) {
             publishVisibleOffer(appContext)
-            return@withContext
+            return@withContext true
         }
 
+        var checkSucceeded = false
         try {
             val request = Request.Builder()
                 .url(RELEASES_API)
@@ -136,6 +137,7 @@ object PostillaUpdateManager {
                 writeOffer(prefs, PostillaUpdateOffer(versionName, apkUrl, digest.lowercase()))
             }
             prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
+            checkSucceeded = true
         } catch (error: Exception) {
             // Retry within an hour after transient network failures.
             prefs.edit().putLong(KEY_LAST_CHECK, now - CHECK_INTERVAL_MS + 60L * 60L * 1000L).apply()
@@ -143,6 +145,7 @@ object PostillaUpdateManager {
         }
 
         publishVisibleOffer(appContext)
+        checkSucceeded
     }
 
     suspend fun downloadAndLaunchInstaller(activity: Activity, offer: PostillaUpdateOffer) {
