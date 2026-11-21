@@ -855,7 +855,7 @@
 
     <!-- NIP-29 Chat Rooms -->
     <string name="tab_direct_messages">Direct Messages</string>
-    <string name="tab_chat_rooms">Chat Rooms</string>
+    <string name="tab_chat_rooms">Rooms</string>
     <string name="title_join_chat_room">Join Chat Room</string>
     <string name="title_create_group">Create Chat Room</string>
     <string name="error_invalid_invite_link">Invalid invite link</string>
@@ -1224,4 +1224,11 @@
     <string name="new_legacy_dm_start">Start classic conversation</string>
     <string name="dm_legacy_chat_disabled">Classic NIP-04 messaging is disabled in Settings.</string>
     <string name="dm_legacy_delivery_unconfirmed">No recipient relay confirmed delivery of this classic message. Check the recipient NIP-65 relay list and your connection, then retry.</string>
+    <string name="dm_search_hint">Search people or conversations</string>
+    <string name="dm_chat_menu">Chat options</string>
+    <string name="dm_mark_all_read">Mark all as read</string>
+    <string name="dm_show_hidden">Show hidden chats</string>
+    <string name="dm_hide_hidden">Hide hidden chats</string>
+    <string name="dm_hide_selected">Hide</string>
+    <string name="dm_restore_selected">Restore</string>
 </resources>
