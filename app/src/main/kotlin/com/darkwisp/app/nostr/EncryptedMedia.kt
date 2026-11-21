@@ -71,8 +71,8 @@ object EncryptedMedia {
         }.toString()
         val encoded = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(descriptor.toByteArray(StandardCharsets.UTF_8))
-        return text + if (text.isBlank()) "" else "\\n\\n" + NIP04_MEDIA_MARKER + encoded + "]"
-            .let { suffix -> if (text.isBlank()) NIP04_MEDIA_MARKER + encoded + "]" else suffix }
+        val separator = if (text.isBlank()) "" else "\n\n"
+        return text + separator + NIP04_MEDIA_MARKER + encoded + "]"
     }
 
     fun decodeNip04Content(content: String): Pair<String, EncryptedFileMetadata?> {
