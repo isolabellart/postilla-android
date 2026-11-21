@@ -931,4 +931,12 @@
     <string name="marketplace_image_next">次の画像</string>
     <string name="marketplace_image_counter">%1$d / %2$d</string>
     <string name="compose_resize_text_area">テキスト入力欄のサイズを変更</string>
+    <string name="tab_dm_private">プライベート</string>
+    <string name="tab_dm_classic">クラシック</string>
+    <string name="settings_chat_compatibility">チャットの互換性</string>
+    <string name="settings_legacy_dm_title">従来のダイレクトメッセージ（NIP-04）</string>
+    <string name="settings_legacy_dm_description">従来のNIP-04ダイレクトメッセージの送受信を有効にします。「プライベート」の新しい会話では引き続きNIP-17を使用します。</string>
+    <string name="action_new_legacy_dm">新しいクラシック会話</string>
+    <string name="new_legacy_dm_title">新しいクラシックDM</string>
+    <string name="new_legacy_dm_start">クラシック会話を開始</string>
 </resources>

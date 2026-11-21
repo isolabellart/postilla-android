@@ -931,4 +931,12 @@
     <string name="marketplace_image_next">Volgende afbeelding</string>
     <string name="marketplace_image_counter">%1$d van %2$d</string>
     <string name="compose_resize_text_area">Tekstveld vergroten of verkleinen</string>
+    <string name="tab_dm_private">Privé</string>
+    <string name="tab_dm_classic">Klassiek</string>
+    <string name="settings_chat_compatibility">Chatcompatibiliteit</string>
+    <string name="settings_legacy_dm_title">Klassieke privéberichten (NIP-04)</string>
+    <string name="settings_legacy_dm_description">Schakel het verzenden en ontvangen van oudere NIP-04-privéberichten in. Nieuwe gesprekken bij Privé blijven NIP-17 gebruiken.</string>
+    <string name="action_new_legacy_dm">Nieuw klassiek gesprek</string>
+    <string name="new_legacy_dm_title">Nieuw klassiek privébericht</string>
+    <string name="new_legacy_dm_start">Klassiek gesprek starten</string>
 </resources>
