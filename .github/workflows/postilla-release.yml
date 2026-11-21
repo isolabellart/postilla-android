@@ -297,7 +297,10 @@ jobs:
           sed -i "s|@@VERSION_NAME@@|$VERSION_NAME|g; s|@@VERSION_CODE@@|$VERSION_CODE|g; s|@@RELEASE_TAG@@|$RELEASE_TAG|g; s|@@APK_SHA256@@|$APK_SHA256|g" "$NOTES"
           args=()
           [[ "$IS_PRERELEASE" == "true" ]] && args+=(--prerelease)
-          gh release create "$RELEASE_TAG" "$APK#Postilla-${RELEASE_TAG}.apk" \
+          # Give the uploaded GitHub asset the canonical filename, not only a display label.
+          RELEASE_ASSET="$RUNNER_TEMP/Postilla-${RELEASE_TAG}.apk"
+          cp -- "$APK" "$RELEASE_ASSET"
+          gh release create "$RELEASE_TAG" "$RELEASE_ASSET" \
             --title "Postilla ${RELEASE_TAG}" \
             --target "$GITHUB_SHA" \
             --notes-file "$NOTES" "${args[@]}"

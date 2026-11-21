@@ -77,34 +77,55 @@ jobs:
           }
 
           EXPECTED_APK_NAME="Postilla-${RELEASE_TAG}.apk"
-          ASSET_DATA="$(jq -c --arg expected "$EXPECTED_APK_NAME" '.assets[]? | select(.name == $expected and .state == "uploaded")' <<< "$RELEASE_DATA")"
-          [[ -n "$ASSET_DATA" ]] || {
-            echo "::error::The exact signed APK asset is missing from the GitHub release: $EXPECTED_APK_NAME"
+          # GitHub CLI's file#label syntax keeps the local basename as the real
+          # release asset name. Legacy releases therefore use app-release.apk
+          # as .name and Postilla-vX.Y.Z.apk only as .label.
+          ASSET_DATA="$(jq -c --arg expected "$EXPECTED_APK_NAME" '
+            [.assets[]? | select(.state == "uploaded" and
+              (.name == $expected or (.name == "app-release.apk" and .label == $expected)))]
+          ' <<< "$RELEASE_DATA")"
+          ASSET_COUNT="$(jq 'length' <<< "$ASSET_DATA")"
+          if [[ "$ASSET_COUNT" != "1" ]]; then
+            echo "::error::Expected exactly one uploaded APK asset named $EXPECTED_APK_NAME (or legacy app-release.apk with that label); found $ASSET_COUNT."
             exit 1
-          }
+          fi
+          ASSET_NAME="$(jq -r '.[0].name' <<< "$ASSET_DATA")"
+          ASSET_LABEL="$(jq -r '.[0].label // empty' <<< "$ASSET_DATA")"
 
           echo "GitHub release: $RELEASE_URL"
           echo "Published at: $PUBLISHED_AT"
-          echo "Verified asset: $EXPECTED_APK_NAME"
+          echo "Verified asset name: $ASSET_NAME"
+          [[ -z "$ASSET_LABEL" ]] || echo "Verified asset label: $ASSET_LABEL"
 
-          # Restrict zsp to this exact release. Keep the temporary file in the
-          # repository root so relative Fastlane screenshot paths still work.
-          python3 - "$RELEASE_TAG" "$GITHUB_WORKSPACE/zapstore.yaml" "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" <<'PY'
+          # Restrict zsp to this exact release and exact uploaded asset.
+          python3 - "$RELEASE_TAG" "$ASSET_NAME" "$GITHUB_WORKSPACE/zapstore.yaml" "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" <<'PY'
           import pathlib
           import re
           import sys
 
-          tag, source_path, target_path = sys.argv[1:]
+          tag, asset_name, source_path, target_path = sys.argv[1:]
           source = pathlib.Path(source_path).read_text(encoding="utf-8")
           updated, count = re.subn(
               r"(?m)^release_filter:\s*.*$",
-              "release_filter: '^" + re.escape(tag) + "$'",
+              "release_filter: '" + re.escape(tag) + "'",
               source,
           )
           if count != 1:
               raise SystemExit("Expected exactly one release_filter in zapstore.yaml")
+
+          # Match the actual uploaded GitHub asset name, not its display label.
+          match_pattern = "(?i)^" + asset_name.replace(".", r"\.") + "$"
+          updated, count = re.subn(
+              r"(?m)^match:\s*.*$",
+              "match: '" + match_pattern + "'",
+              updated,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one match expression in zapstore.yaml")
+
           pathlib.Path(target_path).write_text(updated, encoding="utf-8")
           print("Prepared exact release filter for " + tag)
+          print("Prepared exact asset matcher for " + asset_name)
           PY
 
           zsp --json check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" > "$RUNNER_TEMP/zsp-preflight.json"
