@@ -9,7 +9,6 @@ import com.darkwisp.app.nostr.LocalSigner
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.util.AnonNameGenerator
-import com.darkwisp.app.relay.HttpClientFactory
 import com.darkwisp.app.relay.Relay
 import com.darkwisp.app.relay.RelayLifecycleManager
 import com.darkwisp.app.relay.OutboxRouter
@@ -86,25 +85,22 @@ enum class FeedType { FOR_YOU, FOLLOWS, WITH_REPLIES, EXTENDED_FOLLOWS, RELAY, L
 
 enum class TrendingMode { NOTES, USERS }
 
-enum class TrendingMetric(val slug: String, val label: String) {
-    REACTIONS("reactions", "Reactions"),
-    REPLIES("replies", "Replies"),
-    REPOSTS("reposts", "Reposts"),
-    ZAPS("zaps", "Zaps")
+enum class TrendingMetric(val slug: String, val label: String, val apiOrder: String) {
+    REACTIONS("reactions", "Reactions", "reactions"),
+    REPLIES("replies", "Replies", "replies"),
+    REPOSTS("reposts", "Reposts", "reposts"),
+    ZAPS("zaps", "Zaps", "zap_count")
 }
 
-enum class TrendingTimeframe(val slug: String, val label: String) {
-    TODAY("today", "Today"),
-    WEEK("7d", "7d"),
-    MONTH("30d", "30d"),
-    YEAR("1y", "1y"),
-    ALL("all", "All")
+enum class TrendingTimeframe(val slug: String, val label: String, val hours: Int) {
+    TODAY("24h", "24h", 24),
+    LAST_48_HOURS("48h", "48h", 48)
 }
 
-const val TRENDING_USERS_RELAY_URL = "wss://feeds.nostrarchives.com/users/upandcoming"
+const val TRENDING_USERS_SOURCE_LABEL = "Authors of recent trending notes"
 
-fun buildTrendingRelayUrl(metric: TrendingMetric, timeframe: TrendingTimeframe): String =
-    "wss://feeds.nostrarchives.com/notes/trending/${metric.slug}/${timeframe.slug}"
+fun buildTrendingApiUrl(metric: TrendingMetric, timeframe: TrendingTimeframe): String =
+    "https://api.nostr.wine/trending?order=${metric.apiOrder}&hours=${timeframe.hours}&limit=200"
 
 sealed interface RelayFeedStatus {
     data object Idle : RelayFeedStatus
@@ -385,34 +381,9 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         getSigner = { signer }
     )
 
-    // -- Global online count from nostrarchives live-metrics --
-    private val _globalOnlineCount = MutableStateFlow<Int?>(null)
-    val globalOnlineCount: StateFlow<Int?> = _globalOnlineCount
-    private var liveMetricsSocket: okhttp3.WebSocket? = null
+    // The global Nostr online counter has no verified free replacement; Postilla retains the user's own network count.
 
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            connectLiveMetrics()
-        }
-    }
-
-    private fun connectLiveMetrics() {
-        val client = HttpClientFactory.createRelayClient()
-        val req = okhttp3.Request.Builder()
-            .url("wss://api.nostrarchives.com/v1/ws/live-metrics")
-            .build()
-        liveMetricsSocket = client.newWebSocket(req, object : okhttp3.WebSocketListener() {
-            override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
-                try {
-                    val obj = kotlinx.serialization.json.Json.parseToJsonElement(text)
-                        as? kotlinx.serialization.json.JsonObject ?: return
-                    val online = obj["online"]?.jsonPrimitive?.intOrNull ?: return
-                    _globalOnlineCount.value = online
-                } catch (_: Exception) {}
-            }
-        })
-    }
-
+    // -- Exposed state --
     // -- Exposed state --
     private val combinedFeedSources = combine(
         feedSub.feedType, eventRepo.feed, eventRepo.replyFeed, eventRepo.relayFeed

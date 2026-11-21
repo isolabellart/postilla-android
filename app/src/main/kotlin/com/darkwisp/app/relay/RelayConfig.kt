@@ -40,15 +40,26 @@ data class RelayConfig(
             "wss://auth.nostr1.com"
         )
 
-        /** Fallback indexer relays used when the user hasn't configured search relays (kind 10007). */
-        val DEFAULT_INDEXER_RELAYS = listOf(
-            "wss://indexer.coracle.social",
-            "wss://relay.nos.social",
-            "wss://nos.lol",
-            "wss://indexer.nostrarchives.com",
-            "wss://relay.damus.io",
-            "wss://relay.primal.net"
+        val DEFAULT_SEARCH_RELAYS = listOf(
+            "wss://nostr.wine",
+            "wss://relay.noswhere.com",
+            "wss://search.nos.today",
+            "wss://antiprimal.net",
+            "wss://relay.ditto.pub",
+            "wss://search.brainstorm.world"
         )
+
+        val DEFAULT_INDEXER_RELAYS = listOf(
+            "wss://purplepag.es",
+            "wss://indexer.coracle.social",
+            "wss://user.kindpag.es",
+            "wss://directory.yabu.me",
+            "wss://profiles.nostr1.com",
+            "wss://search.brainstorm.world"
+        )
+
+        const val DITTO_RELAY_URL = "wss://relay.ditto.pub"
+        const val DITTO_STATS_PUBKEY = "5f68e85ee174102ca8978eef302129f081f03456c884185d5ec1c1224ab633ea"
 
         private val IP_HOST_REGEX = Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$")
 

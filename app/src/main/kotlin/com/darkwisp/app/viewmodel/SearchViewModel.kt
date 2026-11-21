@@ -3,6 +3,7 @@ package com.darkwisp.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
@@ -12,8 +13,12 @@ import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.MuteRepository
+import com.darkwisp.app.repo.NostrWineApiClient
 import com.darkwisp.app.repo.rankProfileSearchResults
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -162,7 +167,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun selectedSearchRelays(): List<String> {
-        val defaults = (listOf(DEFAULT_SEARCH_RELAY) + RelayConfig.DEFAULT_INDEXER_RELAYS).distinct()
+        val defaults = RelayConfig.DEFAULT_SEARCH_RELAYS.distinct()
         return when (_selectedRelayOption.value) {
             RelayOption.DEFAULT -> defaults
             RelayOption.ALL_RELAYS -> _searchRelays.value.ifEmpty { defaults }.distinct()
@@ -345,6 +350,44 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
+            launch {
+                try {
+                    val apiEvents = NostrWineApiClient.search(
+                        query = trimmed,
+                        kind = if (activeFilter == SearchFilter.PEOPLE) 0 else 1,
+                        pubkey = if (activeFilter == SearchFilter.NOTES) authorPubkey else null,
+                        limit = 50
+                    )
+                    val verified = withContext(Dispatchers.Default) {
+                        apiEvents.filter { runCatching { it.verifySignature() }.getOrDefault(false) }
+                    }
+                    verified.forEach { event ->
+                        when (activeFilter) {
+                            SearchFilter.PEOPLE -> {
+                                if (event.kind != 0 || muteRepo?.isBlocked(event.pubkey) == true) return@forEach
+                                val profile = ProfileData.fromEvent(event) ?: return@forEach
+                                eventRepo.cacheEvent(event)
+                                val previous = profilesByPubkey[event.pubkey]
+                                if (previous == null || profile.updatedAt > previous.updatedAt) {
+                                    profilesByPubkey[event.pubkey] = profile
+                                    _users.value = rankProfileSearchResults(profilesByPubkey.values, trimmed)
+                                }
+                            }
+                            SearchFilter.NOTES -> {
+                                if (event.kind != 1 || event.id in seenNoteIds) return@forEach
+                                if (muteRepo?.isBlocked(event.pubkey) == true || muteRepo?.isEventMuted(event) == true) return@forEach
+                                seenNoteIds.add(event.id)
+                                eventRepo.cacheEvent(event)
+                                _notes.value = _notes.value + event
+                            }
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w("SearchVM", "Nostr.wine REST unavailable; retaining NIP-50 results", error)
+                }
+            }
                 relaysToQuery.forEach { url ->
                     runCatching {
                         relayPool.sendToRelayOrEphemeral(
@@ -382,7 +425,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        const val DEFAULT_SEARCH_RELAY = "wss://search.nostrarchives.com"
+        const val DEFAULT_SEARCH_RELAY = RelayConfig.DITTO_RELAY_URL
     }
 
     private fun closeSubscriptions(relayPool: RelayPool) {
