@@ -617,15 +617,14 @@ class EventRouter(
         if (event.pubkey == myPubkey || muteRepo.isBlocked(event.pubkey)) return
         if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == myPubkey }) return
 
+        if (keyRepo.getSigningMode() == SigningMode.REMOTE) {
+            dmRepo.addPendingLegacyDm(event, relayUrl)
+            return
+        }
         val plaintext = try {
-            val signer = getSigner()
-            if (signer != null) {
-                signer.nip04Decrypt(event.content, event.pubkey)
-            } else {
-                val keypair = keyRepo.getKeypair() ?: return
-                val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, event.pubkey.hexToByteArray())
-                try { Nip04.decrypt(event.content, sharedSecret) } finally { sharedSecret.wipe() }
-            }
+            val keypair = keyRepo.getKeypair() ?: return
+            val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, event.pubkey.hexToByteArray())
+            try { Nip04.decrypt(event.content, sharedSecret) } finally { sharedSecret.wipe() }
         } catch (error: Exception) {
             Log.w("EventRouter", "Failed to decrypt NIP-04 event ${event.id.take(12)}: ${error.message}")
             return

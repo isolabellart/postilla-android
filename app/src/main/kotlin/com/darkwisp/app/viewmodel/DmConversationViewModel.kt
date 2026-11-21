@@ -321,6 +321,9 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                         // Individual wrap failed, continue with the rest
                     }
                 }
+                while (repo.decryptNextPendingLegacyDm(signer, muteRepo)) {
+                    // NIP-04 events are decrypted into the same account-scoped conversation repository.
+                }
             } finally {
                 repo.markDecryptingEnd()
             }
