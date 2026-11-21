@@ -6,6 +6,8 @@ import android.util.LruCache
 import com.darkwisp.app.db.DmPersistence
 import com.darkwisp.app.nostr.DmConversation
 import com.darkwisp.app.nostr.DmMessage
+import com.darkwisp.app.nostr.DmProtocol
+import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.DmReaction
 import com.darkwisp.app.nostr.DmZap
 import com.darkwisp.app.nostr.NostrEvent
@@ -72,7 +74,9 @@ class DmRepository(
 
     // Pending gift wraps for remote signer mode (stored raw, decrypted on demand)
     data class PendingGiftWrap(val event: NostrEvent, val relayUrl: String)
+    data class PendingLegacyDm(val event: NostrEvent, val relayUrl: String)
     private val pendingGiftWraps = mutableListOf<PendingGiftWrap>()
+    private val pendingLegacyDms = mutableListOf<PendingLegacyDm>()
     private val pendingLock = Any()
 
     private val _conversationList = MutableStateFlow<List<DmConversation>>(emptyList())
@@ -478,15 +482,56 @@ class DmRepository(
             // Dedup by event id
             if (pendingGiftWraps.any { it.event.id == event.id }) return
             pendingGiftWraps.add(PendingGiftWrap(event, relayUrl))
-            _pendingDecryptCount.value = pendingGiftWraps.size
+            _pendingDecryptCount.value = pendingGiftWraps.size + pendingLegacyDms.size
         }
+    }
+
+    /** Queue an encrypted legacy kind-4 event for remote-signer decryption when Chat is opened. */
+    fun addPendingLegacyDm(event: NostrEvent, relayUrl: String) {
+        if (seenGiftWraps.containsKey(event.id)) return
+        synchronized(pendingLock) {
+            if (pendingLegacyDms.any { it.event.id == event.id }) return
+            pendingLegacyDms.add(PendingLegacyDm(event, relayUrl))
+            _pendingDecryptCount.value = pendingGiftWraps.size + pendingLegacyDms.size
+        }
+    }
+
+    /** Pop a single pending kind-4 event and decrypt it through the active NIP-55 signer. */
+    suspend fun decryptNextPendingLegacyDm(signer: NostrSigner, muteRepository: MuteRepository? = null): Boolean {
+        val pending = synchronized(pendingLock) {
+            val next = pendingLegacyDms.removeFirstOrNull()
+            _pendingDecryptCount.value = pendingGiftWraps.size + pendingLegacyDms.size
+            next
+        } ?: return false
+
+        try {
+            val owner = myPubkey ?: return true
+            val event = pending.event
+            if (event.pubkey == owner || muteRepository?.isBlocked(event.pubkey) == true) return true
+            if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == owner }) return true
+            val plaintext = signer.nip04Decrypt(event.content, event.pubkey)
+            val msg = DmMessage(
+                id = event.id,
+                senderPubkey = event.pubkey,
+                content = plaintext,
+                createdAt = event.created_at,
+                giftWrapId = event.id,
+                relayUrls = if (pending.relayUrl.isNotEmpty()) setOf(pending.relayUrl) else emptySet(),
+                participants = listOf(event.pubkey),
+                protocol = DmProtocol.NIP04
+            )
+            addMessage(msg, conversationKey(listOf(event.pubkey, owner)))
+        } catch (error: Exception) {
+            android.util.Log.w("DmRepository", "NIP-04 decrypt failed for ${pending.event.id.take(12)}: ${error.message}")
+        }
+        return true
     }
 
     /** Pop a single pending gift wrap for decryption. Returns null when empty. */
     fun takeNextPendingGiftWrap(): PendingGiftWrap? {
         return synchronized(pendingLock) {
             val wrap = pendingGiftWraps.removeFirstOrNull()
-            _pendingDecryptCount.value = pendingGiftWraps.size
+            _pendingDecryptCount.value = pendingGiftWraps.size + pendingLegacyDms.size
             wrap
         }
     }
@@ -495,7 +540,7 @@ class DmRepository(
         return synchronized(pendingLock) {
             val copy = pendingGiftWraps.toList()
             pendingGiftWraps.clear()
-            _pendingDecryptCount.value = 0
+            _pendingDecryptCount.value = pendingLegacyDms.size
             copy
         }
     }
@@ -528,6 +573,7 @@ class DmRepository(
         }
         synchronized(pendingLock) {
             pendingGiftWraps.clear()
+            pendingLegacyDms.clear()
             _pendingDecryptCount.value = 0
         }
         _conversationList.value = emptyList()
