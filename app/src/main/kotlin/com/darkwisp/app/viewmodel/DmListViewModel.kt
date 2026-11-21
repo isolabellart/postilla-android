@@ -13,6 +13,7 @@ import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.toHex
 import com.darkwisp.app.repo.DmRepository
+import com.darkwisp.app.repo.InterfacePreferences
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.KeyRepository
 import com.darkwisp.app.repo.NotificationRepository
@@ -228,7 +229,7 @@ class DmListViewModel(app: Application) : AndroidViewModel(app) {
                         // Individual wrap failed, continue with the rest
                     }
                 }
-                while (repo.decryptNextPendingLegacyDm(signer, muteRepo)) {
+                while (InterfacePreferences(getApplication()).isLegacyDmEnabled() && repo.decryptNextPendingLegacyDm(signer, muteRepo)) {
                     // NIP-04 events are decrypted into the same account-scoped conversation repository.
                 }
             } finally {
