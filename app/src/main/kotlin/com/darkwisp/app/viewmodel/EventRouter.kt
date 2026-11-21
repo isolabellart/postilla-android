@@ -615,8 +615,14 @@ class EventRouter(
     @OptIn(kotlin.ExperimentalStdlibApi::class)
     private suspend fun processLegacyDm(event: NostrEvent, relayUrl: String) {
         val myPubkey = getUserPubkey() ?: return
-        if (event.pubkey == myPubkey || muteRepo.isBlocked(event.pubkey)) return
-        if (event.tags.none { it.size >= 2 && it[0] == "p" && it[1] == myPubkey }) return
+        val taggedPeer = event.tags.firstOrNull { it.size >= 2 && it[0] == "p" }?.get(1) ?: return
+        val isOutgoing = event.pubkey == myPubkey
+        val peerPubkey = if (isOutgoing) taggedPeer else event.pubkey
+
+        // Incoming kind-4 events target me via #p; outgoing events are authored by me
+        // and target the peer via #p. Both directions belong to the same conversation.
+        if (peerPubkey == myPubkey || (!isOutgoing && taggedPeer != myPubkey)) return
+        if (muteRepo.isBlocked(peerPubkey)) return
 
         if (keyRepo.getSigningMode() == SigningMode.REMOTE) {
             dmRepo.addPendingLegacyDm(event, relayUrl)
@@ -624,24 +630,25 @@ class EventRouter(
         }
         val plaintext = try {
             val keypair = keyRepo.getKeypair() ?: return
-            val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, event.pubkey.hexToByteArray())
+            val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, peerPubkey.hexToByteArray())
             try { Nip04.decrypt(event.content, sharedSecret) } finally { sharedSecret.wipe() }
         } catch (error: Exception) {
             Log.w("EventRouter", "Failed to decrypt NIP-04 event ${event.id.take(12)}: ${error.message}")
             return
         }
-
+        val (displayText, encryptedMedia) = EncryptedMedia.decodeNip04Content(plaintext)
         val msg = DmMessage(
             id = event.id,
             senderPubkey = event.pubkey,
-            content = plaintext,
+            content = displayText,
             createdAt = event.created_at,
             giftWrapId = event.id,
             relayUrls = if (relayUrl.isNotEmpty()) setOf(relayUrl) else emptySet(),
-            participants = listOf(event.pubkey),
+            participants = listOf(peerPubkey),
+            encryptedFileMetadata = encryptedMedia,
             protocol = DmProtocol.NIP04
         )
-        dmRepo.addMessage(msg, DmRepository.conversationKey(listOf(event.pubkey, myPubkey)))
+        dmRepo.addMessage(msg, DmRepository.conversationKey(listOf(peerPubkey, myPubkey)))
     }
 
     private fun processGiftWrap(event: NostrEvent, relayUrl: String) {
