@@ -81,6 +81,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -469,6 +471,82 @@ fun UserProfileScreen(
         )
     }
 
+    // Keep list state at the destination level and restore the opened event
+    // by stable ID if the profile feed is refreshed or reordered while a thread is open.
+    val listState = rememberLazyListState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    var pendingOpenedNoteId by rememberSaveable(profilePubkey) { mutableStateOf<String?>(null) }
+    var pendingOpenedNoteIndex by rememberSaveable(profilePubkey) { mutableIntStateOf(0) }
+    var pendingOpenedNoteOffset by rememberSaveable(profilePubkey) { mutableIntStateOf(0) }
+    var pendingOpenedNoteTab by rememberSaveable(profilePubkey) { mutableIntStateOf(0) }
+    var pendingOpenedNotePinned by rememberSaveable(profilePubkey) { mutableStateOf(false) }
+    var profileWasPausedForNote by rememberSaveable(profilePubkey) { mutableStateOf(false) }
+
+    val handleProfileNoteClick: (NostrEvent) -> Unit = { event ->
+        val visibleItem = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+            it.key == event.id || it.key == ("pinned-" + event.id)
+        }
+        pendingOpenedNoteId = event.id
+        pendingOpenedNoteIndex = visibleItem?.index ?: listState.firstVisibleItemIndex
+        pendingOpenedNoteOffset = visibleItem?.offset ?: -listState.firstVisibleItemScrollOffset
+        pendingOpenedNoteTab = selectedTab
+        pendingOpenedNotePinned = visibleItem?.key == ("pinned-" + event.id)
+        profileWasPausedForNote = false
+        onNoteClick(event)
+    }
+
+    LaunchedEffect(lifecycleState, pendingOpenedNoteId) {
+        if (pendingOpenedNoteId != null && !lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
+            profileWasPausedForNote = true
+        }
+    }
+
+    LaunchedEffect(
+        lifecycleState,
+        profileWasPausedForNote,
+        pendingOpenedNoteId,
+        rootNotes,
+        sortedNotes,
+        notesSortMode,
+        pinnedIds
+    ) {
+        val eventId = pendingOpenedNoteId ?: return@LaunchedEffect
+        if (!profileWasPausedForNote || !lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
+            return@LaunchedEffect
+        }
+
+        withFrameNanos { }
+        val pinnedEventsForRestore = pinnedIds
+            .mapNotNull { id -> eventRepo?.getEvent(id) }
+            .distinctBy { it.id }
+            .sortedByDescending { it.created_at }
+        val targetIndex = if (pendingOpenedNoteTab == 0) {
+            if (pendingOpenedNotePinned) {
+                val pinnedIndex = pinnedEventsForRestore.indexOfFirst { it.id == eventId }
+                if (pinnedIndex >= 0) 4 + pinnedIndex else pendingOpenedNoteIndex
+            } else {
+                val displayedNotes = if (notesSortMode == ProfileSortMode.RECENCY) rootNotes else sortedNotes
+                val noteIndex = displayedNotes.indexOfFirst { it.id == eventId }
+                if (noteIndex >= 0) {
+                    val pinnedPrefix = if (pinnedEventsForRestore.isNotEmpty()) 1 + pinnedEventsForRestore.size else 0
+                    3 + pinnedPrefix + noteIndex
+                } else {
+                    pendingOpenedNoteIndex
+                }
+            }
+        } else {
+            pendingOpenedNoteIndex
+        }
+
+        listState.scrollToItem(
+            index = targetIndex.coerceAtLeast(0),
+            scrollOffset = -pendingOpenedNoteOffset
+        )
+        pendingOpenedNoteId = null
+        profileWasPausedForNote = false
+    }
+
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -582,7 +660,6 @@ fun UserProfileScreen(
                 .distinctBy { it.url }
         }
 
-        val listState = rememberLazyListState()
         var pendingRepostScrollRestore by remember {
             mutableStateOf<Triple<String, Int, Int>?>(null)
         }
@@ -784,7 +861,7 @@ fun UserProfileScreen(
                                 profile = eventProfile,
                                 onReply = { onReply(event) },
                                 onNavigateToProfile = onNavigateToProfile,
-                                onNoteClick = { onNoteClick(event) },
+                                onNoteClick = { handleProfileNoteClick(event) },
                                 onQuotedNoteClick = onQuotedNoteClick,
                                 onReact = { emoji -> onReact(event, emoji) },
                                 onRepost = { onRepost(event) },
@@ -886,7 +963,7 @@ fun UserProfileScreen(
                                 profile = if (repostPubkey != null) eventRepo?.getProfileData(event.pubkey) else profile,
                                 onReply = { onReply(event) },
                                 onNavigateToProfile = onNavigateToProfile,
-                                onNoteClick = { onNoteClick(event) },
+                                onNoteClick = { handleProfileNoteClick(event) },
                                 onQuotedNoteClick = onQuotedNoteClick,
                                 onReact = { emoji -> onReact(event, emoji) },
                                 onRepost = { handleProfileRepost(event) },
@@ -966,7 +1043,7 @@ fun UserProfileScreen(
                                             .aspectRatio(1f)
                                             .padding(1.dp)
                                             .clip(RoundedCornerShape(4.dp))
-                                            .clickable { onNoteClick(event) }
+                                            .clickable { handleProfileNoteClick(event) }
                                     ) {
                                         if (firstMedia.first != null) {
                                             coil3.compose.AsyncImage(
@@ -1071,7 +1148,7 @@ fun UserProfileScreen(
                                 profile = profile,
                                 onReply = { onReply(event) },
                                 onNavigateToProfile = onNavigateToProfile,
-                                onNoteClick = { onNoteClick(event) },
+                                onNoteClick = { handleProfileNoteClick(event) },
                                 onQuotedNoteClick = onQuotedNoteClick,
                                 onReact = { emoji -> onReact(event, emoji) },
                                 onRepost = { onRepost(event) },
