@@ -645,7 +645,7 @@
 
     <!-- NIP-29 Chat Rooms -->
     <string name="tab_direct_messages">Mensagens diretas</string>
-    <string name="tab_chat_rooms">Salas de chat</string>
+    <string name="tab_chat_rooms">Salas</string>
     <string name="title_join_chat_room">Entrar na sala de chat</string>
     <string name="title_create_group">Criar sala de chat</string>
     <string name="label_relay_url">URL do relay</string>
@@ -941,4 +941,11 @@
     <string name="new_legacy_dm_start">Iniciar conversa clássica</string>
     <string name="dm_legacy_chat_disabled">As mensagens clássicas NIP-04 estão desativadas nas Configurações.</string>
     <string name="dm_legacy_delivery_unconfirmed">Nenhum relay do destinatário confirmou a entrega desta mensagem clássica. Verifique a lista de relays NIP-65 do destinatário e sua conexão e tente novamente.</string>
+    <string name="dm_search_hint">Pesquisar pessoas ou conversas</string>
+    <string name="dm_chat_menu">Opções de conversa</string>
+    <string name="dm_mark_all_read">Marcar tudo como lido</string>
+    <string name="dm_show_hidden">Mostrar conversas ocultas</string>
+    <string name="dm_hide_hidden">Ocultar conversas ocultas</string>
+    <string name="dm_hide_selected">Ocultar</string>
+    <string name="dm_restore_selected">Restaurar</string>
 </resources>
