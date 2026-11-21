@@ -35,6 +35,14 @@ import com.darkwisp.app.db.EventPersistence
 import java.util.concurrent.ConcurrentHashMap
 
 private const val ADDRESS_INDEX_CAPACITY = 512
+private const val DITTO_STATS_PUBKEY = "5f68e85ee174102ca8978eef302129f081f03456c884185d5ec1c1224ab633ea"
+
+private data class DittoEventStats(
+    val reactions: Int?,
+    val replies: Int?,
+    val reposts: Int?,
+    val zaps: Int?
+)
 
 /**
  * Resolve which reaction IDs a deletion should remove.
@@ -330,6 +338,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     // Reaction tracking: eventId -> map of emoji -> count
     private val reactionCounts = LruCache<String, ConcurrentHashMap<String, Int>>(15000)
+    private val dittoStats = LruCache<String, DittoEventStats>(15000)
     // Track which events the current user has reacted to: "eventId:pubkey" -> (emoji -> reactionEventId)
     private val userReactions = LruCache<String, ConcurrentHashMap<String, String>>(15000)
     private val _reactionVersion = MutableStateFlow(0)
@@ -1662,6 +1671,31 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         metadataFetcher?.addToPendingProfiles(pubkey, relayHints)
     }
 
+    /** RelayPool verifies NIP-85 signatures before emission; pin the publisher again here. */
+    fun updateDittoEventStats(event: NostrEvent): Boolean {
+        if (event.kind != 30383 || event.pubkey != DITTO_STATS_PUBKEY) return false
+        val targetId = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
+            ?.takeIf { it.length == 64 } ?: return false
+        fun count(name: String): Int? =
+            event.tags.firstOrNull { it.size >= 2 && it[0] == name }?.get(1)?.toIntOrNull()?.takeIf { it >= 0 }
+
+        val stats = DittoEventStats(
+            reactions = count("reaction_cnt"),
+            replies = count("comment_cnt"),
+            reposts = count("repost_cnt"),
+            zaps = count("zap_cnt")
+        )
+        if (stats.reactions == null && stats.replies == null && stats.reposts == null && stats.zaps == null) return false
+        dittoStats.put(targetId, stats)
+        _reactionVersion.value++
+        _replyCountVersion.value++
+        _repostVersion.value++
+        _zapVersion.value++
+        return true
+    }
+
+    fun getDittoZapCount(eventId: String): Int = dittoStats.get(eventId)?.zaps ?: 0
+
     fun getReactionCount(eventId: String): Int {
         val addressKey = reactionTargetKeys(eventId)
             .firstOrNull { it.substringBefore(':').toIntOrNull()?.let(Nip99::isMarketplaceKind) == true }
@@ -1669,7 +1703,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             val authors = countedMarketplaceReactionAuthors.get(addressKey) ?: return 0
             return synchronized(authors) { authors.size }
         }
-        return reactionCounts.get(eventId)?.values?.sum() ?: 0
+        return maxOf(
+            reactionCounts.get(eventId)?.values?.sum() ?: 0,
+            dittoStats.get(eventId)?.reactions ?: 0
+        )
     }
 
     /**
@@ -1859,7 +1896,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         return true
     }
 
-    fun getReplyCount(eventId: String): Int = replyCounts.get(eventId) ?: 0
+    fun getReplyCount(eventId: String): Int =
+        maxOf(replyCounts.get(eventId) ?: 0, dittoStats.get(eventId)?.replies ?: 0)
 
     /** Returns the current user's most recent reply to [eventId], if cached. */
     fun getMyReplyTo(eventId: String, myPubkey: String): NostrEvent? {
@@ -2064,7 +2102,10 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     /** Counts individual repost events; author lists remain deduplicated for avatars. */
     fun getRepostCount(eventId: String): Int =
-        repostEvents.get(eventId)?.size ?: repostAuthors.get(eventId)?.size ?: 0
+        maxOf(
+            repostEvents.get(eventId)?.size ?: repostAuthors.get(eventId)?.size ?: 0,
+            dittoStats.get(eventId)?.reposts ?: 0
+        )
 
     fun getRepostTime(eventId: String): Long? = feedSortTime.get(eventId)
 
@@ -2493,6 +2534,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         repostEvents.evictAll()
         repostTargetsByEventId.evictAll()
         reactionCounts.evictAll()
+        dittoStats.evictAll()
         userReactions.evictAll()
         reactionDetails.evictAll()
         reactionEmojiUrls.evictAll()

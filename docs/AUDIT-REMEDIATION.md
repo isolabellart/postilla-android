@@ -35,3 +35,23 @@
 - Consent confirmation: passed; translated text is shown and the original NIP-17 message remains unchanged.
 - Italian and English labels: passed.
 - Privacy & Security: the drawer opens the intended GitHub page, but GitHub returns 404 because docs/PRIVACY.md is not yet present on main. Corrected for staging 1.0.43; device retest pending.
+
+
+## Experimental indexer migration — staging 1.0.44
+
+**Branch:** `staging/postilla-indexer-migration-20261121`  
+**Base:** staging 1.0.43, commit `37164b7b3e1800b96461cc0ef34ce9f6d18eefb9`
+
+- Search combines the documented Nostr.wine REST endpoint with Amethyst-style NIP-50 relay defaults. REST results are signature-verified before caching.
+- Default event indexers use the public Amethyst indexer set; user-selected search relays remain additional sources for feed discovery.
+- Trending uses Nostr.wine's documented 24-hour and 48-hour windows for reactions, replies, reposts and zap count. Historical 7-day, 30-day, 1-year and all-time ranges are not simulated because the API documents a 48-hour maximum.
+- Ditto NIP-50 provides Popular/Hot/Rising/Zaps profile ordering.
+- Followers are experimentally discovered from NIP-02 kind-3 lists and kind-0 metadata.
+- Trending Users derives people from authors of recent trending notes; it is not the previous provider-specific "up-and-coming" ranking.
+- Ditto kind-30383 NIP-85 assertions supplement local engagement counts after signature verification and publisher-key checks.
+- The global Nostr online counter is removed because no equivalent free public source was verified. The count of the user's own network remains.
+- Nostr.wine documents a free REST quota of one request per second; the new client serializes requests accordingly.
+
+**Manual device testing pending:** API response compatibility/rate limiting, relay coverage, search quality, trending windows, Ditto stats freshness, profile sorting, NIP-02 follower discovery and fallback behavior.
+
+README and Zapstore metadata remain unchanged until this experimental staging passes manual testing.

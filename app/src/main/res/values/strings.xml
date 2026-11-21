@@ -686,10 +686,10 @@
     <string name="profile_tab_groups">Chat Rooms</string>
     <string name="profile_tab_relays">Relays</string>
     <string name="profile_sort_recent">Recent</string>
-    <string name="profile_sort_likes">Likes</string>
-    <string name="profile_sort_reposts">Reposts</string>
+    <string name="profile_sort_popular">Popular</string>
+    <string name="profile_sort_hot">Hot</string>
+    <string name="profile_sort_rising">Rising</string>
     <string name="profile_sort_zaps">Zaps</string>
-    <string name="profile_sort_replies">Replies</string>
     <string name="profile_edit">Edit Profile</string>
     <string name="profile_follows_you">Follows you</string>
     <string name="profile_copy_json">Copy Profile JSON</string>

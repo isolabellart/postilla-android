@@ -573,10 +573,10 @@
     <string name="profile_tab_followers">Follower</string>
     <string name="profile_tab_relays">Relay</string>
     <string name="profile_sort_recent">Recenti</string>
-    <string name="profile_sort_likes">Mi piace</string>
-    <string name="profile_sort_reposts">Condivisioni</string>
-    <string name="profile_sort_zaps">Zaps</string>
-    <string name="profile_sort_replies">Risposte</string>
+    <string name="profile_sort_popular">Popolari</string>
+    <string name="profile_sort_hot">Più attivi</string>
+    <string name="profile_sort_rising">In crescita</string>
+    <string name="profile_sort_zaps">Zap</string>
     <string name="profile_edit">Modifica Profilo</string>
     <string name="profile_follows_you">Ti segue</string>
     <string name="profile_copy_json">Copia Profilo JSON</string>
