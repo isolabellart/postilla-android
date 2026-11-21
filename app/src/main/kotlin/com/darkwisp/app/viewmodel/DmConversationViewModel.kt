@@ -919,7 +919,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun sendLegacyMessage(relayPool: RelayPool, signer: NostrSigner?, text: String) {
         if (participants.size != 1) {
-            _sendError.value = "Classic NIP-04 messages support one-to-one conversations only."
+            _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
             return
         }
         _messageText.value = ""
@@ -928,16 +928,28 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                val recipientDmRelays = fetchRecipientDmRelays(relayPool, forceRefresh = requireRecipientDmRelays)
-                if (requireRecipientDmRelays && recipientDmRelays.isEmpty()) {
-                    _messageText.value = text
-                    _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
-                    return@launch
-                }
+                val localKeypair = if (signer == null) {
+                    val found = keyRepo.getKeypair()
+                    if (found == null) {
+                        _messageText.value = text
+                        _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
+                        return@launch
+                    }
+                    found
+                } else null
                 val deliveryRelays = if (requireRecipientDmRelays) {
-                    recipientDmRelays
+                    fetchRecipientDmRelays(relayPool, forceRefresh = true).also { relays ->
+                        if (relays.isEmpty()) {
+                            _messageText.value = text
+                            _sendError.value = getApplication<Application>().getString(R.string.marketplace_dm_relay_required)
+                        }
+                    }
                 } else {
-                    resolveRecipientRelaysWithSource(recipientDmRelays, relayPool).urls
+                    // Kind 4 predates NIP-17 DM relays: prefer the standard NIP-65 inbox relay list.
+                    fetchPeerRelayList(peerPubkey, relayPool)
+                    relayListRepo?.getReadRelays(peerPubkey)?.takeIf { it.isNotEmpty() }
+                        ?: relayListRepo?.getWriteRelays(peerPubkey)?.takeIf { it.isNotEmpty() }
+                        ?: relayPool.getWriteRelayUrls()
                 }
                 if (deliveryRelays.isEmpty()) {
                     _messageText.value = text
@@ -948,11 +960,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val encryptedContent = if (signer != null) {
                     signer.nip04Encrypt(text, peerPubkey)
                 } else {
-                    val keypair = keyRepo.getKeypair() ?: run {
-                        _messageText.value = text
-                        _sendError.value = getApplication<Application>().getString(R.string.dm_signer_unavailable)
-                        return@launch
-                    }
+                    val keypair = localKeypair ?: return@launch
                     val sharedSecret = Nip04.computeSharedSecret(keypair.privkey, peerPubkey.hexToByteArray())
                     try { Nip04.encrypt(text, sharedSecret) } finally { sharedSecret.wipe() }
                 }
@@ -960,7 +968,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 val event = if (signer != null) {
                     signer.signEvent(kind = 4, content = encryptedContent, tags = tags)
                 } else {
-                    val keypair = keyRepo.getKeypair() ?: throw IllegalStateException("Local signing key unavailable")
+                    val keypair = localKeypair ?: throw IllegalStateException("Local signing key unavailable")
                     NostrEvent.create(
                         privkey = keypair.privkey,
                         pubkey = keypair.pubkey,
@@ -985,7 +993,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
 
-                val senderPubkey = signer?.pubkeyHex ?: keyRepo.getKeypair()?.pubkey?.toHex() ?: return@launch
+                val senderPubkey = signer?.pubkeyHex ?: localKeypair?.pubkey?.toHex() ?: return@launch
                 val message = DmMessage(
                     id = event.id,
                     senderPubkey = senderPubkey,
@@ -1000,7 +1008,7 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
                 clearReply()
             } catch (error: Exception) {
                 _messageText.value = text
-                _sendError.value = "Failed to send classic message"
+                _sendError.value = getApplication<Application>().getString(R.string.dm_delivery_unconfirmed)
                 Log.w("DmConversation", "NIP-04 send failed", error)
             } finally {
                 _sending.value = false

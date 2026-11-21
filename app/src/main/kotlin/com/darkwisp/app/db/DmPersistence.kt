@@ -201,7 +201,8 @@ class DmPersistence {
                 encryptedFileMetadata = fileMeta,
                 debugGiftWrapJson = debugGiftWrapJson,
                 debugRumorJson = debugRumorJson,
-                protocol = com.darkwisp.app.nostr.DmProtocol.valueOf(protocol)
+                protocol = runCatching { com.darkwisp.app.nostr.DmProtocol.valueOf(protocol) }
+                    .getOrDefault(com.darkwisp.app.nostr.DmProtocol.NIP17)
             )
         } catch (e: Exception) {
             Log.w("DmPersistence", "Failed to deserialize DM $giftWrapId: ${e.message}")
