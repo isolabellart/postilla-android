@@ -612,6 +612,7 @@ class EventRouter(
         )
     }
 
+    @OptIn(kotlin.ExperimentalStdlibApi::class)
     private suspend fun processLegacyDm(event: NostrEvent, relayUrl: String) {
         val myPubkey = getUserPubkey() ?: return
         if (event.pubkey == myPubkey || muteRepo.isBlocked(event.pubkey)) return
