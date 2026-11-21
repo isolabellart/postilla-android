@@ -1486,9 +1486,6 @@ class FeedSubscriptionManager(
         forYouSupplementaryJob?.cancel()
         val gen = ++forYouGeneration
         forYouSupplementaryJob = scope.launch {
-            launch { fetchTrendingForForYou(TrendingMetric.REACTIONS, gen) }
-            launch { fetchTrendingForForYou(TrendingMetric.REPLIES, gen) }
-
             val hashtags = interestRepo.getAllHashtags().toList()
             if (hashtags.isEmpty()) {
                 Log.d("RLC", "[FeedSub] FOR_YOU supplementary: no followed hashtags, skipping hashtag fetch")
@@ -1499,25 +1496,6 @@ class FeedSubscriptionManager(
             hashtags.chunked(HASHTAG_BATCH_SIZE).forEachIndexed { idx, chunk ->
                 launch { fetchHashtagChunkForForYou(chunk, since, gen, idx) }
             }
-        }
-    }
-
-    private suspend fun fetchTrendingForForYou(metric: TrendingMetric, gen: Long) {
-        try {
-            val events = NostrWineApiClient.trending(metric.apiOrder, 24, 100)
-            if (gen != forYouGeneration) return
-            val verified = withContext(processingContext) {
-                events.filter { it.kind in FEED_KINDS && runCatching { it.verifySignature() }.getOrDefault(false) }
-            }
-            if (gen != forYouGeneration) return
-            verified.forEach { event ->
-                eventRepo.addEvent(event)
-                eventRepo.requestProfileIfMissing(event.pubkey)
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            Log.w("RLC", "For You REST trending supplement unavailable for ${metric.slug}", error)
         }
     }
 
