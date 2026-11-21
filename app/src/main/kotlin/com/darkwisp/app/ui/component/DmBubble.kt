@@ -87,6 +87,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import com.darkwisp.app.R
 import com.darkwisp.app.nostr.DmMessage
+import com.darkwisp.app.nostr.DmProtocol
 import com.darkwisp.app.ui.screen.GroupChatHorizontalChipStrip
 import com.darkwisp.app.nostr.DmReaction
 import com.darkwisp.app.nostr.EncryptedMedia
@@ -188,6 +189,7 @@ fun DmBubble(
                 )
                 .offset { IntOffset(animatedSwipe.roundToInt(), 0) }
                 .draggable(
+                    enabled = message.protocol == DmProtocol.NIP17,
                     orientation = Orientation.Horizontal,
                     state = rememberDraggableState { delta ->
                         val newOffset = (swipeOffsetPx + delta).coerceIn(0f, swipeThresholdPx * 1.3f)
@@ -407,6 +409,7 @@ fun DmBubble(
                     .padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (message.protocol == DmProtocol.NIP17) {
                 // Comment / Reply section
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -542,6 +545,7 @@ fun DmBubble(
                         }
                     }
                 }
+                }
 
                 // Actions panel
                 Column(
@@ -561,7 +565,7 @@ fun DmBubble(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Spacer(Modifier.width(4.dp))
-                        DmActionPanelButton(
+                        if (message.protocol == DmProtocol.NIP17) DmActionPanelButton(
                             modifier = Modifier.width(82.dp),
                             onClick = { showActionsSheet = false; onZap(message) },
                             icon = {
