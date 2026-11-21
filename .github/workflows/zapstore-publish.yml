@@ -106,10 +106,30 @@ jobs:
 
           tag, asset_name, source_path, target_path = sys.argv[1:]
           source = pathlib.Path(source_path).read_text(encoding="utf-8")
+
           updated, count = re.subn(
               r"(?m)^release_filter:\s*.*$",
-              "release_filter: '^" + re.escape(tag) + "
+              "release_filter: '" + re.escape(tag) + "'",
+              source,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one release_filter in zapstore.yaml")
 
+          # Match the actual uploaded GitHub asset name, not its display label.
+          # This handles legacy app-release.apk and correctly named Postilla APKs.
+          match_pattern = "(?i)^" + asset_name.replace(".", r"\.") + "$"
+          updated, count = re.subn(
+              r"(?m)^match:\s*.*$",
+              "match: '" + match_pattern + "'",
+              updated,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one match expression in zapstore.yaml")
+
+          pathlib.Path(target_path).write_text(updated, encoding="utf-8")
+          print("Prepared exact release filter for " + tag)
+          print("Prepared exact asset matcher for " + asset_name)
+          PY
           zsp --json check "$GITHUB_WORKSPACE/.zapstore-targeted.yaml" > "$RUNNER_TEMP/zsp-preflight.json"
           cat "$RUNNER_TEMP/zsp-preflight.json"
 
