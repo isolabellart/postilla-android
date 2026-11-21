@@ -578,11 +578,7 @@ class StartupCoordinator(
                 val myPubkey = getUserPubkey() ?: return@collect
                 val dmRelayUrls = relayPool.getDmRelayUrls()
                 if (relayUrl in dmRelayUrls || relayUrl in relayPool.getRelayUrls()) {
-                    val dmKinds = if (isNip04Enabled()) listOf(1059, 4) else listOf(1059)
-                    val dmFilters = buildList {
-                        add(Filter(kinds = dmKinds, pTags = listOf(myPubkey)))
-                        if (isNip04Enabled()) add(Filter(kinds = listOf(4), authors = listOf(myPubkey)))
-                    }
+                    val dmFilters = Nip04DmRouting.subscriptionFilters(myPubkey, isNip04Enabled())
                     relayPool.sendToRelay(relayUrl, ClientMessage.req("dms", dmFilters))
                 }
             }
@@ -971,13 +967,8 @@ class StartupCoordinator(
         // NIP-17 gift wraps use randomized timestamps (up to 2 days in the past), making
         // a `since` filter unreliable — it would silently drop DMs from older conversations
         // and suppress the unread badge. DMs are low-volume; fetch without restriction.
-        val dmKinds = if (isNip04Enabled()) listOf(1059, 4) else listOf(1059)
-        // NIP-04 history is bidirectional: #p=me retrieves received DMs, while
-        // authors=me retrieves the kind-4 events I sent (whose #p is the peer).
-        val dmFilters = buildList {
-            add(Filter(kinds = dmKinds, pTags = listOf(myPubkey)))
-            if (isNip04Enabled()) add(Filter(kinds = listOf(4), authors = listOf(myPubkey)))
-        }
+        // Fetch both incoming and outgoing kind-4 events when NIP-04 is enabled.
+        val dmFilters = Nip04DmRouting.subscriptionFilters(myPubkey, isNip04Enabled())
         val dmReqMsg = ClientMessage.req("dms", dmFilters)
         relayPool.sendToAll(dmReqMsg)
         relayPool.sendToDmRelays(dmReqMsg)
