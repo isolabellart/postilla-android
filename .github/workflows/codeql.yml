@@ -29,8 +29,17 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: java-kotlin
-          build-mode: autobuild
+          build-mode: manual
           queries: security-extended
+
+      # Use the bounded Gradle configuration used by staging validation.
+      # In-process Kotlin compilation avoids a second JVM exhausting runner memory.
+      - name: Build for CodeQL
+        run: |
+          ./gradlew --no-daemon --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            assembleDebug --stacktrace
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3

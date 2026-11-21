@@ -686,6 +686,9 @@
     <string name="profile_tab_groups">Chat Rooms</string>
     <string name="profile_tab_relays">Relays</string>
     <string name="profile_sort_recent">Recent</string>
+    <string name="profile_sort_likes">Likes</string>
+    <string name="profile_sort_reposts">Reposts</string>
+    <string name="profile_sort_replies">Replies</string>
     <string name="profile_sort_popular">Popular</string>
     <string name="profile_sort_hot">Hot</string>
     <string name="profile_sort_rising">Rising</string>
