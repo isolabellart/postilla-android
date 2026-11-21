@@ -900,4 +900,6 @@
     <string name="action_new_legacy_dm">Новая классическая беседа</string>
     <string name="new_legacy_dm_title">Новое классическое сообщение</string>
     <string name="new_legacy_dm_start">Начать классическую беседу</string>
+    <string name="dm_legacy_chat_disabled">Классические сообщения NIP-04 отключены в настройках.</string>
+    <string name="dm_legacy_delivery_unconfirmed">Ни один ретранслятор получателя не подтвердил доставку этого классического сообщения. Проверьте список ретрансляторов NIP-65 получателя и подключение, затем повторите попытку.</string>
 </resources>
