@@ -5,6 +5,7 @@ import com.darkwisp.app.nostr.Blossom
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip04DmRouting
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip99
