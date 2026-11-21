@@ -157,11 +157,57 @@ fun DmListScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.title_chat)) },
+                title = {
+                    if (searchVisible) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            placeholder = { Text(stringResource(R.string.dm_search_hint)) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else Text(stringResource(R.string.title_chat))
+                },
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))
+                        }
+                    }
+                },
+                actions = {
+                    if (selectedConversationKeys.isNotEmpty()) {
+                        TextButton(onClick = {
+                            val next = if (showHiddenChats) hiddenConversationKeys - selectedConversationKeys
+                                else hiddenConversationKeys + selectedConversationKeys
+                            persistHidden(next)
+                        }) {
+                            Text(stringResource(if (showHiddenChats) R.string.dm_restore_selected else R.string.dm_hide_selected))
+                        }
+                    }
+                    IconButton(onClick = {
+                        searchVisible = !searchVisible
+                        if (!searchVisible) searchQuery = ""
+                    }) {
+                        Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.dm_search_hint))
+                    }
+                    Box {
+                        IconButton(onClick = { showChatMenu = true }) {
+                            Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.dm_chat_menu))
+                        }
+                        DropdownMenu(expanded = showChatMenu, onDismissRequest = { showChatMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.dm_mark_all_read)) },
+                                onClick = { showChatMenu = false; viewModel.markDmsRead() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(if (showHiddenChats) R.string.dm_hide_hidden else R.string.dm_show_hidden)) },
+                                onClick = {
+                                    showChatMenu = false
+                                    showHiddenChats = !showHiddenChats
+                                    selectedConversationKeys = emptySet()
+                                }
+                            )
                         }
                     }
                 },
