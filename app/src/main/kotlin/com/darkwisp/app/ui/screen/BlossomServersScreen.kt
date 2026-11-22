@@ -249,43 +249,53 @@ fun BlossomServersScreen(
                 it.url.trim().trimEnd('/').lowercase() in configuredServerKeys
             }
 
-            if (missingRecommendations.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.blossom_recommended_all_added),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                missingRecommendations.forEach { server ->
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                        Text(server.name, style = MaterialTheme.typography.bodyMedium)
+            Blossom.RECOMMENDED_FREE_SERVERS.forEach { server ->
+                val alreadyAdded = server.url.trim().trimEnd('/').lowercase() in configuredServerKeys
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Text(server.name, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        server.url,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = stringResource(
+                            if (server.url == Blossom.BLOSSOM_BAND_SERVER) {
+                                R.string.blossom_band_free_details
+                            } else {
+                                R.string.blossom_azzamo_free_details
+                            }
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(
+                        onClick = { viewModel.addRecommendedServer(server.url) },
+                        enabled = !alreadyAdded
+                    ) {
                         Text(
-                            server.url,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            stringResource(
+                                if (alreadyAdded) R.string.relay_recommended_added
+                                else R.string.blossom_add_recommended
+                            )
                         )
-                        Text(
-                            text = stringResource(
-                                if (server.url == Blossom.BLOSSOM_BAND_SERVER) {
-                                    R.string.blossom_band_free_details
-                                } else {
-                                    R.string.blossom_azzamo_free_details
-                                }
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        TextButton(onClick = { viewModel.addRecommendedServer(server.url) }) {
-                            Text(stringResource(R.string.blossom_add_recommended))
-                        }
                     }
                 }
+            }
+
+            if (missingRecommendations.isNotEmpty()) {
                 Button(
                     onClick = { viewModel.addRecommendedServers() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(stringResource(R.string.blossom_add_all_recommended))
                 }
+            } else {
+                Text(
+                    text = stringResource(R.string.blossom_recommended_all_added),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
             Text(
                 text = stringResource(R.string.blossom_recommended_broadcast_note),
