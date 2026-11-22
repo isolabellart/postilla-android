@@ -189,6 +189,25 @@
     <string name="relay_read">lettura</string>
     <string name="relay_write">scrittura</string>
     <string name="relay_auth">autenticazione</string>
+    <string name="relay_recommended_general_title">Relay General consigliati</string>
+    <string name="relay_recommended_general_description">Una piccola selezione di relay pubblici da affiancare alla tua lista. Aggiungi solo quelli che desideri.</string>
+    <string name="relay_recommended_general_public">Relay pubblico general purpose, suggerito per una configurazione equilibrata.</string>
+    <string name="relay_recommended_azzamo_general">Relay General gratuito. Le connessioni sono limitate per gli account senza Azzamo Premium.</string>
+    <string name="relay_recommended_general_add">Aggiungi i consigliati mancanti</string>
+    <string name="relay_recommended_dm_title">Relay DM consigliati</string>
+    <string name="relay_recommended_dm_description">NIP-17 consiglia una lista breve (di solito 1–3 relay). Qui riceverai i messaggi cifrati. Aggiungerli non pubblica la lista: usa Broadcast quando sei pronto.</string>
+    <string name="relay_recommended_dm_free_section">Opzioni gratuite</string>
+    <string name="relay_recommended_auth_free">Relay inbox DM AUTH gratuito.</string>
+    <string name="relay_recommended_azzamo_dm">Inbox gratuita per DM e gruppi. Senza Premium è soggetta a limiti e la conservazione dei messaggi gratuiti è temporanea.</string>
+    <string name="relay_recommended_dm_add_free">Aggiungi i consigliati gratuiti</string>
+    <string name="relay_recommended_dm_paid_section">Alternative a pagamento</string>
+    <string name="relay_recommended_paid_description">Inbox AUTH a pagamento. Verifica prezzo e condizioni aggiornate del gestore prima di aggiungerla.</string>
+    <string name="relay_recommended_dm_free_badge">GRATUITO</string>
+    <string name="relay_recommended_dm_paid_badge">A PAGAMENTO</string>
+    <string name="relay_recommended_add">Aggiungi</string>
+    <string name="relay_recommended_added">Aggiunto</string>
+    <string name="relay_recommended_added_count">Aggiunti %1$d relay</string>
+    <string name="relay_recommended_already_present">Questi relay consigliati sono già nella tua lista.</string>
 
     <!-- Tabs / Filters -->
     <string name="tab_status">Stato</string>
@@ -332,6 +351,14 @@
     <string name="blossom_broadcast">Pubblica Lista Server</string>
     <string name="blossom_broadcast_sent">Pubblicazione Inviata</string>
     <string name="blossom_drag_reorder">Trascina per riordinare priorità</string>
+    <string name="blossom_recommended_title">Server Blossom gratuiti consigliati</string>
+    <string name="blossom_recommended_description">Aggiungine uno o entrambi alla lista di caricamento. I server attuali e il loro ordine vengono mantenuti.</string>
+    <string name="blossom_band_free_details">Caricamenti gratuiti fino a 20 MiB per file, senza limite dichiarato al numero di file né scadenza.</string>
+    <string name="blossom_azzamo_free_details">Piano Seed gratuito. La pagina informativa del gestore non specifica una quota precisa per il piano Seed.</string>
+    <string name="blossom_add_recommended">Aggiungi server</string>
+    <string name="blossom_add_all_recommended">Aggiungi tutti i consigliati gratuiti</string>
+    <string name="blossom_recommended_all_added">Tutti i server gratuiti consigliati sono già nella tua lista.</string>
+    <string name="blossom_recommended_broadcast_note">Le modifiche sono salvate su questo dispositivo. Tocca Pubblica Lista Server quando vuoi pubblicare la lista kind 10063.</string>
 
     <!-- PoW Screen -->
     <string name="pow_description">Proof of Work estrae un prefisso hash sui tuoi eventi, fungendo da deterrente spam. Difficoltà maggiore richiede più tempo ma segnala più sforzo.</string>
