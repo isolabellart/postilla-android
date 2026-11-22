@@ -1444,4 +1444,6 @@
     <string name="postilla_profile_sats_sent">%1$d sats verzonden</string>
 
     <string name="postilla_notif_24h"> · 24 uur</string>
+    <string name="postilla_not_available">Niet beschikbaar</string>
+    <string name="postilla_video_open_failed">Kan video niet openen.</string>
 </resources>
