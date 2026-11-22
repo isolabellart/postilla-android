@@ -209,11 +209,11 @@
     <string name="relay_recommended_dm_title">Recommended DM inbox relays</string>
     <string name="relay_recommended_dm_description">NIP-17 recommends keeping this list short (usually 1–3). These relays receive encrypted messages for you. Adding them here does not publish the list; use Broadcast when ready.</string>
     <string name="relay_recommended_dm_free_section">Free options</string>
-    <string name="relay_recommended_auth_free">Free AUTH DM inbox relay.</string>
+    <string name="relay_recommended_auth_free">Free AUTH DM inbox relay; currently alpha software.</string>
     <string name="relay_recommended_azzamo_dm">Free inbox for DMs and groups. It is rate-limited without Premium, and free message storage is temporary.</string>
     <string name="relay_recommended_dm_add_free">Add free recommendations</string>
     <string name="relay_recommended_dm_paid_section">Optional paid alternatives</string>
-    <string name="relay_recommended_paid_description">Paid AUTH inbox option. Check the provider&apos;s current price and terms before adding it.</string>
+    <string name="relay_recommended_paid_description">Paid AUTH inbox option. Review current provider pricing and terms before adding it.</string>
     <string name="relay_recommended_dm_free_badge">FREE</string>
     <string name="relay_recommended_dm_paid_badge">PAID</string>
     <string name="relay_recommended_add">Add</string>
