@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -109,7 +109,12 @@ fun RelayScreen(
                 }
             }
 
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
                 if (selectedTab == RelaySetType.LOCAL) {
                     // Local tab: show URL input only when no relay is configured
                     if (localRelayConfig == null) {
@@ -154,175 +159,188 @@ fun RelayScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    if (relayPool != null) {
-                        val buttonLabel = when (selectedTab) {
-                            RelaySetType.GENERAL -> stringResource(R.string.broadcast_nip65)
-                            RelaySetType.DM -> stringResource(R.string.broadcast_dm_relays)
-                            RelaySetType.SEARCH -> stringResource(R.string.broadcast_search_relays)
-                            RelaySetType.BLOCKED -> stringResource(R.string.broadcast_blocked_relays)
-                            RelaySetType.LOCAL -> "" // unreachable
+                    // Keep the URL editor fixed while everything from Broadcast onward
+                    // shares one vertical scroll area in both General and DM.
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        if (relayPool != null) {
+                            val buttonLabel = when (selectedTab) {
+                                RelaySetType.GENERAL -> stringResource(R.string.broadcast_nip65)
+                                RelaySetType.DM -> stringResource(R.string.broadcast_dm_relays)
+                                RelaySetType.SEARCH -> stringResource(R.string.broadcast_search_relays)
+                                RelaySetType.BLOCKED -> stringResource(R.string.broadcast_blocked_relays)
+                                RelaySetType.LOCAL -> "" // unreachable
+                            }
+                            val successMsg = stringResource(R.string.error_relay_broadcast)
+                            val failureMsg = stringResource(R.string.error_broadcast_failed)
+                            Button(
+                                onClick = {
+                                    val ok = viewModel.publishRelayList(relayPool, signer = signer)
+                                    val msg = if (ok) successMsg else failureMsg
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(buttonLabel)
+                            }
                         }
-                        val successMsg = stringResource(R.string.error_relay_broadcast)
-                        val failureMsg = stringResource(R.string.error_broadcast_failed)
-                        Button(
-                            onClick = {
-                                val ok = viewModel.publishRelayList(relayPool, signer = signer)
-                                val msg = if (ok) successMsg else failureMsg
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(buttonLabel)
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // Selected relays are shown immediately below Broadcast, before any recommendations.
+                        when (selectedTab) {
+                            RelaySetType.GENERAL -> GeneralRelayList(relays, viewModel)
+                            RelaySetType.DM -> SimpleRelayList(dmRelays, viewModel)
+                            RelaySetType.SEARCH -> SimpleRelayList(searchRelays, viewModel)
+                            RelaySetType.BLOCKED -> SimpleRelayList(blockedRelays, viewModel)
+                            RelaySetType.LOCAL -> {} // handled above
                         }
-                    }
 
-                    if (selectedTab == RelaySetType.SEARCH) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                val added = viewModel.addDefaultSearchRelays()
-                                val message = if (added > 0) {
-                                    context.getString(R.string.default_search_relays_added, added)
-                                } else {
-                                    context.getString(R.string.default_search_relays_already_present)
-                                }
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.default_search_relays_button))
+                        Spacer(Modifier.height(12.dp))
+
+                        if (selectedTab == RelaySetType.SEARCH) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val added = viewModel.addDefaultSearchRelays()
+                                    val message = if (added > 0) {
+                                        context.getString(R.string.default_search_relays_added, added)
+                                    } else {
+                                        context.getString(R.string.default_search_relays_already_present)
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.default_search_relays_button))
+                            }
                         }
-                    }
 
 
-                    if (selectedTab == RelaySetType.GENERAL) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            stringResource(R.string.relay_recommended_general_title),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            stringResource(R.string.relay_recommended_general_description),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        RelayRecommendationRow(
-                            title = "nos.lol",
-                            url = "wss://nos.lol",
-                            description = stringResource(R.string.relay_recommended_general_public)
-                        )
-                        RelayRecommendationRow(
-                            title = "nostr.mom",
-                            url = "wss://nostr.mom",
-                            description = stringResource(R.string.relay_recommended_general_public)
-                        )
-                        RelayRecommendationRow(
-                            title = "Azzamo",
-                            url = "wss://nostr.azzamo.net",
-                            description = stringResource(R.string.relay_recommended_azzamo_general)
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                val added = viewModel.addRecommendedGeneralRelays()
-                                val message = if (added > 0) {
-                                    context.getString(R.string.relay_recommended_added_count, added)
-                                } else {
-                                    context.getString(R.string.relay_recommended_already_present)
-                                }
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.relay_recommended_general_add))
-                        }
-                    }
-
-                    if (selectedTab == RelaySetType.DM) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            stringResource(R.string.relay_recommended_dm_title),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            stringResource(R.string.relay_recommended_dm_description),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (dmRelays.size >= 3) {
+                        if (selectedTab == RelaySetType.GENERAL) {
+                            Spacer(Modifier.height(8.dp))
                             Text(
-                                stringResource(R.string.relay_recommended_dm_limit_reached),
+                                stringResource(R.string.relay_recommended_general_title),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                stringResource(R.string.relay_recommended_general_description),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            RelayRecommendationRow(
+                                title = "nos.lol",
+                                url = "wss://nos.lol",
+                                description = stringResource(R.string.relay_recommended_general_public)
+                            )
+                            RelayRecommendationRow(
+                                title = "nostr.mom",
+                                url = "wss://nostr.mom",
+                                description = stringResource(R.string.relay_recommended_general_public)
+                            )
+                            RelayRecommendationRow(
+                                title = "Azzamo",
+                                url = "wss://nostr.azzamo.net",
+                                description = stringResource(R.string.relay_recommended_azzamo_general)
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val added = viewModel.addRecommendedGeneralRelays()
+                                    val message = if (added > 0) {
+                                        context.getString(R.string.relay_recommended_added_count, added)
+                                    } else {
+                                        context.getString(R.string.relay_recommended_already_present)
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.relay_recommended_general_add))
+                            }
+                        }
+
+                        if (selectedTab == RelaySetType.DM) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                stringResource(R.string.relay_recommended_dm_title),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                stringResource(R.string.relay_recommended_dm_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (dmRelays.size >= 3) {
+                                Text(
+                                    stringResource(R.string.relay_recommended_dm_limit_reached),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            Text(
+                                stringResource(R.string.relay_recommended_dm_free_section),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            RecommendedDmRelayRow(
+                                url = "wss://auth.nostr1.com",
+                                description = stringResource(R.string.relay_recommended_auth_free),
+                                isPaid = false,
+                                alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://auth.nostr1.com", ignoreCase = true) },
+                                atCapacity = dmRelays.size >= 3,
+                                onAdd = { viewModel.addRecommendedDmRelay("wss://auth.nostr1.com") }
+                            )
+                            RecommendedDmRelayRow(
+                                url = "wss://inbox.azzamo.net",
+                                description = stringResource(R.string.relay_recommended_azzamo_dm),
+                                isPaid = false,
+                                alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.azzamo.net", ignoreCase = true) },
+                                atCapacity = dmRelays.size >= 3,
+                                onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.azzamo.net") }
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val added = viewModel.addRecommendedDmRelays()
+                                    val message = if (added > 0) {
+                                        context.getString(R.string.relay_recommended_added_count, added)
+                                    } else {
+                                        context.getString(R.string.relay_recommended_already_present)
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.relay_recommended_dm_add_free))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                stringResource(R.string.relay_recommended_dm_paid_section),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            RecommendedDmRelayRow(
+                                url = "wss://inbox.nostr.wine",
+                                description = stringResource(R.string.relay_recommended_paid_description),
+                                isPaid = true,
+                                alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.nostr.wine", ignoreCase = true) },
+                                atCapacity = dmRelays.size >= 3,
+                                onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.nostr.wine") }
+                            )
+                            RecommendedDmRelayRow(
+                                url = "wss://nostr.land",
+                                description = stringResource(R.string.relay_recommended_paid_description),
+                                isPaid = true,
+                                alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://nostr.land", ignoreCase = true) },
+                                atCapacity = dmRelays.size >= 3,
+                                onAdd = { viewModel.addRecommendedDmRelay("wss://nostr.land") }
                             )
                         }
-                        Text(
-                            stringResource(R.string.relay_recommended_dm_free_section),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        RecommendedDmRelayRow(
-                            url = "wss://auth.nostr1.com",
-                            description = stringResource(R.string.relay_recommended_auth_free),
-                            isPaid = false,
-                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://auth.nostr1.com", ignoreCase = true) },
-                            atCapacity = dmRelays.size >= 3,
-                            onAdd = { viewModel.addRecommendedDmRelay("wss://auth.nostr1.com") }
-                        )
-                        RecommendedDmRelayRow(
-                            url = "wss://inbox.azzamo.net",
-                            description = stringResource(R.string.relay_recommended_azzamo_dm),
-                            isPaid = false,
-                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.azzamo.net", ignoreCase = true) },
-                            atCapacity = dmRelays.size >= 3,
-                            onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.azzamo.net") }
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                val added = viewModel.addRecommendedDmRelays()
-                                val message = if (added > 0) {
-                                    context.getString(R.string.relay_recommended_added_count, added)
-                                } else {
-                                    context.getString(R.string.relay_recommended_already_present)
-                                }
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.relay_recommended_dm_add_free))
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            stringResource(R.string.relay_recommended_dm_paid_section),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        RecommendedDmRelayRow(
-                            url = "wss://inbox.nostr.wine",
-                            description = stringResource(R.string.relay_recommended_paid_description),
-                            isPaid = true,
-                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.nostr.wine", ignoreCase = true) },
-                            atCapacity = dmRelays.size >= 3,
-                            onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.nostr.wine") }
-                        )
-                        RecommendedDmRelayRow(
-                            url = "wss://nostr.land",
-                            description = stringResource(R.string.relay_recommended_paid_description),
-                            isPaid = true,
-                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://nostr.land", ignoreCase = true) },
-                            atCapacity = dmRelays.size >= 3,
-                            onAdd = { viewModel.addRecommendedDmRelay("wss://nostr.land") }
-                        )
                     }
 
-                    Spacer(Modifier.height(16.dp))
-
-                    when (selectedTab) {
-                        RelaySetType.GENERAL -> GeneralRelayList(relays, viewModel)
-                        RelaySetType.DM -> SimpleRelayList(dmRelays, viewModel)
-                        RelaySetType.SEARCH -> SimpleRelayList(searchRelays, viewModel)
-                        RelaySetType.BLOCKED -> SimpleRelayList(blockedRelays, viewModel)
-                        RelaySetType.LOCAL -> {} // handled above
-                    }
                 }
             }
         }
@@ -402,8 +420,8 @@ private fun RecommendedDmRelayRow(
 
 @Composable
 private fun GeneralRelayList(relays: List<RelayConfig>, viewModel: RelayViewModel) {
-    LazyColumn {
-        items(items = relays.distinctBy { it.url }, key = { it.url }) { relay ->
+    Column {
+        relays.distinctBy { it.url }.forEach { relay ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -587,8 +605,8 @@ private fun LocalRelayTab(config: LocalRelayConfig?, viewModel: RelayViewModel) 
 
 @Composable
 private fun SimpleRelayList(urls: List<String>, viewModel: RelayViewModel) {
-    LazyColumn {
-        items(items = urls.distinct(), key = { it }) { url ->
+    Column {
+        urls.distinct().forEach { url ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
