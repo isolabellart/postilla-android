@@ -100,7 +100,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val GALLERY_KINDS = setOf(20, 21, 22)
+private val GALLERY_KINDS = setOf(20, 21, 22, 34235, 34236)
 
 private val galleryDateTimeFormat = SimpleDateFormat("MMM d, HH:mm", Locale.US)
 private val galleryDateTimeYearFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
@@ -581,7 +581,7 @@ fun GalleryCard(
                 }
             }
         } else if (videoEntries.isNotEmpty()) {
-            // Video event (kind 21/22) — use inline video player, same as kind 1 feed
+            // NIP-71 video event (kind 21/22 or addressable 34235/34236).
             val video = videoEntries[0]
             InlineVideoPlayerWithFullscreen(
                 meta = MediaMeta(
