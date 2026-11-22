@@ -44,6 +44,31 @@ class BlossomServersViewModel(app: Application) : AndroidViewModel(app) {
         _newServerUrl.value = url
     }
 
+    /** Adds a recommended server without changing the existing order or duplicates. */
+    fun addRecommendedServer(url: String): Boolean {
+        val current = servers.value
+        if (current.any { normalizeServerUrl(it) == normalizeServerUrl(url) }) return false
+        blossomRepo.saveBlossomServers(current + url)
+        _error.value = null
+        return true
+    }
+
+    /** Adds every missing free recommendation; does not publish kind:10063. */
+    fun addRecommendedServers(): Int {
+        val current = servers.value
+        val currentKeys = current.mapTo(mutableSetOf(), ::normalizeServerUrl)
+        val additions = Blossom.RECOMMENDED_FREE_SERVERS
+            .map { it.url }
+            .filter { normalizeServerUrl(it) !in currentKeys }
+        if (additions.isEmpty()) return 0
+        blossomRepo.saveBlossomServers(current + additions)
+        _error.value = null
+        return additions.size
+    }
+
+    private fun normalizeServerUrl(url: String): String =
+        url.trim().trimEnd('/').lowercase()
+
     fun addServer() {
         val raw = _newServerUrl.value.trim().trimEnd('/')
         if (raw.isBlank()) return
