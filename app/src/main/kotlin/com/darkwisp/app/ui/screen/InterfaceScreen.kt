@@ -158,7 +158,7 @@ fun InterfaceScreen(
                     ) {
                         Icon(
                             Icons.Outlined.LightMode,
-                            contentDescription = "Light theme",
+                            contentDescription = stringResource(R.string.postilla_theme_light),
                             tint = if (!isDarkTheme) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -168,7 +168,7 @@ fun InterfaceScreen(
                     ) {
                         Icon(
                             Icons.Outlined.DarkMode,
-                            contentDescription = "Dark theme",
+                            contentDescription = stringResource(R.string.postilla_theme_dark),
                             tint = if (isDarkTheme) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -777,12 +777,12 @@ fun InterfaceScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Zap Icon", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.postilla_interface_zap_icon), style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(
                         Icons.Outlined.CurrencyBitcoin,
-                        contentDescription = "Bitcoin symbol",
+                        contentDescription = stringResource(R.string.postilla_interface_bitcoin_symbol),
                         tint = if (!zapBoltIcon) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier
@@ -794,7 +794,7 @@ fun InterfaceScreen(
                     )
                     Icon(
                         painter = painterResource(R.drawable.ic_bolt),
-                        contentDescription = "Lightning bolt",
+                        contentDescription = stringResource(R.string.postilla_interface_lightning_bolt),
                         tint = if (zapBoltIcon) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier
