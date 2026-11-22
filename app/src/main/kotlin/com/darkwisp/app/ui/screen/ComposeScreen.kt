@@ -901,6 +901,7 @@ fun ComposeScreen(
                         // Private reply toggle: only meaningful for replies in plain text mode
                         // (private replies don't carry gallery/poll/schedule/quote payloads in v1).
                         if (replyTo != null && replyTo.kind != 30023 &&
+                            !com.darkwisp.app.nostr.Nip71.isAddressableVideoKind(replyTo.kind) &&
                             com.darkwisp.app.nostr.Nip22.addressableRootCoordinate(replyTo) == null &&
                             quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
                             IconButton(onClick = {
