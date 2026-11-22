@@ -67,14 +67,14 @@ class TextTranslationActivity : Activity() {
                         append(selectedText)
                         append("\n\n")
                         append(getString(R.string.text_translation_result))
-                        append(":\\n")
+                        append(":\n")
                         append(state.translatedText)
                     }
                     TranslationStatus.ERROR -> buildString {
                         append(getString(R.string.text_translation_original))
-                        append(":\\n")
+                        append(":\n")
                         append(selectedText)
-                        append("\\n\\n")
+                        append("\n\n")
                         append(state.errorMessage.ifBlank { getString(R.string.text_translation_failed) })
                     }
                     TranslationStatus.SAME_LANGUAGE -> getString(R.string.text_translation_same_language)
