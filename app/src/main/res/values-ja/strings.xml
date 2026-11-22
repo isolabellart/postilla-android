@@ -1446,4 +1446,57 @@
     <string name="postilla_notif_24h"> · 24 時間</string>
     <string name="postilla_not_available">利用できません</string>
     <string name="postilla_video_open_failed">動画を開けませんでした。</string>
+
+
+    <!-- Localized wallet, bookmark and marketplace labels -->
+    <string name="postilla_wallet_connecting">接続中…</string>
+    <string name="postilla_wallet_address">アドレス</string>
+    <string name="postilla_wallet_view_mempool">mempool.space で表示</string>
+    <string name="postilla_wallet_recovery_intro">Spark ベースのウォレットの 12 語のリカバリーフレーズを入力してください。</string>
+    <string name="postilla_wallet_recovery_phrase">リカバリーフレーズ</string>
+    <string name="postilla_wallet_recovery_input">12 語または 24 語を入力…</string>
+    <string name="postilla_wallet_restore">ウォレットを復元</string>
+    <string name="postilla_wallet_recovery_title">リカバリーフレーズ</string>
+    <string name="postilla_wallet_recovery_safety">これらの単語を順番どおりに書き留め、安全に保管してください。ウォレットを復元する唯一の方法です。</string>
+    <string name="postilla_wallet_reveal_phrase">リカバリーフレーズを表示</string>
+    <string name="postilla_wallet_tap_reveal">タップして表示</string>
+    <string name="postilla_wallet_lightning_address">Lightning アドレス</string>
+    <string name="postilla_wallet_lightning_address_description">支払いを受け取るための Lightning アドレスを取得するユーザー名を選択してください。</string>
+    <string name="postilla_wallet_username">ユーザー名</string>
+    <string name="postilla_wallet_available">利用可能です！</string>
+    <string name="postilla_wallet_not_available">利用できません</string>
+    <string name="postilla_wallet_check_availability">空き状況を確認</string>
+    <string name="postilla_wallet_register">登録</string>
+    <string name="postilla_wallet_update_profile_title">Nostr プロフィールを更新しますか？</string>
+    <string name="postilla_wallet_update_profile_message">他の人が Zap を送れるように、この Lightning アドレスを Nostr プロフィールに追加しますか？</string>
+    <string name="postilla_wallet_yes">はい</string>
+    <string name="postilla_wallet_no">いいえ</string>
+    <string name="postilla_wallet_lightning_qr">Lightning アドレスの QR コード</string>
+    <string name="postilla_wallet_share">共有</string>
+    <string name="postilla_wallet_backup_warning">続行する前に、リカバリーフレーズをバックアップしたことを確認してください。</string>
+    <string name="postilla_wallet_delete_confirm">確認するには DELETE と入力してください</string>
+    <string name="postilla_wallet_backup_title">Nostr リレーにバックアップ</string>
+    <string name="postilla_wallet_backup_description">NIP-44 でウォレットのリカバリーフレーズを暗号化し、Nostr リレーに公開します。Nostr 秘密鍵を持つあなたのみが復号できます。</string>
+    <string name="postilla_wallet_backup_mnemonic_info">ニーモニックは NIP-44 を使用して自分の公開鍵宛てに暗号化されます。リレー運営者は内容を読めません。他の Spark ウォレットアプリとも互換性があります。</string>
+    <string name="postilla_wallet_backup_now">今すぐバックアップ</string>
+    <string name="postilla_wallet_encrypting">暗号化して公開中…</string>
+    <string name="postilla_wallet_backup_complete">バックアップ完了</string>
+    <string name="postilla_wallet_backup_published">ウォレットは暗号化され、Nostr リレーに公開されました。</string>
+    <string name="postilla_wallet_try_again">もう一度試す</string>
+    <string name="postilla_wallet_restore_from_relays">リレーから復元</string>
+    <string name="postilla_wallet_restore_from_relays_description">Nostr リレーで暗号化されたウォレットバックアップを検索します。バックアップは Nostr 秘密鍵で復号されます。</string>
+    <string name="postilla_wallet_search_relays">リレーを検索</string>
+    <string name="postilla_wallet_searching_backup">リレーでバックアップを検索中…</string>
+    <string name="postilla_wallet_backup_found">バックアップが見つかりました！</string>
+    <string name="postilla_wallet_restore_this">このウォレットを復元</string>
+    <string name="postilla_wallet_multiple_found">複数のウォレットが見つかりました</string>
+    <string name="postilla_wallet_choose_backup">復元するバックアップを選択してください：</string>
+    <string name="postilla_wallet_no_backup_found">リレーにウォレットバックアップが見つかりません。</string>
+    <string name="postilla_wallet_search_again">もう一度検索</string>
+    <string name="postilla_close_image">画像を閉じる</string>
+    <string name="postilla_bookmark_delete_list">リストを削除</string>
+    <string name="postilla_bookmark_remove_from_list">リストから削除</string>
+    <string name="postilla_bookmarks_title">ブックマーク</string>
+    <string name="postilla_bookmarks_empty">ブックマークしたノートはありません</string>
+    <string name="postilla_bookmarks_not_loaded">ノートはまだ読み込まれていません</string>
 </resources>
