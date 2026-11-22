@@ -345,7 +345,7 @@ fun UserProfileScreen(
         is ProfileZapStatus.InProgress -> {
             AlertDialog(
                 onDismissRequest = {},
-                title = { Text("Sending zap...") },
+                title = { Text(stringResource(R.string.postilla_profile_sending_zap)) },
                 text = { CircularProgressIndicator() },
                 confirmButton = {}
             )
@@ -353,8 +353,8 @@ fun UserProfileScreen(
         is ProfileZapStatus.Success -> {
             AlertDialog(
                 onDismissRequest = { profileZapStatus = ProfileZapStatus.Idle },
-                title = { Text("\u26A1 Zap sent!") },
-                text = { Text("${s.sats} sats sent") },
+                title = { Text(stringResource(R.string.postilla_profile_zap_sent)) },
+                text = { Text(stringResource(R.string.postilla_profile_sats_sent, s.sats)) },
                 confirmButton = {
                     TextButton(onClick = { profileZapStatus = ProfileZapStatus.Idle }) { Text(stringResource(R.string.btn_ok)) }
                 }
@@ -614,7 +614,7 @@ fun UserProfileScreen(
                         onDismissRequest = { menuExpanded = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Share Profile") },
+                            text = { Text(stringResource(R.string.postilla_profile_share)) },
                             onClick = {
                                 menuExpanded = false
                                 try {
@@ -628,14 +628,14 @@ fun UserProfileScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Copy npub") },
+                            text = { Text(stringResource(R.string.postilla_profile_copy_npub)) },
                             onClick = {
                                 menuExpanded = false
                                 try {
                                     val npub = profilePubkey.toNpub()
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("npub", npub))
-                                    Toast.makeText(context, "npub copied", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.postilla_profile_npub_copied), Toast.LENGTH_SHORT).show()
                                 } catch (_: Exception) {}
                             }
                         )
@@ -823,7 +823,7 @@ fun UserProfileScreen(
                                 ) {
                                     Text(stringResource(currentSortMode.labelResId), style = MaterialTheme.typography.labelLarge)
                                     Spacer(Modifier.width(2.dp))
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Sort", modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = stringResource(R.string.postilla_profile_sort), modifier = Modifier.size(16.dp))
                                 }
                             }
                             DropdownMenu(
@@ -1170,7 +1170,7 @@ fun UserProfileScreen(
                                             ) {
                                                 Icon(
                                                     Icons.Default.PlayArrow,
-                                                    contentDescription = "Video",
+                                                    contentDescription = stringResource(R.string.postilla_video),
                                                     tint = Color.White,
                                                     modifier = Modifier.size(20.dp)
                                                 )
@@ -1470,7 +1470,7 @@ private fun ProfileHeader(
             profile?.banner?.let { bannerUrl ->
                 AsyncImage(
                     model = bannerUrl,
-                    contentDescription = "Banner",
+                    contentDescription = stringResource(R.string.cd_banner),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxSize()
@@ -1562,7 +1562,7 @@ private fun ProfileHeader(
                     ) {
                         Icon(
                             imageVector = if (isFollowing) Icons.Default.PersonRemove else Icons.Default.PersonAdd,
-                            contentDescription = if (isFollowing) "Unfollow" else "Follow",
+                            contentDescription = stringResource(if (isFollowing) R.string.btn_unfollow else R.string.btn_follow),
                             tint = if (isFollowing) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.padding(9.dp)
                         )
@@ -1866,7 +1866,7 @@ private fun ProfileHeader(
                     )
                     Spacer(Modifier.width(3.dp))
                     Text(
-                        text = "Following",
+                        text = stringResource(R.string.postilla_profile_following),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1882,7 +1882,7 @@ private fun ProfileHeader(
                     )
                     Spacer(Modifier.width(3.dp))
                     Text(
-                        text = "Followers in your network",
+                        text = stringResource(R.string.postilla_followers_network),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1913,7 +1913,7 @@ private fun ProfileHeader(
                 Spacer(Modifier.width(8.dp))
                 if (othersCount > 0) {
                     Text(
-                        text = "+$othersCount others in your network",
+                        text = stringResource(R.string.postilla_network_others, othersCount),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2087,7 +2087,7 @@ private fun AddToListDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add to List") },
+        title = { Text(stringResource(R.string.postilla_profile_add_to_list)) },
         text = {
             Column {
                 if (ownLists.isEmpty()) {
@@ -2147,7 +2147,7 @@ private fun AddToListDialog(
                     androidx.compose.material3.OutlinedTextField(
                         value = newListName,
                         onValueChange = { newListName = it },
-                        placeholder = { Text("New list name") },
+                        placeholder = { Text(stringResource(R.string.postilla_list_name_hint)) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -2162,7 +2162,7 @@ private fun AddToListDialog(
                         },
                         enabled = newListName.isNotBlank()
                     ) {
-                        Text("Create")
+                        Text(stringResource(R.string.postilla_list_create))
                     }
                 }
                 Row(
@@ -2191,7 +2191,7 @@ private fun AddToListDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) }
         },
         dismissButton = {}
     )
@@ -2206,7 +2206,7 @@ private fun LoadMoreButton(onClick: () -> Unit) {
             .padding(vertical = 16.dp)
     ) {
         OutlinedButton(onClick = onClick) {
-            Text("Load More")
+            Text(stringResource(R.string.postilla_profile_load_more))
         }
     }
 }
@@ -2321,7 +2321,7 @@ private fun MediaGridRow(
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play video",
+                            contentDescription = stringResource(R.string.cd_play_video),
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)
                         )
@@ -2359,13 +2359,13 @@ private fun BlockedContentOverlay(onReveal: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "This user is blocked",
+                text = stringResource(R.string.postilla_profile_blocked_notice),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Tap to reveal content",
+                text = stringResource(R.string.postilla_profile_reveal_content),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
             )
@@ -2419,7 +2419,7 @@ private fun ProfileArticleCard(
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
                         Text(
-                            text = "ARTICLE",
+                            text = stringResource(R.string.article_draft_label).uppercase(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
