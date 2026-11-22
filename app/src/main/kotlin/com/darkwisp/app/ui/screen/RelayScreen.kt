@@ -248,6 +248,13 @@ fun RelayScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (dmRelays.size >= 3) {
+                            Text(
+                                stringResource(R.string.relay_recommended_dm_limit_reached),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Text(
                             stringResource(R.string.relay_recommended_dm_free_section),
                             style = MaterialTheme.typography.labelLarge,
@@ -258,6 +265,7 @@ fun RelayScreen(
                             description = stringResource(R.string.relay_recommended_auth_free),
                             isPaid = false,
                             alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://auth.nostr1.com", ignoreCase = true) },
+                            atCapacity = dmRelays.size >= 3,
                             onAdd = { viewModel.addRecommendedDmRelay("wss://auth.nostr1.com") }
                         )
                         RecommendedDmRelayRow(
@@ -265,6 +273,7 @@ fun RelayScreen(
                             description = stringResource(R.string.relay_recommended_azzamo_dm),
                             isPaid = false,
                             alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.azzamo.net", ignoreCase = true) },
+                            atCapacity = dmRelays.size >= 3,
                             onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.azzamo.net") }
                         )
                         OutlinedButton(
@@ -292,6 +301,7 @@ fun RelayScreen(
                             description = stringResource(R.string.relay_recommended_paid_description),
                             isPaid = true,
                             alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.nostr.wine", ignoreCase = true) },
+                            atCapacity = dmRelays.size >= 3,
                             onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.nostr.wine") }
                         )
                         RecommendedDmRelayRow(
@@ -299,6 +309,7 @@ fun RelayScreen(
                             description = stringResource(R.string.relay_recommended_paid_description),
                             isPaid = true,
                             alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://nostr.land", ignoreCase = true) },
+                            atCapacity = dmRelays.size >= 3,
                             onAdd = { viewModel.addRecommendedDmRelay("wss://nostr.land") }
                         )
                     }
@@ -349,6 +360,7 @@ private fun RecommendedDmRelayRow(
     description: String,
     isPaid: Boolean,
     alreadyAdded: Boolean,
+    atCapacity: Boolean,
     onAdd: () -> Unit
 ) {
     Row(
@@ -377,7 +389,7 @@ private fun RecommendedDmRelayRow(
                 color = if (isPaid) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
             )
         }
-        TextButton(onClick = onAdd, enabled = !alreadyAdded) {
+        TextButton(onClick = onAdd, enabled = !alreadyAdded && !atCapacity) {
             Text(
                 stringResource(
                     if (alreadyAdded) R.string.relay_recommended_added
