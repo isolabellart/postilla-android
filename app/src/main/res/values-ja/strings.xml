@@ -1440,4 +1440,6 @@
     <string name="postilla_video_edit_unavailable">この動画を編集できるのは投稿者だけです。</string>
     <string name="postilla_video_invalid_language">有効な 2 文字の言語コードを入力してください。</string>
     <string name="postilla_video_update_failed">動画の変更を保存できませんでした。</string>
+
+    <string name="postilla_profile_sats_sent">%1$d sats を送信しました</string>
 </resources>
