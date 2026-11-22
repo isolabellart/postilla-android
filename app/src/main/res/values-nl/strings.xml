@@ -1212,4 +1212,45 @@
     <string name="marketplace_watchlist_title">Marketplace-verlanglijst</string>
     <string name="marketplace_watchlist_price_changed">Prijs gewijzigd</string>
     <string name="marketplace_watchlist_open_listing">Advertentie openen</string>
+
+
+    <!-- Localization audit: DM, articles and app updates -->
+    <string name="dm_delivery_unconfirmed">Geen DM-relay van de ontvanger heeft de bezorging bevestigd. Controleer de NIP-17 DM-relaylijst van de ontvanger en je verbinding en probeer het opnieuw.</string>
+    <string name="dm_signer_unavailable">Er is geen actieve Nostr-ondertekenaar beschikbaar. Verbind je account opnieuw en probeer het weer.</string>
+    <string name="postilla_appearance_title">Weergave van Postilla</string>
+    <string name="postilla_appearance_body">Eén visuele identiteit. Kies hier de lichte of donkere modus.</string>
+    <string name="article_draft_label">Artikel</string>
+    <string name="article_compose_button">Artikel schrijven</string>
+    <string name="article_compose_title">Nieuw artikel</string>
+    <string name="article_title_hint">Titel van artikel</string>
+    <string name="article_summary_hint">Samenvatting (optioneel)</string>
+    <string name="article_cover">Omslagafbeelding</string>
+    <string name="article_choose_cover">Omslagafbeelding kiezen</string>
+    <string name="article_remove_cover">Omslagafbeelding verwijderen</string>
+    <string name="article_body_hint">Schrijf je artikel in Markdown</string>
+    <string name="article_hashtags_hint">Hashtags, gescheiden door komma\'s</string>
+    <string name="article_preview">Voorbeeld</string>
+    <string name="article_edit">Artikel bewerken</string>
+    <string name="article_save_draft">Concept opslaan</string>
+    <string name="article_publish">Artikel publiceren</string>
+    <string name="article_publishing">Publiceren…</string>
+    <string name="article_title_required">Voeg een titel toe voordat je publiceert.</string>
+    <string name="article_body_required">Voeg de artikeltekst toe voordat je publiceert.</string>
+    <string name="article_uploading_cover">Omslag uploaden…</string>
+    <string name="article_copy_address">Artikeladres kopiëren</string>
+    <string name="article_copy_link">Nostr-link kopiëren</string>
+    <string name="article_share">Delen</string>
+    <string name="article_copy_text">Artikeltekst kopiëren</string>
+    <string name="article_address_copied">Artikeladres gekopieerd</string>
+    <string name="article_publish_unconfirmed">Geen relay heeft het artikel bevestigd. Je tekst staat er nog; probeer het opnieuw.</string>
+    <string name="article_not_signed_in">Meld je aan om een artikel te publiceren.</string>
+    <string name="postilla_update_available">Postilla %1$s is beschikbaar</string>
+    <string name="postilla_update_description">Er staat een nieuwe versie klaar. Je kunt nu of later bijwerken.</string>
+    <string name="postilla_update_now">Nu bijwerken</string>
+    <string name="postilla_update_later">Later</string>
+    <string name="postilla_update_downloading">Downloaden…</string>
+    <string name="postilla_update_allow_install">Sta Postilla toe om updates te installeren in de Android-instellingen en tik daarna opnieuw op Nu bijwerken.</string>
+    <string name="postilla_update_failed">De update kon niet worden gedownload of geverifieerd. Probeer het later opnieuw.</string>
+    <string name="postilla_update_preview_only">De updater-preview is actief. Een update installeren vanuit een Preview-build is uitgeschakeld.</string>
+    <string name="text_translation_action">Vertalen met DeepL</string>
 </resources>

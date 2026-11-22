@@ -1173,4 +1173,45 @@
     <string name="marketplace_watchlist_title">Список Marketplace</string>
     <string name="marketplace_watchlist_price_changed">Цена изменилась</string>
     <string name="marketplace_watchlist_open_listing">Открыть объявление</string>
+
+
+    <!-- Localization audit: DM, articles and app updates -->
+    <string name="dm_delivery_unconfirmed">Ни один ретранслятор ЛС получателя не подтвердил доставку. Проверьте список ретрансляторов ЛС NIP-17 получателя и подключение, затем повторите попытку.</string>
+    <string name="dm_signer_unavailable">Активный подписант Nostr недоступен. Повторно подключите аккаунт и попробуйте снова.</string>
+    <string name="postilla_appearance_title">Внешний вид Postilla</string>
+    <string name="postilla_appearance_body">Единый визуальный стиль. Выберите здесь светлую или тёмную тему.</string>
+    <string name="article_draft_label">Статья</string>
+    <string name="article_compose_button">Написать статью</string>
+    <string name="article_compose_title">Новая статья</string>
+    <string name="article_title_hint">Название статьи</string>
+    <string name="article_summary_hint">Краткое описание (необязательно)</string>
+    <string name="article_cover">Обложка</string>
+    <string name="article_choose_cover">Выбрать обложку</string>
+    <string name="article_remove_cover">Удалить обложку</string>
+    <string name="article_body_hint">Напишите статью в Markdown</string>
+    <string name="article_hashtags_hint">Хэштеги через запятую</string>
+    <string name="article_preview">Предпросмотр</string>
+    <string name="article_edit">Редактировать статью</string>
+    <string name="article_save_draft">Сохранить черновик</string>
+    <string name="article_publish">Опубликовать статью</string>
+    <string name="article_publishing">Публикация…</string>
+    <string name="article_title_required">Перед публикацией добавьте заголовок.</string>
+    <string name="article_body_required">Перед публикацией добавьте текст статьи.</string>
+    <string name="article_uploading_cover">Загрузка обложки…</string>
+    <string name="article_copy_address">Копировать адрес статьи</string>
+    <string name="article_copy_link">Копировать ссылку Nostr</string>
+    <string name="article_share">Поделиться</string>
+    <string name="article_copy_text">Копировать текст статьи</string>
+    <string name="article_address_copied">Адрес статьи скопирован</string>
+    <string name="article_publish_unconfirmed">Ни один ретранслятор не подтвердил статью. Текст сохранён — попробуйте снова.</string>
+    <string name="article_not_signed_in">Войдите, чтобы опубликовать статью.</string>
+    <string name="postilla_update_available">Доступна Postilla %1$s</string>
+    <string name="postilla_update_description">Доступна новая версия. Вы можете обновить сейчас или позже.</string>
+    <string name="postilla_update_now">Обновить сейчас</string>
+    <string name="postilla_update_later">Позже</string>
+    <string name="postilla_update_downloading">Загрузка…</string>
+    <string name="postilla_update_allow_install">Разрешите Postilla устанавливать обновления в настройках Android, затем снова нажмите «Обновить сейчас».</string>
+    <string name="postilla_update_failed">Не удалось загрузить или проверить обновление. Повторите попытку позже.</string>
+    <string name="postilla_update_preview_only">Предпросмотр обновления активен. Установка обновлений из Preview-сборки отключена.</string>
+    <string name="text_translation_action">Перевести с помощью DeepL</string>
 </resources>
