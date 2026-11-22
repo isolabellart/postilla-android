@@ -188,6 +188,8 @@ fun ComposeScreen(
     val hashtags by viewModel.hashtags.collectAsState()
     val powEnabled by viewModel.powEnabled.collectAsState()
     val galleryMode by viewModel.galleryMode.collectAsState()
+    val galleryHasVideo by viewModel.galleryHasVideo.collectAsState()
+    val galleryVideoTitle by viewModel.galleryVideoTitle.collectAsState()
     // Alt text (NIP-92 imeta) — per-image editor state
     val altTexts by viewModel.altTexts.collectAsState()
     var altEditorUrl by remember { mutableStateOf<String?>(null) }
@@ -348,6 +350,19 @@ fun ComposeScreen(
                         },
                         onRemoveUrl = { viewModel.removeMediaUrl(it) }
                     )
+
+                    if (galleryHasVideo) {
+                        OutlinedTextField(
+                            value = galleryVideoTitle,
+                            onValueChange = viewModel::updateGalleryVideoTitle,
+                            label = { Text(stringResource(R.string.compose_gallery_video_title)) },
+                            supportingText = { Text(stringResource(R.string.compose_gallery_video_title_hint)) },
+                            enabled = !publishing && countdownSeconds == null,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
 
                     Spacer(Modifier.height(12.dp))
 
