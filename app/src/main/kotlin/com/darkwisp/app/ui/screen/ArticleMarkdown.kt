@@ -41,7 +41,7 @@ internal enum class ArticleMarkdownFormat {
     HEADING_1, HEADING_2, HEADING_3, HEADING_4, HEADING_5, HEADING_6,
     BOLD, ITALIC, STRIKE, INLINE_CODE, FENCED_CODE,
     QUOTE, LIST, ORDERED_LIST, TASK_LIST, TABLE, DIVIDER,
-    LINK, IMAGE, FOOTNOTE, MATH
+    LINK, IMAGE, FOOTNOTE
 }
 
 internal data class ArticleMarkdownEdit(
@@ -78,13 +78,6 @@ internal fun formatArticleMarkdownSelection(
         val updated = text.substring(0, start) + opening + closing + text.substring(start)
         val cursor = start + opening.length
         return ArticleMarkdownEdit(updated, cursor, cursor)
-    }
-
-    if (format == ArticleMarkdownFormat.MATH) {
-        val replacement = mathFence + "\n" + selected + "\n" + mathFence
-        val updated = text.replaceRange(start, end, replacement)
-        val cursor = start + mathFence.length + 1
-        return ArticleMarkdownEdit(updated, cursor, if (hasSelection) cursor + selected.length else cursor)
     }
 
     if (format == ArticleMarkdownFormat.FOOTNOTE) {
