@@ -1421,4 +1421,24 @@
     <string name="postilla_compose_remove_image">移除图片</string>
     <string name="postilla_compose_next">下一步</string>
     <string name="postilla_compose_preview">预览</string>
+
+
+    <!-- Additional localization for profile, notification, group and video UI -->
+    <string name="postilla_video">视频</string>
+    <string name="postilla_followers_network">你网络中的关注者</string>
+    <string name="postilla_network_others">你网络中的另外 %1$d 人</string>
+    <string name="postilla_notif_quoted">引用</string>
+    <string name="postilla_notif_dm">私信</string>
+    <string name="postilla_notif_dm_reaction">私信互动</string>
+    <string name="postilla_notif_more">还有 %1$d 项</string>
+    <string name="postilla_notif_voted">已投票：%1$s</string>
+    <string name="postilla_dm_mining">挖矿中…</string>
+    <string name="postilla_group_online_count">在线：%1$d</string>
+    <string name="postilla_group_member_count">成员：%1$d</string>
+    <string name="postilla_debug_id">ID</string>
+    <string name="postilla_debug_json">JSON</string>
+    <string name="postilla_debug_text">文本</string>
+    <string name="postilla_video_edit_unavailable">只有作者可以编辑此视频。</string>
+    <string name="postilla_video_invalid_language">请输入有效的双字母语言代码。</string>
+    <string name="postilla_video_update_failed">无法保存视频更改。</string>
 </resources>
