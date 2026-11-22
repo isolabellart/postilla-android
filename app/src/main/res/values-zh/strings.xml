@@ -1441,4 +1441,6 @@
     <string name="postilla_video_edit_unavailable">只有作者可以编辑此视频。</string>
     <string name="postilla_video_invalid_language">请输入有效的双字母语言代码。</string>
     <string name="postilla_video_update_failed">无法保存视频更改。</string>
+
+    <string name="postilla_profile_sats_sent">已发送 %1$d sats</string>
 </resources>
