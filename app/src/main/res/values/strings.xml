@@ -1292,4 +1292,8 @@
     <string name="video_edit_unconfirmed">The relay did not confirm the update. No changes were saved.</string>
     <string name="video_edit_uploading">Uploading video variant…</string>
     <string name="video_edit_empty_files">Add at least one video file.</string>
+    <string name="profile_gallery_all">All</string>
+    <string name="profile_gallery_photos">Photos</string>
+    <string name="profile_gallery_videos">Videos</string>
+    <string name="profile_gallery_empty_filter">Nothing here yet</string>
 </resources>
