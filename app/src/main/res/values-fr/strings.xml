@@ -1447,4 +1447,57 @@
     <string name="postilla_notif_24h"> · 24 h</string>
     <string name="postilla_not_available">Indisponible</string>
     <string name="postilla_video_open_failed">Impossible d\'ouvrir la vidéo.</string>
+
+
+    <!-- Localized wallet, bookmark and marketplace labels -->
+    <string name="postilla_wallet_connecting">Connexion…</string>
+    <string name="postilla_wallet_address">Adresse</string>
+    <string name="postilla_wallet_view_mempool">Voir sur mempool.space</string>
+    <string name="postilla_wallet_recovery_intro">Saisissez la phrase de récupération de 12 mots d\'un portefeuille basé sur Spark.</string>
+    <string name="postilla_wallet_recovery_phrase">Phrase de récupération</string>
+    <string name="postilla_wallet_recovery_input">Saisissez 12 ou 24 mots…</string>
+    <string name="postilla_wallet_restore">Restaurer le portefeuille</string>
+    <string name="postilla_wallet_recovery_title">Phrase de récupération</string>
+    <string name="postilla_wallet_recovery_safety">Notez ces mots dans l\'ordre et conservez-les en lieu sûr. C\'est le seul moyen de récupérer votre portefeuille.</string>
+    <string name="postilla_wallet_reveal_phrase">Révéler la phrase de récupération</string>
+    <string name="postilla_wallet_tap_reveal">Touchez pour révéler</string>
+    <string name="postilla_wallet_lightning_address">Adresse Lightning</string>
+    <string name="postilla_wallet_lightning_address_description">Choisissez un nom d\'utilisateur pour obtenir une adresse Lightning et recevoir des paiements.</string>
+    <string name="postilla_wallet_username">Nom d\'utilisateur</string>
+    <string name="postilla_wallet_available">Disponible !</string>
+    <string name="postilla_wallet_not_available">Indisponible</string>
+    <string name="postilla_wallet_check_availability">Vérifier la disponibilité</string>
+    <string name="postilla_wallet_register">S\'inscrire</string>
+    <string name="postilla_wallet_update_profile_title">Mettre à jour le profil Nostr ?</string>
+    <string name="postilla_wallet_update_profile_message">Ajouter cette adresse Lightning à votre profil Nostr afin que les autres puissent vous envoyer des zaps ?</string>
+    <string name="postilla_wallet_yes">Oui</string>
+    <string name="postilla_wallet_no">Non</string>
+    <string name="postilla_wallet_lightning_qr">Code QR de l\'adresse Lightning</string>
+    <string name="postilla_wallet_share">Partager</string>
+    <string name="postilla_wallet_backup_warning">Assurez-vous d\'avoir sauvegardé votre phrase de récupération avant de continuer.</string>
+    <string name="postilla_wallet_delete_confirm">Saisissez DELETE pour confirmer</string>
+    <string name="postilla_wallet_backup_title">Sauvegarde sur les relais Nostr</string>
+    <string name="postilla_wallet_backup_description">Chiffrez votre phrase de récupération avec NIP-44 et publiez-la sur vos relais Nostr. Vous seul pouvez la déchiffrer avec votre clé privée Nostr.</string>
+    <string name="postilla_wallet_backup_mnemonic_info">Votre phrase mnémonique est chiffrée avec NIP-44 pour votre propre clé publique. Les opérateurs des relais ne peuvent pas la lire. Compatible avec d\'autres applications de portefeuille Spark.</string>
+    <string name="postilla_wallet_backup_now">Sauvegarder maintenant</string>
+    <string name="postilla_wallet_encrypting">Chiffrement et publication…</string>
+    <string name="postilla_wallet_backup_complete">Sauvegarde terminée</string>
+    <string name="postilla_wallet_backup_published">Votre portefeuille a été chiffré et publié sur vos relais Nostr.</string>
+    <string name="postilla_wallet_try_again">Réessayer</string>
+    <string name="postilla_wallet_restore_from_relays">Restaurer depuis les relais</string>
+    <string name="postilla_wallet_restore_from_relays_description">Recherchez une sauvegarde chiffrée du portefeuille sur vos relais Nostr. Elle sera déchiffrée avec votre clé privée Nostr.</string>
+    <string name="postilla_wallet_search_relays">Rechercher les relais</string>
+    <string name="postilla_wallet_searching_backup">Recherche d\'une sauvegarde sur les relais…</string>
+    <string name="postilla_wallet_backup_found">Sauvegarde trouvée !</string>
+    <string name="postilla_wallet_restore_this">Restaurer ce portefeuille</string>
+    <string name="postilla_wallet_multiple_found">Plusieurs portefeuilles trouvés</string>
+    <string name="postilla_wallet_choose_backup">Choisissez une sauvegarde à restaurer :</string>
+    <string name="postilla_wallet_no_backup_found">Aucune sauvegarde de portefeuille trouvée sur vos relais.</string>
+    <string name="postilla_wallet_search_again">Rechercher à nouveau</string>
+    <string name="postilla_close_image">Fermer l\'image</string>
+    <string name="postilla_bookmark_delete_list">Supprimer la liste</string>
+    <string name="postilla_bookmark_remove_from_list">Retirer de la liste</string>
+    <string name="postilla_bookmarks_title">Signets</string>
+    <string name="postilla_bookmarks_empty">Aucune note enregistrée</string>
+    <string name="postilla_bookmarks_not_loaded">Les notes ne sont pas encore chargées</string>
 </resources>
