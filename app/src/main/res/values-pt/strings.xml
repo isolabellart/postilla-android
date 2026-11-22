@@ -1017,4 +1017,51 @@
     <string name="notif_chat_rooms">Salas de conversa</string>
     <string name="notif_enable_all">Ativar tudo</string>
     <string name="notif_disable_all">Desativar tudo</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">Reação</string>
+    <string name="cd_mention">Menção</string>
+    <string name="cd_vote">Voto</string>
+    <string name="cd_send_reply">Enviar resposta</string>
+    <string name="cd_send_zap">Enviar zap</string>
+    <string name="blossom_recommended_title">Servidores Blossom gratuitos recomendados</string>
+    <string name="blossom_recommended_description">Adicione um ou ambos à sua lista de carregamento. Os servidores atuais e a respetiva ordem serão mantidos.</string>
+    <string name="blossom_band_free_details">Carregamentos gratuitos até 20 MiB por ficheiro, sem limite de quantidade ou prazo de expiração indicado pelo fornecedor.</string>
+    <string name="blossom_azzamo_free_details">Plano Seed gratuito. O fornecedor não publica uma quota Seed específica na página informativa.</string>
+    <string name="blossom_add_recommended">Adicionar servidor</string>
+    <string name="blossom_add_all_recommended">Adicionar todas as recomendações gratuitas</string>
+    <string name="blossom_recommended_all_added">Todos os servidores gratuitos recomendados já estão na sua lista.</string>
+    <string name="blossom_recommended_broadcast_note">Estas alterações são guardadas neste dispositivo. Toque em Transmitir lista de servidores quando quiser publicar a sua lista kind 10063.</string>
+    <string name="cd_show_balance">Mostrar saldo</string>
+    <string name="cd_hide_balance">Ocultar saldo</string>
+    <string name="onboarding_followed">A seguir!</string>
+    <string name="zap_other_ways_to_pay">Outras formas de pagamento</string>
+    <string name="zap_connect_wallet_to_zap">Ligue uma carteira para enviar zaps</string>
+    <string name="zap_private_locked_for_private_reply">Privado — a responder a uma conversa privada</string>
+    <string name="zap_private_requires_dm_relays">Um zap privado requer relays de DM em ambos os lados</string>
+    <string name="settings_auto_hide_feed_chrome">Ocultar barras do feed ao deslocar</string>
+    <string name="settings_auto_hide_feed_chrome_description">Oculta as categorias do feed e a navegação inferior ao deslocar para baixo; volta a mostrá-las ao deslocar para cima.</string>
+    <string name="settings_undo_duration">Duração</string>
+    <string name="settings_private_key_copied_autoclear">Chave privada copiada. A área de transferência será limpa em 60 segundos.</string>
+    <string name="tab_filters">Filtros</string>
+    <string name="safety_spam_filter_title">Respostas de spam</string>
+    <string name="safety_spam_filter_description">Usa um modelo no dispositivo para ocultar respostas provavelmente automáticas em conversas e notificações de pessoas que não segue. O modelo é executado localmente; nenhum dado sai do dispositivo.</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">Mostra apenas conteúdo de contas no seu grafo social. É necessário calcular o grafo social.</string>
+    <string name="safety_wot_ready">Grafo social pronto (%d contas qualificadas)</string>
+    <string name="safety_wot_last_computed">Último cálculo há %s</string>
+    <string name="safety_wot_not_computed">O grafo social não foi calculado</string>
+    <string name="safety_wot_stale">O grafo social está desatualizado</string>
+    <string name="safety_wot_compute_now">Calcular agora</string>
+    <string name="safety_wot_recompute">Recalcular</string>
+    <string name="safety_wot_inactive">O filtro fica inativo até o grafo ser calculado</string>
+    <string name="thread_hidden_spam">%d respostas ocultas de contas provavelmente de spam</string>
+    <string name="thread_tap_to_show">Mostrar</string>
+    <string name="thread_tap_to_hide">Ocultar</string>
+    <string name="thread_not_spam">Não é spam</string>
+    <string name="default_search_relays_button">Adicionar relays de pesquisa predefinidos</string>
+    <string name="default_search_relays_added">Foram adicionados %1$d relays de pesquisa predefinidos.</string>
+    <string name="default_search_relays_already_present">Todos os relays de pesquisa predefinidos já estão presentes.</string>
+    <string name="search_no_results_relay_hint">Alguns relays não suportam pesquisa de texto integral. Abra as definições de relays, escolha Pesquisa e adicione os relays predefinidos para melhorar a cobertura.</string>
 </resources>

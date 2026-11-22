@@ -978,4 +978,51 @@
     <string name="notif_chat_rooms">Чаты</string>
     <string name="notif_enable_all">Включить всё</string>
     <string name="notif_disable_all">Отключить всё</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">Реакция</string>
+    <string name="cd_mention">Упоминание</string>
+    <string name="cd_vote">Голос</string>
+    <string name="cd_send_reply">Отправить ответ</string>
+    <string name="cd_send_zap">Отправить zap</string>
+    <string name="blossom_recommended_title">Рекомендуемые бесплатные серверы Blossom</string>
+    <string name="blossom_recommended_description">Добавьте один или оба сервера в список загрузки. Текущие серверы и их порядок сохранятся.</string>
+    <string name="blossom_band_free_details">Бесплатная загрузка файлов размером до 20 МиБ; поставщик не указывает ограничение по числу загрузок или срок действия.</string>
+    <string name="blossom_azzamo_free_details">Бесплатный тариф Seed. Поставщик не публикует конкретный лимит Seed на информационной странице.</string>
+    <string name="blossom_add_recommended">Добавить сервер</string>
+    <string name="blossom_add_all_recommended">Добавить все бесплатные рекомендации</string>
+    <string name="blossom_recommended_all_added">Все рекомендуемые бесплатные серверы уже есть в вашем списке.</string>
+    <string name="blossom_recommended_broadcast_note">Изменения сохраняются на этом устройстве. Нажмите «Трансляция списка серверов», когда захотите опубликовать список kind 10063.</string>
+    <string name="cd_show_balance">Показать баланс</string>
+    <string name="cd_hide_balance">Скрыть баланс</string>
+    <string name="onboarding_followed">Вы подписались!</string>
+    <string name="zap_other_ways_to_pay">Другие способы оплаты</string>
+    <string name="zap_connect_wallet_to_zap">Подключите кошелёк, чтобы отправить zap</string>
+    <string name="zap_private_locked_for_private_reply">Приватно — ответ в приватной теме</string>
+    <string name="zap_private_requires_dm_relays">Для приватного zap нужны ретрансляторы ЛС у обоих участников</string>
+    <string name="settings_auto_hide_feed_chrome">Скрывать панели ленты при прокрутке</string>
+    <string name="settings_auto_hide_feed_chrome_description">Скрывать категории ленты и нижнюю навигацию при прокрутке вниз и показывать их снова при прокрутке вверх.</string>
+    <string name="settings_undo_duration">Длительность</string>
+    <string name="settings_private_key_copied_autoclear">Приватный ключ скопирован. Буфер обмена будет очищен через 60 секунд.</string>
+    <string name="tab_filters">Фильтры</string>
+    <string name="safety_spam_filter_title">Спам-ответы</string>
+    <string name="safety_spam_filter_description">Использует модель на устройстве, чтобы скрывать вероятные ответы ботов в обсуждениях и уведомлениях от тех, на кого вы не подписаны. Модель работает локально, данные не покидают устройство.</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">Показывать содержимое только аккаунтов из вашего социального графа. Требуется предварительно вычислить граф.</string>
+    <string name="safety_wot_ready">Социальный граф готов (подходящих аккаунтов: %d)</string>
+    <string name="safety_wot_last_computed">Последний расчёт: %s назад</string>
+    <string name="safety_wot_not_computed">Социальный граф не вычислен</string>
+    <string name="safety_wot_stale">Социальный граф устарел</string>
+    <string name="safety_wot_compute_now">Вычислить сейчас</string>
+    <string name="safety_wot_recompute">Пересчитать</string>
+    <string name="safety_wot_inactive">Фильтр неактивен, пока граф не будет вычислен</string>
+    <string name="thread_hidden_spam">Скрыто ответов от вероятных спам-аккаунтов: %d</string>
+    <string name="thread_tap_to_show">Показать</string>
+    <string name="thread_tap_to_hide">Скрыть</string>
+    <string name="thread_not_spam">Не спам</string>
+    <string name="default_search_relays_button">Добавить стандартные ретрансляторы поиска</string>
+    <string name="default_search_relays_added">Добавлено ретрансляторов поиска: %1$d.</string>
+    <string name="default_search_relays_already_present">Все стандартные ретрансляторы поиска уже добавлены.</string>
+    <string name="search_no_results_relay_hint">Некоторые ретрансляторы не поддерживают полнотекстовый поиск. Откройте настройки ретрансляторов, выберите «Поиск» и добавьте стандартные ретрансляторы поиска, чтобы расширить охват.</string>
 </resources>

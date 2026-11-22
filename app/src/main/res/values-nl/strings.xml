@@ -1017,4 +1017,51 @@
     <string name="notif_chat_rooms">Chatruimtes</string>
     <string name="notif_enable_all">Alles inschakelen</string>
     <string name="notif_disable_all">Alles uitschakelen</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">Reactie</string>
+    <string name="cd_mention">Vermelding</string>
+    <string name="cd_vote">Stem</string>
+    <string name="cd_send_reply">Reactie verzenden</string>
+    <string name="cd_send_zap">Zap verzenden</string>
+    <string name="blossom_recommended_title">Aanbevolen gratis Blossom-servers</string>
+    <string name="blossom_recommended_description">Voeg een of beide toe aan je uploadlijst. Je huidige servers en hun volgorde blijven behouden.</string>
+    <string name="blossom_band_free_details">Gratis uploads tot 20 MiB per bestand; de aanbieder vermeldt geen uploadlimiet of vervaldatum.</string>
+    <string name="blossom_azzamo_free_details">Gratis Seed-abonnement. De aanbieder publiceert geen specifiek Seed-quotum op de informatiepagina.</string>
+    <string name="blossom_add_recommended">Server toevoegen</string>
+    <string name="blossom_add_all_recommended">Alle gratis aanbevelingen toevoegen</string>
+    <string name="blossom_recommended_all_added">Alle aanbevolen gratis servers staan al in je lijst.</string>
+    <string name="blossom_recommended_broadcast_note">Deze wijzigingen worden op dit apparaat opgeslagen. Tik op Serverlijst uitzenden wanneer je je kind 10063-lijst wilt publiceren.</string>
+    <string name="cd_show_balance">Saldo weergeven</string>
+    <string name="cd_hide_balance">Saldo verbergen</string>
+    <string name="onboarding_followed">Gevolgd!</string>
+    <string name="zap_other_ways_to_pay">Andere manieren om te betalen</string>
+    <string name="zap_connect_wallet_to_zap">Verbind een wallet om te zappen</string>
+    <string name="zap_private_locked_for_private_reply">Privé — antwoord in een privéthread</string>
+    <string name="zap_private_requires_dm_relays">Voor een privé-zap zijn aan beide kanten DM-relays vereist</string>
+    <string name="settings_auto_hide_feed_chrome">Feedbalken verbergen tijdens scrollen</string>
+    <string name="settings_auto_hide_feed_chrome_description">Verberg feedcategorieën en de onderste navigatie bij omlaag scrollen; toon ze weer bij omhoog scrollen.</string>
+    <string name="settings_undo_duration">Duur</string>
+    <string name="settings_private_key_copied_autoclear">Privésleutel gekopieerd. Het klembord wordt over 60 seconden gewist.</string>
+    <string name="tab_filters">Filters</string>
+    <string name="safety_spam_filter_title">Spamreacties</string>
+    <string name="safety_spam_filter_description">Gebruikt een model op je apparaat om vermoedelijke botreacties in threads en meldingen van mensen die je niet volgt te verbergen. Het model draait lokaal; er verlaat geen data je apparaat.</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">Toon alleen inhoud van accounts in je sociale netwerk. Hiervoor moet een sociaal netwerk zijn berekend.</string>
+    <string name="safety_wot_ready">Sociaal netwerk gereed (%d geschikte accounts)</string>
+    <string name="safety_wot_last_computed">Laatst berekend %s geleden</string>
+    <string name="safety_wot_not_computed">Sociaal netwerk is niet berekend</string>
+    <string name="safety_wot_stale">Sociaal netwerk is verouderd</string>
+    <string name="safety_wot_compute_now">Nu berekenen</string>
+    <string name="safety_wot_recompute">Opnieuw berekenen</string>
+    <string name="safety_wot_inactive">Filter is inactief totdat het netwerk is berekend</string>
+    <string name="thread_hidden_spam">%d verborgen reacties van vermoedelijke spamaccounts</string>
+    <string name="thread_tap_to_show">Weergeven</string>
+    <string name="thread_tap_to_hide">Verbergen</string>
+    <string name="thread_not_spam">Geen spam</string>
+    <string name="default_search_relays_button">Standaard zoekrelays toevoegen</string>
+    <string name="default_search_relays_added">%1$d standaard zoekrelays toegevoegd.</string>
+    <string name="default_search_relays_already_present">Alle standaard zoekrelays zijn al aanwezig.</string>
+    <string name="search_no_results_relay_hint">Sommige relays ondersteunen geen volledige-tekstzoekfunctie. Open Relay-instellingen, kies Zoeken en voeg de standaard zoekrelays toe voor betere dekking.</string>
 </resources>

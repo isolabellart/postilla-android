@@ -1018,4 +1018,51 @@
     <string name="notif_chat_rooms">聊天室</string>
     <string name="notif_enable_all">全部启用</string>
     <string name="notif_disable_all">全部停用</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">互动</string>
+    <string name="cd_mention">提及</string>
+    <string name="cd_vote">投票</string>
+    <string name="cd_send_reply">发送回复</string>
+    <string name="cd_send_zap">发送 zap</string>
+    <string name="blossom_recommended_title">推荐的免费 Blossom 服务器</string>
+    <string name="blossom_recommended_description">将其中一个或两个添加到上传列表。当前服务器及其顺序会保留。</string>
+    <string name="blossom_band_free_details">每个文件可免费上传至 20 MiB，服务提供商未说明上传次数限制或过期时间。</string>
+    <string name="blossom_azzamo_free_details">免费 Seed 级别。服务提供商未在信息页面公布具体的 Seed 配额。</string>
+    <string name="blossom_add_recommended">添加服务器</string>
+    <string name="blossom_add_all_recommended">添加所有免费推荐</string>
+    <string name="blossom_recommended_all_added">所有推荐的免费服务器都已在列表中。</string>
+    <string name="blossom_recommended_broadcast_note">更改会保存在此设备上。准备发布 kind 10063 列表时，点按“广播服务器列表”。</string>
+    <string name="cd_show_balance">显示余额</string>
+    <string name="cd_hide_balance">隐藏余额</string>
+    <string name="onboarding_followed">已关注！</string>
+    <string name="zap_other_ways_to_pay">其他付款方式</string>
+    <string name="zap_connect_wallet_to_zap">改为连接钱包以发送 zap</string>
+    <string name="zap_private_locked_for_private_reply">私密 — 正在回复私密主题</string>
+    <string name="zap_private_requires_dm_relays">私密 zap 要求双方都配置 DM 中继</string>
+    <string name="settings_auto_hide_feed_chrome">滚动时隐藏动态栏</string>
+    <string name="settings_auto_hide_feed_chrome_description">向下滚动时隐藏动态分类和底部导航，向上滚动时重新显示。</string>
+    <string name="settings_undo_duration">时长</string>
+    <string name="settings_private_key_copied_autoclear">已复制私钥。剪贴板将在 60 秒后清除。</string>
+    <string name="tab_filters">筛选</string>
+    <string name="safety_spam_filter_title">垃圾回复</string>
+    <string name="safety_spam_filter_description">使用设备端模型隐藏讨论串中疑似机器人发送的回复，以及来自未关注用户的通知。模型在本机运行，不会有数据离开设备。</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">仅显示社交关系图中账户的内容。需要先计算社交关系图。</string>
+    <string name="safety_wot_ready">社交关系图已就绪（%d 个符合条件的账户）</string>
+    <string name="safety_wot_last_computed">上次计算于 %s 前</string>
+    <string name="safety_wot_not_computed">尚未计算社交关系图</string>
+    <string name="safety_wot_stale">社交关系图已过期</string>
+    <string name="safety_wot_compute_now">立即计算</string>
+    <string name="safety_wot_recompute">重新计算</string>
+    <string name="safety_wot_inactive">在计算关系图前，筛选器处于停用状态</string>
+    <string name="thread_hidden_spam">已隐藏来自疑似垃圾账户的 %d 条回复</string>
+    <string name="thread_tap_to_show">显示</string>
+    <string name="thread_tap_to_hide">隐藏</string>
+    <string name="thread_not_spam">非垃圾信息</string>
+    <string name="default_search_relays_button">添加默认搜索中继</string>
+    <string name="default_search_relays_added">已添加 %1$d 个默认搜索中继。</string>
+    <string name="default_search_relays_already_present">所有默认搜索中继均已添加。</string>
+    <string name="search_no_results_relay_hint">部分中继不支持全文搜索。打开中继设置，选择“搜索”，然后添加默认搜索中继以扩大搜索范围。</string>
 </resources>
