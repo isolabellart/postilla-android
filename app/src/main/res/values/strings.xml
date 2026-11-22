@@ -213,7 +213,7 @@
     <string name="relay_recommended_azzamo_dm">Free inbox for DMs and groups. It is rate-limited without Premium, and free message storage is temporary.</string>
     <string name="relay_recommended_dm_add_free">Add free recommendations</string>
     <string name="relay_recommended_dm_paid_section">Optional paid alternatives</string>
-    <string name="relay_recommended_paid_description">Paid AUTH inbox option. Check the provider's current price and terms before adding it.</string>
+    <string name="relay_recommended_paid_description">Paid AUTH inbox option. Check the provider&apos;s current price and terms before adding it.</string>
     <string name="relay_recommended_dm_free_badge">FREE</string>
     <string name="relay_recommended_dm_paid_badge">PAID</string>
     <string name="relay_recommended_add">Add</string>
