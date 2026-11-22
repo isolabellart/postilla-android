@@ -22,6 +22,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.stringResource
 import com.darkwisp.app.R
+import com.darkwisp.app.nostr.Blossom
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.ui.component.NsecPasteGuard
 import com.darkwisp.app.viewmodel.BlossomServersViewModel
@@ -228,6 +230,68 @@ fun BlossomServersScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = stringResource(R.string.blossom_recommended_title),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = stringResource(R.string.blossom_recommended_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val configuredServerKeys = servers.mapTo(mutableSetOf()) {
+                it.trim().trimEnd('/').lowercase()
+            }
+            val missingRecommendations = Blossom.RECOMMENDED_FREE_SERVERS.filterNot {
+                it.url.trim().trimEnd('/').lowercase() in configuredServerKeys
+            }
+
+            if (missingRecommendations.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.blossom_recommended_all_added),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                missingRecommendations.forEach { server ->
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Text(server.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            server.url,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(
+                                if (server.url == Blossom.BLOSSOM_BAND_SERVER) {
+                                    R.string.blossom_band_free_details
+                                } else {
+                                    R.string.blossom_azzamo_free_details
+                                }
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(onClick = { viewModel.addRecommendedServer(server.url) }) {
+                            Text(stringResource(R.string.blossom_add_recommended))
+                        }
+                    }
+                }
+                Button(
+                    onClick = { viewModel.addRecommendedServers() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.blossom_add_all_recommended))
+                }
+            }
+            Text(
+                text = stringResource(R.string.blossom_recommended_broadcast_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
