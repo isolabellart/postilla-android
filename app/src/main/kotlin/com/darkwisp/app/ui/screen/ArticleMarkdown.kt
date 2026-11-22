@@ -93,7 +93,7 @@ internal fun formatArticleMarkdownSelection(
         val prefix = if (format == ArticleMarkdownFormat.IMAGE) "![" else "["
         val replacement = prefix + label + "](https://)"
         val updated = text.replaceRange(start, end, replacement)
-        val cursor = start + prefix.length + label.length + 3 + 8
+        val cursor = start + prefix.length + label.length + 2 + 8
         return ArticleMarkdownEdit(updated, cursor, cursor)
     }
 
