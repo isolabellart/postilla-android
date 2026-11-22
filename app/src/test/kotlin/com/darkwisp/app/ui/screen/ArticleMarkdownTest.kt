@@ -77,12 +77,13 @@ class ArticleMarkdownTest {
     }
     @Test
     fun mathBlockFormattingInsertsDollarFencedFormulaAndParsesIt() {
+        val delimiter = 36.toChar().toString().repeat(2)
         val edit = formatArticleMarkdownSelection("before after", 7, 7, ArticleMarkdownFormat.MATH)
-        assertEquals("before $\\n\\n$after", edit.text)
+        assertEquals("before " + delimiter + "\\n\\n" + delimiter + "after", edit.text)
         assertEquals(10, edit.selectionStart)
         assertEquals(
             listOf(ArticleMarkdownBlock.Math("x^2")),
-            parseArticleMarkdown("$\\nx^2\\n$")
+            parseArticleMarkdown(delimiter + "\\nx^2\\n" + delimiter)
         )
     }
 }
