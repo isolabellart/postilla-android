@@ -72,6 +72,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -216,6 +219,7 @@ fun FeedScreen(
     onKeys: () -> Unit = {},
     onPowSettings: () -> Unit = {},
     onInterfaceSettings: () -> Unit = {},
+    onFeedChromeVisibilityChanged: (Boolean) -> Unit = {},
     onAddToList: (String) -> Unit = {},
     onRelayDetail: (String) -> Unit = {},
     onHashtagClick: ((String) -> Unit)? = null,
@@ -265,6 +269,56 @@ fun FeedScreen(
     val liveNowStreams by viewModel.liveNowStreams.collectAsState()
     val anonMode by viewModel.anonMode.collectAsState()
     val listState = rememberLazyListState()
+    val chromeDensity = LocalDensity.current
+    val hideChromeThresholdPx = with(chromeDensity) { 112.dp.toPx() }
+    val showChromeThresholdPx = with(chromeDensity) { 72.dp.toPx() }
+    LaunchedEffect(listState, autoHideFeedChrome) {
+        if (!autoHideFeedChrome) {
+            feedChromeVisible = true
+            return@LaunchedEffect
+        }
+        var previousIndex = listState.firstVisibleItemIndex
+        var previousOffset = listState.firstVisibleItemScrollOffset
+        var downDistance = 0f
+        var upDistance = 0f
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { current ->
+                val atTop = current.first == 0 && current.second == 0
+                if (atTop) {
+                    downDistance = 0f
+                    upDistance = 0f
+                    feedChromeVisible = true
+                } else {
+                    val down = current.first > previousIndex ||
+                        (current.first == previousIndex && current.second > previousOffset)
+                    val up = current.first < previousIndex ||
+                        (current.first == previousIndex && current.second < previousOffset)
+                    val movement = if (current.first != previousIndex) {
+                        kotlin.math.abs(current.first - previousIndex) * with(chromeDensity) { 80.dp.toPx() }
+                    } else {
+                        kotlin.math.abs(current.second - previousOffset).toFloat()
+                    }
+                    when {
+                        down -> {
+                            downDistance += movement
+                            upDistance = 0f
+                            if (downDistance >= hideChromeThresholdPx) feedChromeVisible = false
+                        }
+                        up -> {
+                            upDistance += movement
+                            downDistance = 0f
+                            if (upDistance >= showChromeThresholdPx) feedChromeVisible = true
+                        }
+                    }
+                }
+                previousIndex = current.first
+                previousOffset = current.second
+            }
+    }
+    LaunchedEffect(autoHideFeedChrome, feedChromeVisible) {
+        onFeedChromeVisibilityChanged(!autoHideFeedChrome || feedChromeVisible)
+    }
 
     var handledScrollTrigger by rememberSaveable { mutableStateOf(scrollToTopTrigger) }
     LaunchedEffect(scrollToTopTrigger) {
@@ -372,6 +426,31 @@ fun FeedScreen(
     var showSocialGraphDialog by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var settingsExpanded by rememberSaveable { mutableStateOf(false) }
+    var reopenSettingsDrawerAfterResume by rememberSaveable { mutableStateOf(false) }
+    var autoHideFeedChrome by remember { mutableStateOf(interfacePrefs.isFeedChromeAutoHideEnabled()) }
+    var feedChromeVisible by rememberSaveable { mutableStateOf(true) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val closeSettingsDrawerForNavigation = {
+        settingsExpanded = true
+        reopenSettingsDrawerAfterResume = true
+        scope.launch { drawerState.close() }
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                autoHideFeedChrome = interfacePrefs.isFeedChromeAutoHideEnabled()
+                feedChromeVisible = true
+                if (reopenSettingsDrawerAfterResume) {
+                    reopenSettingsDrawerAfterResume = false
+                    settingsExpanded = true
+                    scope.launch { drawerState.open() }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val myProfileVersion by remember(viewModel, userPubkey) {
         userPubkey?.let { viewModel.eventRepo.profileVersionFor(it) } ?: MutableStateFlow(0)
     }.collectAsState(initial = 0)
@@ -830,6 +909,8 @@ fun FeedScreen(
             ) {}
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             WispDrawerContent(
+                settingsExpanded = settingsExpanded,
+                onSettingsExpandedChange = { settingsExpanded = it },
                 profile = userProfile,
                 pubkey = userPubkey,
                 isDarkTheme = isDarkTheme,
@@ -899,39 +980,39 @@ fun FeedScreen(
                     onSocialGraph()
                 },
                 onSafety = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onSafety()
                 },
                 onCustomEmojis = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onCustomEmojis()
                 },
                 onPaymentTargets = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onPaymentTargets()
                 },
                 onKeys = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onKeys()
                 },
                 onPowSettings = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onPowSettings()
                 },
                 onConsole = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onConsole()
                 },
                 onRelayHealth = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onRelayHealth()
                 },
                 onRelaySettings = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onRelays()
                 },
                 onInterfaceSettings = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onInterfaceSettings()
                 },
                 onLogout = {
@@ -1138,6 +1219,7 @@ fun FeedScreen(
                         }
                     }
 
+                    AnimatedVisibility(visible = !autoHideFeedChrome || feedChromeVisible) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1236,6 +1318,8 @@ fun FeedScreen(
                             }
                         }
                     }
+                    }
+
                     HorizontalDivider(
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)

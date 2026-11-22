@@ -1,6 +1,7 @@
 package com.darkwisp.app
 
 import android.os.SystemClock
+import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -524,6 +525,10 @@ fun WispNavHost(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    var feedChromeVisible by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != Routes.FEED) feedChromeVisible = true
+    }
 
     // Keep NIP-99 items flowing into the shared feed even when users never
     // open the Marketplace screen itself. The repository applies the same feed
@@ -741,7 +746,7 @@ fun WispNavHost(
         bottomBar = {
             Column {
                 FloatingAudioPlayer()
-                if (showBottomBar) {
+                AnimatedVisibility(visible = showBottomBar && (currentRoute != Routes.FEED || feedChromeVisible)) {
                     WispBottomBar(
                         currentRoute = currentRoute,
                         hasUnreadHome = newNoteCount > 0,
@@ -1057,6 +1062,7 @@ fun WispNavHost(
                 onInterfaceSettings = {
                     navController.navigate(Routes.INTERFACE_SETTINGS)
                 },
+                onFeedChromeVisibilityChanged = { feedChromeVisible = it },
                 onAddToList = { eventId -> addToListEventId = eventId },
                 onRelayDetail = { url ->
                     navController.navigate("relay_detail/${java.net.URLEncoder.encode(url, "UTF-8")}")
