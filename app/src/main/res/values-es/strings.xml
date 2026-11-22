@@ -1444,4 +1444,6 @@
     <string name="postilla_video_update_failed">No se pudieron guardar los cambios del vídeo.</string>
 
     <string name="postilla_profile_sats_sent">%1$d sats enviados</string>
+
+    <string name="postilla_notif_24h"> · 24 h</string>
 </resources>
