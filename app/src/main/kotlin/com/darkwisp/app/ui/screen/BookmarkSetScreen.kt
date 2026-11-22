@@ -137,7 +137,7 @@ fun BookmarkSetScreen(
                             onDismissRequest = { menuExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Delete List") },
+                                text = { Text(stringResource(R.string.postilla_bookmark_delete_list)) },
                                 onClick = {
                                     menuExpanded = false
                                     onDeleteList()
