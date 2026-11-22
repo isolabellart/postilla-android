@@ -287,7 +287,6 @@ fun ArticleComposerScreen(
                         ArticleMarkdownFormat.LINK to "Link",
                         ArticleMarkdownFormat.IMAGE to "Image",
                         ArticleMarkdownFormat.FOOTNOTE to "Footnote",
-                        ArticleMarkdownFormat.MATH to "Math"
                     ).forEach { (format, label) ->
                         Surface(
                             shape = RoundedCornerShape(8.dp),
