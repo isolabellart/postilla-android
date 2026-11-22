@@ -1440,4 +1440,6 @@
     <string name="postilla_video_edit_unavailable">Alleen de auteur kan deze video bewerken.</string>
     <string name="postilla_video_invalid_language">Voer een geldige taalcode van twee letters in.</string>
     <string name="postilla_video_update_failed">Videowijzigingen konden niet worden opgeslagen.</string>
+
+    <string name="postilla_profile_sats_sent">%1$d sats verzonden</string>
 </resources>
