@@ -481,7 +481,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 updateGalleryVideoKind(Nip71.defaultVideoKind(dimensions?.first, dimensions?.second))
                 _error.value = null
             } catch (failure: Exception) {
-                _error.value = "Replacement upload failed: \${failure.message}"
+                _error.value = "Replacement upload failed: ${failure.message}"
             } finally {
                 _uploadProgress.value = null
             }
