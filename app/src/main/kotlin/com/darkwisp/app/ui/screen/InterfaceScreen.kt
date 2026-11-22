@@ -94,6 +94,7 @@ fun InterfaceScreen(
     var videoAutoPlay by remember { mutableStateOf(interfacePrefs.isVideoAutoPlay()) }
     var mediaLayout by remember { mutableStateOf(interfacePrefs.getMediaLayoutStyle()) }
     var liveStreamsHidden by remember { mutableStateOf(interfacePrefs.isLiveStreamsHidden()) }
+    var autoHideFeedChrome by remember { mutableStateOf(interfacePrefs.isFeedChromeAutoHideEnabled()) }
     var notifFeedStyle by remember { mutableStateOf(interfacePrefs.getNotificationFeedStyle()) }
     var selectedLanguage by remember { mutableStateOf(interfacePrefs.getLanguage()) }
     var languagesExpanded by remember { mutableStateOf(false) }
@@ -457,6 +458,30 @@ fun InterfaceScreen(
                     onCheckedChange = {
                         liveStreamsHidden = it
                         interfacePrefs.setLiveStreamsHidden(it)
+                        onChanged()
+                    },
+                    colors = wispSwitchColors()
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_auto_hide_feed_chrome), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.settings_auto_hide_feed_chrome_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = autoHideFeedChrome,
+                    onCheckedChange = {
+                        autoHideFeedChrome = it
+                        interfacePrefs.setFeedChromeAutoHideEnabled(it)
                         onChanged()
                     },
                     colors = wispSwitchColors()

@@ -174,6 +174,8 @@ fun WispDrawerContent(
     walletConfigured: Boolean = false,
     walletBalanceMsats: Long? = null,
     isWatchOnly: Boolean = false,
+    settingsExpanded: Boolean = false,
+    onSettingsExpandedChange: (Boolean) -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     ModalDrawerSheet(
@@ -681,7 +683,6 @@ fun WispDrawerContent(
             onClick = onToggleTor,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
-        var settingsExpanded by remember { mutableStateOf(false) }
         LaunchedEffect(settingsExpanded) {
             if (settingsExpanded) {
                 delay(300) // wait for AnimatedVisibility expansion
@@ -699,7 +700,7 @@ fun WispDrawerContent(
                 )
             },
             selected = false,
-            onClick = { settingsExpanded = !settingsExpanded },
+            onClick = { onSettingsExpandedChange(!settingsExpanded) },
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
         AnimatedVisibility(visible = settingsExpanded) {

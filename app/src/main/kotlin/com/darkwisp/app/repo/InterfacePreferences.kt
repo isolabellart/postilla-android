@@ -124,6 +124,9 @@ class InterfacePreferences(context: Context) {
     fun isLiveStreamsHidden(): Boolean = prefs.getBoolean("live_streams_hidden", false)
     fun setLiveStreamsHidden(hidden: Boolean) = prefs.edit().putBoolean("live_streams_hidden", hidden).apply()
 
+    fun isFeedChromeAutoHideEnabled(): Boolean = prefs.getBoolean("feed_chrome_auto_hide", false)
+    fun setFeedChromeAutoHideEnabled(enabled: Boolean) = prefs.edit().putBoolean("feed_chrome_auto_hide", enabled).apply()
+
     fun isPostUndoTimerEnabled(): Boolean = prefs.getBoolean("post_undo_timer_enabled", true)
     fun setPostUndoTimerEnabled(enabled: Boolean) = prefs.edit().putBoolean("post_undo_timer_enabled", enabled).apply()
 
