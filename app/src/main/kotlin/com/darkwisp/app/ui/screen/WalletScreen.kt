@@ -3996,7 +3996,7 @@ private fun SparkRestoreSeedContent(
         OutlinedTextField(
             value = restoreMnemonic,
             onValueChange = { new -> if (!NsecPasteGuard.blockIfNsec(restoreMnemonic, new)) onRestoreMnemonicChange(new) },
-            label = { Text("Recovery phrase") },
+            label = { Text(stringResource(R.string.postilla_wallet_recovery_phrase)) },
             placeholder = { Text("Enter 12 or 24 words...") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = false,
@@ -4019,7 +4019,7 @@ private fun SparkRestoreSeedContent(
             modifier = Modifier.fillMaxWidth(),
             enabled = restoreMnemonic.isNotBlank() && !isConnecting
         ) {
-            Text("Restore Wallet")
+            Text(stringResource(R.string.postilla_wallet_restore))
         }
 
         if (isConnecting) {
@@ -4130,7 +4130,7 @@ private fun SparkBackupContent(
             ) {
                 Icon(
                     Icons.Outlined.Visibility,
-                    contentDescription = "Reveal recovery phrase",
+                    contentDescription = stringResource(R.string.postilla_wallet_reveal_phrase),
                     modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -4757,7 +4757,7 @@ private fun LightningAddressSetupContent(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' || c == '-' } },
-                label = { Text("Username") },
+                label = { Text(stringResource(R.string.postilla_wallet_username)) },
                 placeholder = { Text("satoshi") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
@@ -4824,7 +4824,7 @@ private fun LightningAddressSetupContent(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = username.length >= 3
             ) {
-                Text("Check Availability")
+                Text(stringResource(R.string.postilla_wallet_check_availability))
             }
 
             Spacer(Modifier.height(8.dp))
@@ -4834,7 +4834,7 @@ private fun LightningAddressSetupContent(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = addressAvailable == true && username.length >= 3
             ) {
-                Text("Register")
+                Text(stringResource(R.string.postilla_wallet_register))
             }
         }
     }
@@ -4843,16 +4843,16 @@ private fun LightningAddressSetupContent(
     if (showBioPrompt) {
         AlertDialog(
             onDismissRequest = onDismissBioPrompt,
-            title = { Text("Update Nostr Profile?") },
-            text = { Text("Add this lightning address to your Nostr profile so others can zap you?") },
+            title = { Text(stringResource(R.string.postilla_wallet_update_profile_title)) },
+            text = { Text(stringResource(R.string.postilla_wallet_update_profile_message)) },
             confirmButton = {
                 TextButton(onClick = onAddToBio) {
-                    Text("Yes")
+                    Text(stringResource(R.string.postilla_wallet_yes))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismissBioPrompt) {
-                    Text("No")
+                    Text(stringResource(R.string.postilla_wallet_no))
                 }
             }
         )
@@ -4902,7 +4902,7 @@ private fun LightningAddressQRContent(
         if (qrBitmap != null) {
             Image(
                 bitmap = qrBitmap.asImageBitmap(),
-                contentDescription = "Lightning Address QR Code",
+                contentDescription = stringResource(R.string.postilla_wallet_lightning_qr),
                 modifier = Modifier
                     .size(280.dp)
                     .background(Color.White, RoundedCornerShape(12.dp))
@@ -4956,7 +4956,7 @@ private fun LightningAddressQRContent(
         ) {
             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Share")
+            Text(stringResource(R.string.postilla_wallet_share))
         }
 
         Spacer(Modifier.height(32.dp))
@@ -5034,7 +5034,7 @@ private fun DeleteWalletConfirmContent(
             OutlinedTextField(
                 value = confirmText,
                 onValueChange = { new -> if (!NsecPasteGuard.blockIfNsec(confirmText, new)) onConfirmTextChange(new) },
-                label = { Text("Type DELETE to confirm") },
+                label = { Text(stringResource(R.string.postilla_wallet_delete_confirm)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -5124,7 +5124,7 @@ private fun BackupToRelayContent(
                     onClick = onBackup,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Backup Now")
+                    Text(stringResource(R.string.postilla_wallet_backup_now))
                 }
             }
             is BackupStatus.InProgress -> {
@@ -5190,7 +5190,7 @@ private fun BackupToRelayContent(
                     onClick = onBackup,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Try Again")
+                    Text(stringResource(R.string.postilla_wallet_try_again))
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -5251,7 +5251,7 @@ private fun RestoreFromRelayContent(
                     onClick = onSearch,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Search Relays")
+                    Text(stringResource(R.string.postilla_wallet_search_relays))
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -5324,7 +5324,7 @@ private fun RestoreFromRelayContent(
                     onClick = onRestore,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Restore This Wallet")
+                    Text(stringResource(R.string.postilla_wallet_restore_this))
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -5401,7 +5401,7 @@ private fun RestoreFromRelayContent(
                     onClick = onSearch,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Search Again")
+                    Text(stringResource(R.string.postilla_wallet_search_again))
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -5427,7 +5427,7 @@ private fun RestoreFromRelayContent(
                     onClick = onSearch,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Try Again")
+                    Text(stringResource(R.string.postilla_wallet_try_again))
                 }
 
                 Spacer(Modifier.height(8.dp))
