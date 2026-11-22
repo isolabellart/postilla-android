@@ -63,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +83,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -89,6 +91,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
+import io.ratex.RaTeXView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -195,6 +198,8 @@ data class NoteActions(
 
 internal sealed interface ContentSegment {
     data class TextSegment(val text: String) : ContentSegment
+    data class InlineMathSegment(val formula: String) : ContentSegment
+    data class DisplayMathSegment(val formula: String) : ContentSegment
     data class ImageSegment(val meta: MediaMeta) : ContentSegment
     data class VideoSegment(val meta: MediaMeta) : ContentSegment
     data class AudioSegment(val meta: MediaMeta) : ContentSegment
@@ -409,43 +414,47 @@ internal fun parseContent(content: String, emojiMap: Map<String, String> = empty
         }
     }
 
-    // Final pass: trim trailing blank lines from text segments that precede
-    // block-level segments (links, images, embeds, etc.) to avoid extra vertical space
-    if (trimBlankLines) for (i in 0 until finalResult.size - 1) {
-        val segment = finalResult[i]
-        val next = finalResult[i + 1]
-        if (segment is ContentSegment.TextSegment && next !is ContentSegment.TextSegment && next !is ContentSegment.InlineLinkSegment && next !is ContentSegment.CustomEmojiSegment && next !is ContentSegment.NostrProfileSegment && next !is ContentSegment.HashtagSegment) {
+    // Split LaTeX from ordinary text only after URLs, emoji, invoices and offers
+    // have been identified, so formulas remain independent of those parsers.
+    val mathResult = finalResult.flatMap { segment ->
+        if (segment !is ContentSegment.TextSegment) {
+            listOf(segment)
+        } else {
+            splitMathContent(segment.text).map { token ->
+                when (token) {
+                    is MathContentToken.Text -> ContentSegment.TextSegment(token.value)
+                    is MathContentToken.InlineMath -> ContentSegment.InlineMathSegment(token.formula)
+                    is MathContentToken.DisplayMath -> ContentSegment.DisplayMathSegment(token.formula)
+                }
+            }
+        }
+    }.toMutableList()
+
+    // Trim prose before a standalone card or display formula.
+    if (trimBlankLines) for (i in 0 until mathResult.size - 1) {
+        val segment = mathResult[i]
+        val next = mathResult[i + 1]
+        if (segment is ContentSegment.TextSegment && next !is ContentSegment.TextSegment &&
+            next !is ContentSegment.InlineLinkSegment && next !is ContentSegment.CustomEmojiSegment &&
+            next !is ContentSegment.NostrProfileSegment && next !is ContentSegment.HashtagSegment &&
+            next !is ContentSegment.InlineMathSegment) {
             val trimmed = segment.text.trimEnd('\n')
             if (trimmed != segment.text) {
-                finalResult[i] = ContentSegment.TextSegment(if (trimmed.isEmpty()) trimmed else "$trimmed\n")
+                mathResult[i] = ContentSegment.TextSegment(if (trimmed.isEmpty()) trimmed else "$trimmed\n")
             }
         }
     }
 
-    // Blank-line pass: normalize newline runs inside the text itself.
-    //
-    // Independent of the block-adjacency pass above, which only trims text
-    // sitting next to a card. This one is about the prose: a post padded with
-    // blank lines, or paragraphs split by three or more newlines, renders
-    // every extra newline as a real empty line. That reads as a ragged gap
-    // the author usually didn't intend (most often an artifact of the client
-    // it was posted from) and the reader can't collapse.
-    //
-    // One blank line survives as the paragraph break; single newlines are
-    // never touched, so a stanza, an address, or a hand-made list keeps every
-    // break the author typed.
-    if (trimBlankLines && finalResult.isNotEmpty()) {
+    // Keep one blank line between paragraphs; preserve single line breaks.
+    if (trimBlankLines && mathResult.isNotEmpty()) {
         val normalized = mutableListOf<ContentSegment>()
-        val lastIndex = finalResult.size - 1
-        for ((i, segment) in finalResult.withIndex()) {
+        val lastIndex = mathResult.size - 1
+        for ((i, segment) in mathResult.withIndex()) {
             if (segment !is ContentSegment.TextSegment) {
                 normalized.add(segment)
                 continue
             }
             var t = blankLineRunRegex.replace(segment.text, "\n\n")
-            // Edges of the rendered post, not of every text run: an interior
-            // segment's newlines are a real break between the inline pieces
-            // around it.
             if (i == 0) t = leadingBlankLinesRegex.replace(t, "")
             if (i == lastIndex) t = trailingBlankLinesRegex.replace(t, "")
             if (t.isEmpty()) continue
@@ -454,10 +463,10 @@ internal fun parseContent(content: String, emojiMap: Map<String, String> = empty
         return normalized
     }
 
-    return finalResult
+    return mathResult
 }
 
-// Blank-line normalization (mirrors wisp-ios ContentParser pass 6).
+    // Blank-line normalization (mirrors wisp-ios ContentParser pass 6).
 //
 // A run of two or more newlines, tolerating spaces / tabs / stray CRs on the
 // blank lines between them. The run deliberately ends at its last newline so
@@ -756,6 +765,7 @@ fun RichContent(
     val groups = remember(segments, plainLinks, galleryMode) {
         val built = mutableListOf<Any>() // List<ContentSegment> (inline run), List<CarouselItem> (carousel run), or ContentSegment
         fun isInline(s: ContentSegment) = s is ContentSegment.TextSegment ||
+                s is ContentSegment.InlineMathSegment ||
                 s is ContentSegment.HashtagSegment ||
                 s is ContentSegment.NostrProfileSegment ||
                 s is ContentSegment.CustomEmojiSegment ||
@@ -878,15 +888,15 @@ fun RichContent(
                 // Build inline content map for any custom emojis in this run.
                 // Memoized: InlineTextContent has no structural equals, so a fresh map
                 // would force the Text below to re-measure on every recomposition.
-                val emojiInlineContent: Map<String, InlineTextContent> =
-                    remember(inlineSegments, style.fontSize) {
-                        if (inlineSegments.any { it is ContentSegment.CustomEmojiSegment }) {
+                val inlineContent: Map<String, InlineTextContent> =
+                    remember(inlineSegments, style.fontSize, color) {
+                        buildMap {
                             val emojiSize = style.fontSize
                             inlineSegments
                                 .filterIsInstance<ContentSegment.CustomEmojiSegment>()
                                 .distinctBy { it.shortcode }
-                                .associate { seg ->
-                                    seg.shortcode to InlineTextContent(
+                                .forEach { seg ->
+                                    put(seg.shortcode, InlineTextContent(
                                         placeholder = Placeholder(
                                             width = emojiSize * 1.5f,
                                             height = emojiSize * 1.3f,
@@ -898,9 +908,28 @@ fun RichContent(
                                             contentDescription = seg.shortcode,
                                             modifier = Modifier.fillMaxSize()
                                         )
-                                    }
+                                    })
                                 }
-                        } else emptyMap()
+                            inlineSegments.filterIsInstance<ContentSegment.InlineMathSegment>()
+                                .forEachIndexed { index, seg ->
+                                    val key = mathInlineContentKey(index, seg.formula)
+                                    val widthEm = (seg.formula.length * 0.58f + 1.5f).coerceIn(2f, 22f)
+                                    put(key, InlineTextContent(
+                                        placeholder = Placeholder(
+                                            width = style.fontSize * widthEm,
+                                            height = style.fontSize * 1.9f,
+                                            placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+                                        )
+                                    ) {
+                                        MathFormulaView(
+                                            formula = seg.formula,
+                                            displayMode = false,
+                                            fontSizeSp = style.fontSize.value,
+                                            formulaColor = color
+                                        )
+                                    })
+                                }
+                        }
                     }
 
                 // Retain link annotations while dispatching to the latest handlers.
@@ -908,12 +937,17 @@ fun RichContent(
                     inlineSegments, profileNames, color, effectiveLinkColor, linkDecoration, uriHandler
                 ) {
                     buildAnnotatedString {
+                    var inlineMathIndex = 0
                     for (seg in inlineSegments) {
                         when (seg) {
                             is ContentSegment.TextSegment -> {
                                 withStyle(SpanStyle(color = color)) {
                                     append(seg.text)
                                 }
+                            }
+                            is ContentSegment.InlineMathSegment -> {
+                                val key = mathInlineContentKey(inlineMathIndex++, seg.formula)
+                                appendInlineContent(key, alternateText = seg.formula)
                             }
                             is ContentSegment.CustomEmojiSegment -> {
                                 pushStringAnnotation(
@@ -987,10 +1021,16 @@ fun RichContent(
                     }
                 }
 
-                Text(text = annotated, style = style, inlineContent = emojiInlineContent)
+                Text(text = annotated, style = style, inlineContent = inlineContent)
             } else {
                 val segment = group as ContentSegment
                 when (segment) {
+                    is ContentSegment.DisplayMathSegment -> {
+                        DisplayMathBlock(
+                            formula = segment.formula,
+                            fontSizeSp = style.fontSize.value
+                        )
+                    }
                     is ContentSegment.ImageSegment -> {
                         ImageWithContextMenu(
                             meta = segment.meta,
@@ -1194,6 +1234,73 @@ fun RichContent(
         }
     }
     }
+    }
+}
+
+private fun mathInlineContentKey(index: Int, formula: String): String =
+    "postilla_math_${index}_${formula.hashCode()}"
+
+@Composable
+private fun MathFormulaView(
+    formula: String,
+    displayMode: Boolean,
+    fontSizeSp: Float,
+    formulaColor: Color
+) {
+    var renderError by remember(formula) { mutableStateOf(false) }
+    if (renderError) {
+        Text(
+            text = formula,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            ),
+            color = formulaColor
+        )
+    } else {
+        AndroidView(
+            factory = { context ->
+                RaTeXView(context).apply {
+                    fontSize = fontSizeSp.coerceAtLeast(12f)
+                    this.displayMode = displayMode
+                    color = formulaColor.toArgb()
+                    onError = { renderError = true }
+                    latex = formula
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            update = { view ->
+                view.fontSize = fontSizeSp.coerceAtLeast(12f)
+                view.displayMode = displayMode
+                view.color = formulaColor.toArgb()
+                view.onError = { renderError = true }
+                view.latex = formula
+            }
+        )
+    }
+}
+
+@Composable
+private fun DisplayMathBlock(formula: String, fontSizeSp: Float) {
+    val mathColor = MaterialTheme.colorScheme.onSurface
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 64.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            MathFormulaView(
+                formula = formula,
+                displayMode = true,
+                fontSizeSp = maxOf(20f, fontSizeSp),
+                formulaColor = mathColor
+            )
+        }
     }
 }
 
