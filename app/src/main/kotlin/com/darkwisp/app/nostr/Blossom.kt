@@ -25,6 +25,9 @@ object Blossom {
         RecommendedServer("Azzamo", AZZAMO_BLOSSOM_SERVER)
     )
 
+    /** Upload defaults used only when no per-account Blossom list has been saved. */
+    val DEFAULT_SERVERS: List<String> = RECOMMENDED_FREE_SERVERS.map { it.url }
+
     fun parseServerList(event: NostrEvent): List<String> {
         return event.tags.mapNotNull { tag ->
             if (tag.size >= 2 && tag[0] == "server") tag[1] else null
