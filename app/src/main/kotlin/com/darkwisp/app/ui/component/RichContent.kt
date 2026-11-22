@@ -1764,7 +1764,12 @@ private fun CurationSetCard(
                 Text("NIP-51 CURATION SET", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Text(dTag, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("Collection details are not available from the current relays.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Open on njump.me", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Open on njump.me",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { uriHandler.openUri("https://njump.me/" + address) }
+                )
             }
         }
     }
@@ -1838,7 +1843,12 @@ private fun GenericAddressableCard(
                     Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 if (event == null) {
-                    Text("Not available from current relays · Open on njump.me", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Not available from current relays · Open on njump.me",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable { uriHandler.openUri("https://njump.me/" + address) }
+                    )
                 }
             }
         }
