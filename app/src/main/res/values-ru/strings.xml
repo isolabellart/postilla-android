@@ -1381,4 +1381,24 @@
     <string name="postilla_compose_remove_image">Удалить изображение</string>
     <string name="postilla_compose_next">Далее</string>
     <string name="postilla_compose_preview">Предпросмотр</string>
+
+
+    <!-- Additional localization for profile, notification, group and video UI -->
+    <string name="postilla_video">Видео</string>
+    <string name="postilla_followers_network">Подписчики в вашей сети</string>
+    <string name="postilla_network_others">Ещё %1$d в вашей сети</string>
+    <string name="postilla_notif_quoted">Цитата</string>
+    <string name="postilla_notif_dm">Личное сообщение</string>
+    <string name="postilla_notif_dm_reaction">Реакция на ЛС</string>
+    <string name="postilla_notif_more">Ещё: %1$d</string>
+    <string name="postilla_notif_voted">Проголосовал: %1$s</string>
+    <string name="postilla_dm_mining">Майнинг…</string>
+    <string name="postilla_group_online_count">В сети: %1$d</string>
+    <string name="postilla_group_member_count">Участники: %1$d</string>
+    <string name="postilla_debug_id">ID</string>
+    <string name="postilla_debug_json">JSON</string>
+    <string name="postilla_debug_text">Текст</string>
+    <string name="postilla_video_edit_unavailable">Только автор может редактировать это видео.</string>
+    <string name="postilla_video_invalid_language">Введите корректный двухбуквенный код языка.</string>
+    <string name="postilla_video_update_failed">Не удалось сохранить изменения видео.</string>
 </resources>
