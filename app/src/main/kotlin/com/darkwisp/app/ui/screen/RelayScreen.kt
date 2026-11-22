@@ -194,6 +194,115 @@ fun RelayScreen(
                         }
                     }
 
+
+                    if (selectedTab == RelaySetType.GENERAL) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.relay_recommended_general_title),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            stringResource(R.string.relay_recommended_general_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        RelayRecommendationRow(
+                            title = "nos.lol",
+                            url = "wss://nos.lol",
+                            description = stringResource(R.string.relay_recommended_general_public)
+                        )
+                        RelayRecommendationRow(
+                            title = "nostr.mom",
+                            url = "wss://nostr.mom",
+                            description = stringResource(R.string.relay_recommended_general_public)
+                        )
+                        RelayRecommendationRow(
+                            title = "Azzamo",
+                            url = "wss://nostr.azzamo.net",
+                            description = stringResource(R.string.relay_recommended_azzamo_general)
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                val added = viewModel.addRecommendedGeneralRelays()
+                                val message = if (added > 0) {
+                                    context.getString(R.string.relay_recommended_added_count, added)
+                                } else {
+                                    context.getString(R.string.relay_recommended_already_present)
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.relay_recommended_general_add))
+                        }
+                    }
+
+                    if (selectedTab == RelaySetType.DM) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.relay_recommended_dm_title),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            stringResource(R.string.relay_recommended_dm_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            stringResource(R.string.relay_recommended_dm_free_section),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        RecommendedDmRelayRow(
+                            url = "wss://auth.nostr1.com",
+                            description = stringResource(R.string.relay_recommended_auth_free),
+                            isPaid = false,
+                            alreadyAdded = "wss://auth.nostr1.com" in dmRelays,
+                            onAdd = { viewModel.addRecommendedDmRelay("wss://auth.nostr1.com") }
+                        )
+                        RecommendedDmRelayRow(
+                            url = "wss://inbox.azzamo.net",
+                            description = stringResource(R.string.relay_recommended_azzamo_dm),
+                            isPaid = false,
+                            alreadyAdded = "wss://inbox.azzamo.net" in dmRelays,
+                            onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.azzamo.net") }
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                val added = viewModel.addRecommendedDmRelays()
+                                val message = if (added > 0) {
+                                    context.getString(R.string.relay_recommended_added_count, added)
+                                } else {
+                                    context.getString(R.string.relay_recommended_already_present)
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.relay_recommended_dm_add_free))
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.relay_recommended_dm_paid_section),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        RecommendedDmRelayRow(
+                            url = "wss://inbox.nostr.wine",
+                            description = stringResource(R.string.relay_recommended_paid_description),
+                            isPaid = true,
+                            alreadyAdded = "wss://inbox.nostr.wine" in dmRelays,
+                            onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.nostr.wine") }
+                        )
+                        RecommendedDmRelayRow(
+                            url = "wss://nostr.land",
+                            description = stringResource(R.string.relay_recommended_paid_description),
+                            isPaid = true,
+                            alreadyAdded = "wss://nostr.land" in dmRelays,
+                            onAdd = { viewModel.addRecommendedDmRelay("wss://nostr.land") }
+                        )
+                    }
+
                     Spacer(Modifier.height(16.dp))
 
                     when (selectedTab) {
@@ -205,6 +314,76 @@ fun RelayScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RelayRecommendationRow(
+    title: String,
+    url: String,
+    description: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            url,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun RecommendedDmRelayRow(
+    url: String,
+    description: String,
+    isPaid: Boolean,
+    alreadyAdded: Boolean,
+    onAdd: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                url,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                stringResource(
+                    if (isPaid) R.string.relay_recommended_dm_paid_badge
+                    else R.string.relay_recommended_dm_free_badge
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isPaid) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+            )
+        }
+        TextButton(onClick = onAdd, enabled = !alreadyAdded) {
+            Text(
+                stringResource(
+                    if (alreadyAdded) R.string.relay_recommended_added
+                    else R.string.relay_recommended_add
+                )
+            )
         }
     }
 }
