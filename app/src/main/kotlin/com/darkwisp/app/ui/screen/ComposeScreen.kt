@@ -62,6 +62,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.BarChart
@@ -191,6 +192,7 @@ fun ComposeScreen(
     val galleryMode by viewModel.galleryMode.collectAsState()
     val galleryHasVideo by viewModel.galleryHasVideo.collectAsState()
     val galleryVideoTitle by viewModel.galleryVideoTitle.collectAsState()
+    val galleryVideoTags by viewModel.galleryVideoTags.collectAsState()
     val galleryVideoKind by viewModel.galleryVideoKind.collectAsState()
     // Alt text (NIP-92 imeta) — per-image editor state
     val altTexts by viewModel.altTexts.collectAsState()
@@ -344,6 +346,7 @@ fun ComposeScreen(
                         countdownSeconds = countdownSeconds,
                         savedAltUrls = altTexts.keys,
                         isImageUpload = { viewModel.isImageUpload(it) },
+                        videoPosterUrl = viewModel::galleryVideoPosterUrl,
                         onEditAlt = { altEditorUrl = it },
                         onPickMedia = {
                             photoPickerLauncher.launch(
@@ -364,72 +367,36 @@ fun ComposeScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(8.dp))
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.compose_video_publication_title),
-                                style = MaterialTheme.typography.titleSmall
+                        OutlinedTextField(
+                            value = galleryVideoTags,
+                            onValueChange = viewModel::updateGalleryVideoTags,
+                            label = { Text(stringResource(R.string.compose_gallery_video_tags)) },
+                            supportingText = { Text(stringResource(R.string.compose_gallery_video_tags_hint)) },
+                            enabled = !publishing && countdownSeconds == null,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(stringResource(R.string.compose_video_publication_title), style = MaterialTheme.typography.titleSmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FilterChip(
+                                selected = galleryVideoKind == Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
+                                onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL) },
+                                enabled = !publishing && countdownSeconds == null,
+                                label = { Text(stringResource(R.string.compose_video_type_standard)) }
                             )
-                            Text(
-                                text = stringResource(R.string.compose_video_publication_classic),
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.compose_video_publication_classic_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                FilterChip(
-                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_HORIZONTAL,
-                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_HORIZONTAL) },
-                                    enabled = !publishing && countdownSeconds == null,
-                                    label = { Text(stringResource(R.string.compose_video_type_standard)) }
-                                )
-                                FilterChip(
-                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_VERTICAL,
-                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_VERTICAL) },
-                                    enabled = !publishing && countdownSeconds == null,
-                                    label = { Text(stringResource(R.string.compose_video_type_short)) }
-                                )
-                            }
-                            Text(
-                                text = stringResource(R.string.compose_video_publication_updatable),
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.compose_video_publication_updatable_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                FilterChip(
-                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
-                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL) },
-                                    enabled = !publishing && countdownSeconds == null,
-                                    label = { Text(stringResource(R.string.compose_video_type_standard)) }
-                                )
-                                FilterChip(
-                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL,
-                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL) },
-                                    enabled = !publishing && countdownSeconds == null,
-                                    label = { Text(stringResource(R.string.compose_video_type_short)) }
-                                )
-                            }
-                            Text(
-                                text = stringResource(R.string.compose_video_publication_help),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            FilterChip(
+                                selected = galleryVideoKind == Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL,
+                                onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL) },
+                                enabled = !publishing && countdownSeconds == null,
+                                label = { Text(stringResource(R.string.compose_video_type_short)) }
                             )
                         }
+                        Text(
+                            stringResource(R.string.compose_video_publication_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     Spacer(Modifier.height(12.dp))
@@ -1623,7 +1590,7 @@ private fun MentionCandidateRow(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GalleryComposeSection(
     uploadedUrls: List<String>,
@@ -1631,162 +1598,106 @@ private fun GalleryComposeSection(
     countdownSeconds: Int?,
     savedAltUrls: Set<String>,
     isImageUpload: (String) -> Boolean,
+    videoPosterUrl: (String) -> String?,
     onEditAlt: (String) -> Unit,
     onPickMedia: () -> Unit,
     onRemoveUrl: (String) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    val isVideo = uploadedUrls.singleOrNull()?.let { !isImageUpload(it) } == true
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (uploadedUrls.isEmpty()) {
-            // Empty state — prominent upload area
             Surface(
                 onClick = onPickMedia,
+                enabled = uploadProgress == null && countdownSeconds == null,
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(4f / 3f)
+                modifier = Modifier.fillMaxWidth().height(150.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     if (uploadProgress != null) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
-                                strokeWidth = 3.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            CircularProgressIndicator()
                             Spacer(Modifier.height(8.dp))
-                            Text(
-                                uploadProgress,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(uploadProgress, style = MaterialTheme.typography.bodySmall)
                         }
                     } else {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Outlined.Image,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
+                            Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, modifier = Modifier.size(36.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text(
-                                stringResource(R.string.compose_gallery_tap_to_add),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(stringResource(R.string.compose_gallery_tap_to_add))
                         }
                     }
                 }
+            }
+        } else if (isVideo) {
+            val url = uploadedUrls.single()
+            Box(
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                val poster = videoPosterUrl(url)
+                if (poster != null) {
+                    AsyncImage(model = poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(42.dp))
+                    }
+                }
+                Box(
+                    modifier = Modifier.align(Alignment.Center).size(52.dp)
+                        .clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp)) }
+                IconButton(
+                    onClick = { onRemoveUrl(url) },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                        .size(36.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f))
+                ) { Icon(Icons.Filled.Close, contentDescription = "Remove video", tint = Color.White) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.compose_gallery_video_count), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                OutlinedButton(
+                    onClick = { onRemoveUrl(url); onPickMedia() },
+                    enabled = uploadProgress == null && countdownSeconds == null
+                ) { Text(stringResource(R.string.compose_gallery_video_change)) }
             }
         } else {
-            // Image pager with uploaded media
-            val pagerState = rememberPagerState(pageCount = { uploadedUrls.size })
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(4f / 3f)
-                    .clip(RoundedCornerShape(16.dp))
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    val pageUrl = uploadedUrls[page]
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        AsyncImage(
-                            model = pageUrl,
-                            contentDescription = "Uploaded media ${page + 1}",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+            Text(stringResource(R.string.compose_gallery_image_count, uploadedUrls.size), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                uploadedUrls.forEach { pageUrl ->
+                    Box(modifier = Modifier.size(104.dp).clip(RoundedCornerShape(12.dp))) {
+                        AsyncImage(model = pageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        AltChip(
+                            saved = pageUrl in savedAltUrls,
+                            onClick = { onEditAlt(pageUrl) },
+                            modifier = Modifier.align(Alignment.BottomStart).padding(5.dp)
                         )
-                        // Alt chip (top-start) — "+ ALT" undescribed, "✓ ALT" saved
-                        if (isImageUpload(pageUrl)) {
-                            AltChip(
-                                saved = pageUrl in savedAltUrls,
-                                onClick = { onEditAlt(pageUrl) },
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                            )
-                        }
-                        // Remove button
                         IconButton(
                             onClick = { onRemoveUrl(pageUrl) },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp)
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.5f))
-                        ) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = "Remove",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                                .size(28.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.58f))
+                        ) { Icon(Icons.Filled.Close, contentDescription = "Remove image", tint = Color.White, modifier = Modifier.size(16.dp)) }
                     }
                 }
-                // Page indicator dots
-                if (uploadedUrls.size > 1) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 10.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        repeat(uploadedUrls.size) { index ->
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 3.dp)
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (index == pagerState.currentPage)
-                                            Color.White
-                                        else
-                                            Color.White.copy(alpha = 0.4f)
-                                    )
-                            )
-                        }
+                Surface(
+                    onClick = onPickMedia,
+                    enabled = uploadProgress == null && countdownSeconds == null,
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(104.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(Icons.Outlined.Image, contentDescription = null, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(stringResource(R.string.compose_gallery_image_add), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            // Add more / uploading indicator
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onPickMedia,
-                    enabled = uploadProgress == null && countdownSeconds == null,
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Icon(Icons.Outlined.Image, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add more", style = MaterialTheme.typography.labelMedium)
-                }
-                if (uploadProgress != null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        uploadProgress,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    Text(
-                        "${uploadedUrls.size} ${if (uploadedUrls.size == 1) "item" else "items"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        }
+        if (uploadProgress != null && uploadedUrls.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(uploadProgress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
