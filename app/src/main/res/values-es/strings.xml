@@ -1442,4 +1442,6 @@
     <string name="postilla_video_edit_unavailable">Solo el autor puede editar este vídeo.</string>
     <string name="postilla_video_invalid_language">Introduce un código de idioma válido de dos letras.</string>
     <string name="postilla_video_update_failed">No se pudieron guardar los cambios del vídeo.</string>
+
+    <string name="postilla_profile_sats_sent">%1$d sats enviados</string>
 </resources>
