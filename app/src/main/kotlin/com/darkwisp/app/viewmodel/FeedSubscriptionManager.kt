@@ -70,7 +70,7 @@ class FeedSubscriptionManager(
     private val prefs: SharedPreferences
 ) {
     companion object {
-        val FEED_KINDS = listOf(1, 6, 1068, 6969, 30023, 30402, 20, 21, 22)
+        val FEED_KINDS = listOf(1, 6, 1068, 6969, 30023, 30402, 20, 21, 22, 34235, 34236)
         // How many of a poll's advertised relays to reach past the persistent
         // pool. iOS uses 3 and gets complete tallies; the votes land on the
         // first few relays a poll lists, not the long tail.
@@ -134,7 +134,7 @@ class FeedSubscriptionManager(
         when (filter) {
             FeedContentFilter.ALL -> eventRepo.setKindFilter(null)
             FeedContentFilter.TEXT_ONLY -> eventRepo.setKindFilter(setOf(1, 6, 30023))
-            FeedContentFilter.GALLERY_ONLY -> eventRepo.setKindFilter(setOf(20, 21, 22))
+            FeedContentFilter.GALLERY_ONLY -> eventRepo.setKindFilter(setOf(20, 21, 22, 34235, 34236))
             FeedContentFilter.POLLS_ONLY -> eventRepo.setKindFilter(setOf(Nip88.KIND_POLL, Nip69.KIND_ZAP_POLL))
         }
     }
@@ -538,7 +538,7 @@ class FeedSubscriptionManager(
                 if (allAuthors.isEmpty()) { isLoadingMore = false; return }
                 // Use content-specific kinds when a filter is active
                 val loadMoreKinds = when (_feedContentFilter.value) {
-                    FeedContentFilter.GALLERY_ONLY -> listOf(20, 21, 22)
+                    FeedContentFilter.GALLERY_ONLY -> listOf(20, 21, 22, 34235, 34236)
                     FeedContentFilter.TEXT_ONLY -> listOf(1, 6, 30023)
                     FeedContentFilter.POLLS_ONLY -> listOf(Nip88.KIND_POLL, Nip69.KIND_ZAP_POLL)
                     FeedContentFilter.ALL -> FEED_KINDS
