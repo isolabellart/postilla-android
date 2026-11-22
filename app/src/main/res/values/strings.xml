@@ -1274,4 +1274,22 @@
     <string name="compose_gallery_video_change">Change video</string>
     <string name="compose_gallery_image_count">%1$d images</string>
     <string name="compose_gallery_image_add">Add images</string>
+    <string name="video_edit_action">Edit video</string>
+    <string name="video_edit_title">Edit video</string>
+    <string name="video_edit_subtitle">Update the title, description, tags and video files.</string>
+    <string name="video_edit_files">Video files</string>
+    <string name="video_edit_variant_count">%1$d variant(s)</string>
+    <string name="video_edit_add_variant">Add variant</string>
+    <string name="video_edit_title_label">Title</string>
+    <string name="video_edit_description_label">Description</string>
+    <string name="video_edit_tags_label">Tags</string>
+    <string name="video_edit_tags_hint">Separate tags with commas</string>
+    <string name="video_edit_language_label">Language (ISO code)</string>
+    <string name="video_edit_language_hint">For example: en, it, fr</string>
+    <string name="video_edit_nsfw">Content warning (NSFW)</string>
+    <string name="video_edit_save">Save changes</string>
+    <string name="video_edit_cancel">Cancel</string>
+    <string name="video_edit_unconfirmed">The relay did not confirm the update. No changes were saved.</string>
+    <string name="video_edit_uploading">Uploading video variant…</string>
+    <string name="video_edit_empty_files">Add at least one video file.</string>
 </resources>
