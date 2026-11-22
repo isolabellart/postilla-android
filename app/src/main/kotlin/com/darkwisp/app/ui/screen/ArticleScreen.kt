@@ -91,10 +91,14 @@ import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.hexToByteArray
 import com.darkwisp.app.nostr.Nip23
+import com.darkwisp.app.nostr.Nip71
 import com.darkwisp.app.ui.component.ActionBar
 import com.darkwisp.app.ui.component.NoteActions
 import com.darkwisp.app.ui.component.PostCard
 import com.darkwisp.app.ui.component.RichContent
+import com.darkwisp.app.ui.component.InlineVideoPlayerWithFullscreen
+import com.darkwisp.app.ui.component.FullScreenVideoState
+import com.darkwisp.app.ui.component.MediaMeta
 import com.darkwisp.app.ui.component.CollapsedRepliesRow
 import com.darkwisp.app.ui.component.threadConnector
 import com.darkwisp.app.ui.component.threadIndentDp
@@ -187,6 +191,7 @@ fun ArticleScreen(
     val displayContent = if (!showOriginalArticle && bodyTranslationState.status == TranslationStatus.DONE &&
         bodyTranslationState.translatedText.isNotBlank()) bodyTranslationState.translatedText else article?.content.orEmpty()
     val blocks = remember(displayContent) { parseMarkdownBlocks(displayContent) }
+    val addressableVideo = article?.takeIf { Nip71.isAddressableVideoKind(it.kind) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     var articleShareMenuExpanded by remember(article?.id) { mutableStateOf(false) }
@@ -553,7 +558,28 @@ fun ArticleScreen(
                         }
                     }
 
+                    if (addressableVideo != null) {
+                        item(key = "addressable-video-player") {
+                            val video = Nip71.parseVideoMeta(addressableVideo).firstOrNull()
+                            if (video != null) {
+                                InlineVideoPlayerWithFullscreen(
+                                    meta = MediaMeta(
+                                        url = video.url,
+                                        mime = video.mimeType,
+                                        dimension = video.dim,
+                                        thumbhash = video.thumbhash,
+                                        blurhash = video.blurhash
+                                    ),
+                                    onFullScreen = { positionMs ->
+                                        FullScreenVideoState.enter(video.url, positionMs)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     // Markdown blocks
+                    if (addressableVideo == null) {
                     items(blocks.size, key = { "block-$it" }) { index ->
                         val block = blocks[index]
                         when (block) {
@@ -577,6 +603,7 @@ fun ArticleScreen(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                             )
                         }
+                    }
                     }
 
                     // Article action bar
