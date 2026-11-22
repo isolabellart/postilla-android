@@ -42,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip23
+import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.viewmodel.MarketplaceViewModel
 import com.darkwisp.app.ui.screen.MarketplaceEditorScreen
 import com.darkwisp.app.ui.screen.MarketplaceDetailScreen
@@ -90,6 +91,7 @@ import com.darkwisp.app.ui.screen.SearchScreen
 import com.darkwisp.app.ui.screen.SocialGraphScreen
 import com.darkwisp.app.ui.screen.BookmarkSetScreen
 import com.darkwisp.app.ui.screen.ArticleScreen
+import com.darkwisp.app.ui.screen.CurationSetScreen
 import com.darkwisp.app.ui.screen.ArticleComposerScreen
 import com.darkwisp.app.ui.screen.BookmarksScreen
 import com.darkwisp.app.ui.screen.HashtagFeedScreen
@@ -196,8 +198,16 @@ object Routes {
     const val INTERFACE_SETTINGS = "interface_settings"
     const val RELAY_HEALTH = "relay_health"
     const val ARTICLE = "article/{kind}/{author}/{dTag}"
+    const val CURATION_SET = "curation/{author}/{dTag}"
     const val LIVE_STREAM = "live_stream/{hostPubkey}/{dTag}?relayHint={relayHint}"
 }
+
+private fun addressableContentRoute(kind: Int, author: String, dTag: String): String =
+    if (kind == Nip51.KIND_CURATION_SET) {
+        "curation/$author/${android.net.Uri.encode(dTag)}"
+    } else {
+        "article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}"
+    }
 
 private fun marketplaceAddressRoute(event: NostrEvent): String {
     val base = "marketplace/address/${event.pubkey}/${android.net.Uri.encode(Nip99.dTag(event))}"
@@ -1076,7 +1086,7 @@ fun WispNavHost(
                     navController.navigate("hashtag_set/$encodedName/$encodedTags")
                 },
                 onArticleClick = { kind, author, dTag ->
-                    navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                    navController.navigate(addressableContentRoute(kind, author, dTag))
                 },
                 onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
@@ -1897,7 +1907,7 @@ fun WispNavHost(
                 signer = activeSigner,
                 translationRepo = feedViewModel.translationRepo,
                 onArticleClick = { kind, articleAuthor, articleDTag ->
-                    navController.navigate("article/$kind/$articleAuthor/${java.net.URLEncoder.encode(articleDTag, "UTF-8")}")
+                    navController.navigate(addressableContentRoute(kind, articleAuthor, articleDTag))
                 },
                 onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                 resolvedEmojis = profileResolvedEmojis,
@@ -2199,7 +2209,7 @@ fun WispNavHost(
                             navController.navigate(marketplaceAddressRoute(event))
                         },
                         onArticleClick = { kind, author, dTag ->
-                            navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                            navController.navigate(addressableContentRoute(kind, author, dTag))
                         },
                         onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                             val route = buildString {
@@ -2304,7 +2314,7 @@ fun WispNavHost(
                             navController.navigate(marketplaceAddressRoute(event))
                         },
                         onArticleClick = { kind, author, dTag ->
-                            navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                            navController.navigate(addressableContentRoute(kind, author, dTag))
                         },
                         onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                             val route = buildString {
@@ -2799,7 +2809,7 @@ fun WispNavHost(
                     navController.popBackStack(Routes.FEED, inclusive = false)
                 },
                 onArticleClick = { kind, author, dTag ->
-                    navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                    navController.navigate(addressableContentRoute(kind, author, dTag))
                 },
                 translationRepo = feedViewModel.translationRepo,
                 resolvedEmojis = threadResolvedEmojis,
@@ -2955,7 +2965,7 @@ fun WispNavHost(
                         navController.popBackStack(Routes.FEED, inclusive = false)
                     },
                     onArticleClick = { kind, author, dTag ->
-                        navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                        navController.navigate(addressableContentRoute(kind, author, dTag))
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
@@ -3121,7 +3131,7 @@ fun WispNavHost(
                         navController.popBackStack(Routes.FEED, inclusive = false)
                     },
                     onArticleClick = { kind, author, dTag ->
-                        navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                        navController.navigate(addressableContentRoute(kind, author, dTag))
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
@@ -3172,6 +3182,30 @@ fun WispNavHost(
                 onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                 zapAnimatingIds = setFeedZapAnimatingIds,
                 zapInProgressIds = setFeedZapInProgress
+            )
+        }
+
+
+        composable(
+            Routes.CURATION_SET,
+            arguments = listOf(
+                navArgument("author") { type = NavType.StringType },
+                navArgument("dTag") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val author = backStackEntry.arguments?.getString("author") ?: return@composable
+            val dTag = java.net.URLDecoder.decode(
+                backStackEntry.arguments?.getString("dTag") ?: return@composable, "UTF-8"
+            )
+            CurationSetScreen(
+                eventRepo = feedViewModel.eventRepo,
+                author = author,
+                dTag = dTag,
+                onBack = { navController.popBackStack() },
+                onOpenArticle = { kind, itemAuthor, itemDTag ->
+                    navController.navigate(addressableContentRoute(kind, itemAuthor, itemDTag))
+                },
+                onOpenNote = { eventId -> navController.navigate("thread/$eventId") }
             )
         }
 
@@ -3296,7 +3330,7 @@ fun WispNavHost(
                         navController.navigate("hashtag/${java.net.URLEncoder.encode(tag, "UTF-8")}")
                     },
                     onArticleClick = { k, a, d ->
-                        navController.navigate("article/$k/$a/${java.net.URLEncoder.encode(d, "UTF-8")}")
+                        navController.navigate(addressableContentRoute(k, a, d))
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },

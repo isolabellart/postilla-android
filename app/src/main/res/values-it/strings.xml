@@ -1069,6 +1069,14 @@
     <string name="dm_restore_selected">Ripristina</string>
 
     <string name="text_translation_action">Traduci con DeepL</string>
+    <string name="curation_set_label">Raccolta curata</string>
+    <string name="curation_set_items">%1$d elementi</string>
+    <string name="curation_set_not_found">Raccolta non trovata sui relay disponibili.</string>
+    <string name="curation_set_empty">Questa raccolta non contiene elementi.</string>
+    <string name="curation_set_entry_loading">Recupero del contenuto dai relay…</string>
+    <string name="curation_set_retry">Riprova</string>
+    <string name="curation_set_article">Articolo</string>
+    <string name="curation_set_note">Nota</string>
     <string name="text_translation_title">Traduzione DeepL</string>
     <string name="text_translation_loading">Traduzione del testo selezionato in corso…</string>
     <string name="text_translation_preparing">Preparazione della traduzione…</string>
