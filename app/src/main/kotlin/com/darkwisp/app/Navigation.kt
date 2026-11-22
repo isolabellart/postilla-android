@@ -1848,6 +1848,7 @@ fun WispNavHost(
                     navController.navigate(Routes.COMPOSE)
                 },
                 eventRepo = feedViewModel.eventRepo,
+                blossomRepository = feedViewModel.blossomRepo,
                 onNavigateToProfile = { pubkey -> navController.navigate("profile/$pubkey") },
                 onToggleFollow = { pubkey -> feedViewModel.toggleFollow(pubkey) },
                 isOwnProfile = isOwnProfile,
