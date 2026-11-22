@@ -74,7 +74,8 @@ data class RelayConfig(
             val additions = RECOMMENDED_DM_FREE_RELAYS.filter {
                 known.add(it.trimEnd('/').lowercase())
             }
-            return existing + additions
+            val availableSlots = (3 - existing.size).coerceAtLeast(0)
+            return existing + additions.take(availableSlots)
         }
 
         // Default search set shown in Relay > Search. nostr.wine is the public
