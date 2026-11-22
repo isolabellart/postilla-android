@@ -45,7 +45,8 @@ class Nip51Test {
                 listOf("d", "my-reading-list"), listOf("title", "Reading list"),
                 listOf("description", "Articles selected by the author"),
                 listOf("image", "https://example.com/cover.jpg"),
-                listOf("a", "30023:" + author + ":essay-one", "wss://relay.example.com")
+                listOf("a", "30023:" + author + ":essay-one", "wss://relay.example.com"),
+                listOf("e", "ef".repeat(32), "wss://notes.example.com")
             ), content = "", sig = "signature"
         )
         val parsed = Nip51.parseCurationSet(event)
@@ -53,10 +54,13 @@ class Nip51Test {
         assertEquals("Reading list", parsed?.title)
         assertEquals("Articles selected by the author", parsed?.description)
         assertEquals("https://example.com/cover.jpg", parsed?.image)
-        assertEquals(1, parsed?.entries?.size)
+        assertEquals(2, parsed?.entries?.size)
         assertEquals(30023, parsed?.entries?.first()?.kind)
         assertEquals(author, parsed?.entries?.first()?.author)
         assertEquals("essay-one", parsed?.entries?.first()?.dTag)
         assertEquals("wss://relay.example.com", parsed?.entries?.first()?.relayHint)
+        assertEquals(1, parsed?.entries?.last()?.kind)
+        assertEquals("ef".repeat(32), parsed?.entries?.last()?.eventId)
+        assertEquals("wss://notes.example.com", parsed?.entries?.last()?.relayHint)
     }
 }

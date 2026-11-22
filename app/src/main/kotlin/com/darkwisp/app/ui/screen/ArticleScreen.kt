@@ -84,6 +84,7 @@ import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.Nip19
+import com.darkwisp.app.nostr.hexToByteArray
 import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.ui.component.ActionBar
 import com.darkwisp.app.ui.component.NoteActions
@@ -466,9 +467,26 @@ fun ArticleScreen(
                                     }
                                 }
                             }
-                            items(curation.entries, key = { entry -> entry.kind.toString() + ":" + entry.author + ":" + entry.dTag }) { entry ->
-                                val address = Nip19.naddrEncode(dTag = entry.dTag, authorHex = entry.author, kind = entry.kind, relays = listOfNotNull(entry.relayHint))
-                                RichContent(content = "nostr:" + address, eventRepo = eventRepo, noteActions = noteActions, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                            items(curation.entries, key = { entry ->
+                                entry.eventId ?: (entry.kind.toString() + ":" + entry.author + ":" + entry.dTag)
+                            }) { entry ->
+                                val nostrAddress = entry.eventId?.let { eventId ->
+                                    Nip19.neventEncode(
+                                        eventId = eventId.hexToByteArray(),
+                                        relays = listOfNotNull(entry.relayHint)
+                                    )
+                                } ?: Nip19.naddrEncode(
+                                    dTag = entry.dTag.orEmpty(),
+                                    authorHex = entry.author.orEmpty(),
+                                    kind = entry.kind,
+                                    relays = listOfNotNull(entry.relayHint)
+                                )
+                                RichContent(
+                                    content = "nostr:" + nostrAddress,
+                                    eventRepo = eventRepo,
+                                    noteActions = noteActions,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
                             }
                         }
                     }

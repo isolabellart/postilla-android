@@ -59,7 +59,13 @@ data class RelaySet(
     val createdAt: Long
 )
 
-data class CurationSetEntry(val kind: Int, val author: String, val dTag: String, val relayHint: String? = null)
+data class CurationSetEntry(
+    val kind: Int,
+    val author: String? = null,
+    val dTag: String? = null,
+    val relayHint: String? = null,
+    val eventId: String? = null
+)
 
 data class CurationSet(
     val pubkey: String, val dTag: String, val title: String, val description: String,
@@ -401,15 +407,32 @@ object Nip51 {
         val description = event.tags.firstOrNull { it.size >= 2 && (it[0] == "description" || it[0] == "summary") }?.get(1)?.takeIf { it.isNotBlank() } ?: event.content
         val image = event.tags.firstOrNull { it.size >= 2 && (it[0] == "image" || it[0] == "thumb") }?.get(1)?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
         val entries = event.tags.mapNotNull { tag ->
-            if (tag.size < 2 || tag[0] != "a") return@mapNotNull null
-            val parts = tag[1].split(":", limit = 3)
-            if (parts.size != 3) return@mapNotNull null
-            val kind = parts[0].toIntOrNull() ?: return@mapNotNull null
-            val author = parts[1].takeIf { value -> value.length == 64 && value.all { ch -> ch.isDigit() || ch.lowercaseChar() in 'a'..'f' } } ?: return@mapNotNull null
-            val itemDTag = parts[2].takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            if (tag.size < 2) return@mapNotNull null
             val relay = tag.getOrNull(2)?.takeIf { it.startsWith("wss://") || it.startsWith("ws://") }
-            CurationSetEntry(kind, author, itemDTag, relay)
-        }.distinctBy { it.kind.toString() + ":" + it.author + ":" + it.dTag }
+            when (tag[0]) {
+                // NIP-51 article collections use addressable references to kind 30023.
+                "a" -> {
+                    val parts = tag[1].split(":", limit = 3)
+                    if (parts.size != 3) return@mapNotNull null
+                    val kind = parts[0].toIntOrNull() ?: return@mapNotNull null
+                    val author = parts[1].takeIf { value ->
+                        value.length == 64 && value.all { ch -> ch.isDigit() || ch.lowercaseChar() in 'a'..'f' }
+                    } ?: return@mapNotNull null
+                    val itemDTag = parts[2].takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    CurationSetEntry(kind = kind, author = author, dTag = itemDTag, relayHint = relay)
+                }
+                // Kind 30004 may also curate regular kind-1 notes using e-tags.
+                "e" -> {
+                    val eventId = tag[1].takeIf { value ->
+                        value.length == 64 && value.all { ch -> ch.isDigit() || ch.lowercaseChar() in 'a'..'f' }
+                    } ?: return@mapNotNull null
+                    CurationSetEntry(kind = 1, relayHint = relay, eventId = eventId)
+                }
+                else -> null
+            }
+        }.distinctBy { entry ->
+            entry.eventId?.let { "e:$it" } ?: "a:${entry.kind}:${entry.author}:${entry.dTag}"
+        }
         return CurationSet(event.pubkey, dTag, title, description, image, entries, event.created_at)
     }
 
