@@ -584,7 +584,7 @@ private fun LocalRelayTab(config: LocalRelayConfig?, viewModel: RelayViewModel) 
                     FilterChip(
                         selected = true,
                         onClick = { viewModel.updateLocalRelayKinds(config.kinds - kind) },
-                        label = { Text("Kind $kind") }
+                        label = { Text(stringResource(R.string.postilla_relay_custom_kind, kind)) }
                     )
                 }
             }
