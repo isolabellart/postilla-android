@@ -35,10 +35,42 @@ data class RelayConfig(
             RelayConfig("wss://relay.nos.social", read = true, write = false)
         )
 
-        /** Default DM relays applied when a user has no DM relay set (kind 10050). */
+        /** Free DM inbox relay from the Nostr relay setup guide. */
         val DEFAULT_DM_RELAYS = listOf(
             "wss://auth.nostr1.com"
         )
+
+        /**
+         * Suggested general-purpose relays, drawn from Amethyst's bootstrap set and
+         * the provider's explicitly free Azzamo relay. Existing per-relay flags are
+         * never overwritten when these are added.
+         */
+        val RECOMMENDED_GENERAL_RELAYS = listOf(
+            RelayConfig("wss://nos.lol", read = true, write = true),
+            RelayConfig("wss://nostr.mom", read = true, write = true),
+            RelayConfig("wss://nostr.azzamo.net", read = true, write = true)
+        )
+
+        /** Free NIP-17 inbox options. Azzamo's free inbox is rate-limited and temporary. */
+        val RECOMMENDED_DM_FREE_RELAYS = DEFAULT_DM_RELAYS + listOf(
+            "wss://inbox.azzamo.net"
+        )
+
+        /** Optional paid DM inbox alternatives; never included in the free add-all action. */
+        val RECOMMENDED_DM_PAID_RELAYS = listOf(
+            "wss://inbox.nostr.wine",
+            "wss://nostr.land"
+        )
+
+        fun mergeRecommendedGeneralRelays(existing: List<RelayConfig>): List<RelayConfig> {
+            val existingUrls = existing.mapTo(mutableSetOf()) { it.url.trimEnd('/').lowercase() }
+            return existing + RECOMMENDED_GENERAL_RELAYS.filterNot {
+                it.url.trimEnd('/').lowercase() in existingUrls
+            }
+        }
+
+        fun mergeRecommendedDmRelays(existing: List<String>): List<String> =
+            (existing + RECOMMENDED_DM_FREE_RELAYS).distinct()
 
         // Default search set shown in Relay > Search. nostr.wine is the public
         // read endpoint used here; this does not add the separate paid filter.nostr.wine.
