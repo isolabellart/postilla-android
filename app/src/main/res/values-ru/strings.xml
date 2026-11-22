@@ -1401,4 +1401,6 @@
     <string name="postilla_video_edit_unavailable">Только автор может редактировать это видео.</string>
     <string name="postilla_video_invalid_language">Введите корректный двухбуквенный код языка.</string>
     <string name="postilla_video_update_failed">Не удалось сохранить изменения видео.</string>
+
+    <string name="postilla_profile_sats_sent">Отправлено sats: %1$d</string>
 </resources>
