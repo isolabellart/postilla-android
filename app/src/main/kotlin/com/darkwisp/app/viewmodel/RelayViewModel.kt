@@ -57,6 +57,29 @@ class RelayViewModel(app: Application) : AndroidViewModel(app) {
         return additions.size
     }
 
+    fun addRecommendedGeneralRelays(): Int {
+        val current = relays.value
+        val updated = RelayConfig.mergeRecommendedGeneralRelays(current)
+        val added = updated.size - current.size
+        if (added > 0) keyRepo.saveRelays(updated)
+        return added
+    }
+
+    /** Adds only the free NIP-17 inbox suggestions; paid options remain opt-in one by one. */
+    fun addRecommendedDmRelays(): Int {
+        val current = dmRelays.value
+        val updated = RelayConfig.mergeRecommendedDmRelays(current)
+        val added = updated.size - current.size
+        if (added > 0) keyRepo.saveDmRelays(updated)
+        return added
+    }
+
+    fun addRecommendedDmRelay(url: String): Boolean {
+        if (!RelayConfig.isValidUrl(url) || url in dmRelays.value) return false
+        keyRepo.saveDmRelays(dmRelays.value + url)
+        return true
+    }
+
     fun addRelay(): Boolean {
         val url = _newRelayUrl.value.trim().trimEnd('/')
         if (url.isBlank()) return false
