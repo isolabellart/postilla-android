@@ -180,6 +180,24 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Replace a revised NIP-71 addressable video in the live profile collections. */
+    fun updateAddressableVideo(event: NostrEvent) {
+        if (!Nip71.isAddressableVideo(event)) return
+        val dTag = Nip71.getDTag(event)?.takeIf { it.isNotBlank() } ?: return
+
+        val updatedRoots = _rootNotes.value
+            .filterNot { it.kind == event.kind && it.pubkey == event.pubkey && Nip71.getDTag(it) == dTag }
+            .toMutableList()
+        updatedRoots.add(event)
+        _rootNotes.value = updatedRoots.sortedByDescending { it.created_at }
+
+        val updatedGallery = _galleryPosts.value
+            .filterNot { it.kind == event.kind && it.pubkey == event.pubkey && Nip71.getDTag(it) == dTag }
+            .toMutableList()
+        updatedGallery.add(event)
+        _galleryPosts.value = updatedGallery.sortedByDescending { it.created_at }
+    }
+
     fun loadProfile(
         pubkey: String,
         eventRepo: EventRepository,
