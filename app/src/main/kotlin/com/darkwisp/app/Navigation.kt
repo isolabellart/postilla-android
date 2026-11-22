@@ -3243,7 +3243,8 @@ fun WispNavHost(
                 author = author,
                 dTag = dTag,
                 relayHints = relayHints,
-                onBack = { navController.popBackStack() },                onOpenArticle = { kind, itemAuthor, itemDTag ->
+                onBack = { navController.popBackStack() },
+                onOpenArticle = { kind, itemAuthor, itemDTag ->
                     navController.navigate(addressableContentRoute(kind, itemAuthor, itemDTag))
                 },
                 onOpenNote = { eventId -> navController.navigate("thread/$eventId") }
