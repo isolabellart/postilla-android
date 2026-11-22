@@ -69,8 +69,13 @@ data class RelayConfig(
             }
         }
 
-        fun mergeRecommendedDmRelays(existing: List<String>): List<String> =
-            (existing + RECOMMENDED_DM_FREE_RELAYS).distinct()
+        fun mergeRecommendedDmRelays(existing: List<String>): List<String> {
+            val known = existing.mapTo(mutableSetOf()) { it.trimEnd('/').lowercase() }
+            val additions = RECOMMENDED_DM_FREE_RELAYS.filter {
+                known.add(it.trimEnd('/').lowercase())
+            }
+            return existing + additions
+        }
 
         // Default search set shown in Relay > Search. nostr.wine is the public
         // read endpoint used here; this does not add the separate paid filter.nostr.wine.
