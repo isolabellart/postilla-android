@@ -325,7 +325,7 @@ fun NotificationsScreen(
                             maxLines = 1
                         )
                         Text(
-                            text = " · 24h",
+                            text = stringResource(R.string.postilla_notif_24h),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                             maxLines = 1,
@@ -723,7 +723,7 @@ private fun ZenNotificationRow(
                         Spacer(Modifier.width(6.dp))
                         val extra = item.mergedZaps.size
                         Text(
-                            text = "+$extra more",
+                            text = stringResource(R.string.postilla_notif_more, extra),
                             style = MaterialTheme.typography.labelSmall,
                             color = WispThemeColors.zapColor,
                             modifier = Modifier
@@ -783,7 +783,7 @@ private fun ZenNotificationRow(
                     }
                     if (optionLabel != null) {
                         Text(
-                            text = "voted: $optionLabel",
+                            text = stringResource(R.string.postilla_notif_voted, optionLabel),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
@@ -1081,7 +1081,7 @@ private fun GroupChatExpansion(
                     )
                 } else {
                     Text(
-                        text = "Message not available",
+                        text = stringResource(R.string.postilla_notif_message_unavailable),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
@@ -1431,7 +1431,7 @@ private fun ReplyExpansion(
         // Original note (the note being replied to) — compact bordered card
         if (item.referencedEventId.isNotBlank() && postCardParams != null) {
             Text(
-                text = "replying to",
+                text = stringResource(R.string.postilla_notif_replying_to),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -1866,7 +1866,7 @@ private fun SentNoteCard(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "now",
+                text = stringResource(R.string.postilla_notif_now),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -2002,7 +2002,7 @@ private fun InlineReplyComposer(
             ) {
                 Icon(
                     Icons.Outlined.Image,
-                    contentDescription = "Add media",
+                    contentDescription = stringResource(R.string.postilla_notif_add_media),
                     modifier = Modifier.size(20.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2221,7 +2221,7 @@ private fun NotificationTypeIcon(item: FlatNotificationItem, showSats: Boolean =
         NotificationType.QUOTE -> {
             Icon(
                 Icons.Outlined.FormatQuote,
-                contentDescription = "Quoted",
+                contentDescription = stringResource(R.string.postilla_notif_quoted),
                 modifier = Modifier.size(iconSize),
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -2237,7 +2237,7 @@ private fun NotificationTypeIcon(item: FlatNotificationItem, showSats: Boolean =
         NotificationType.DM -> {
             Icon(
                 Icons.Outlined.MailOutline,
-                contentDescription = "DM",
+                contentDescription = stringResource(R.string.postilla_notif_dm),
                 modifier = Modifier.size(iconSize),
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -2255,7 +2255,7 @@ private fun NotificationTypeIcon(item: FlatNotificationItem, showSats: Boolean =
             } else {
                 Icon(
                     Icons.Outlined.Favorite,
-                    contentDescription = "DM Reaction",
+                    contentDescription = stringResource(R.string.postilla_notif_dm_reaction),
                     modifier = Modifier.size(iconSize),
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -2274,7 +2274,7 @@ private fun NotificationTypeIcon(item: FlatNotificationItem, showSats: Boolean =
         NotificationType.MARKETPLACE_BOOKMARK -> {
             Icon(
                 Icons.Outlined.BookmarkBorder,
-                contentDescription = "Saved to Marketplace watchlist",
+                contentDescription = stringResource(R.string.postilla_notif_saved_watchlist),
                 modifier = Modifier.size(iconSize),
                 tint = MaterialTheme.colorScheme.primary
             )
