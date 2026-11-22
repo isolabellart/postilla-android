@@ -161,7 +161,7 @@ fun BlossomServersScreen(
                     if (servers.size > 1) {
                         Icon(
                             Icons.Default.DragHandle,
-                            contentDescription = "Drag to reorder",
+                            contentDescription = stringResource(R.string.postilla_blossom_reorder),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .padding(end = 8.dp)
@@ -214,7 +214,7 @@ fun BlossomServersScreen(
                         )
                         if (index == 0) {
                             Text(
-                                text = "Primary",
+                                text = stringResource(R.string.postilla_blossom_primary),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -224,7 +224,7 @@ fun BlossomServersScreen(
                     IconButton(onClick = { viewModel.removeServer(url) }) {
                         Icon(
                             Icons.Default.Delete,
-                            contentDescription = "Remove",
+                            contentDescription = stringResource(R.string.postilla_blossom_remove),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
