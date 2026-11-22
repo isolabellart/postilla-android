@@ -196,6 +196,7 @@
     <string name="relay_recommended_general_add">Aggiungi i consigliati mancanti</string>
     <string name="relay_recommended_dm_title">Relay DM consigliati</string>
     <string name="relay_recommended_dm_description">NIP-17 consiglia una lista breve (di solito 1–3 relay). Qui riceverai i messaggi cifrati. Aggiungerli non pubblica la lista: usa Broadcast quando sei pronto.</string>
+    <string name="relay_recommended_dm_limit_reached">Hai già tre relay inbox DM. Rimuovine uno prima di aggiungere un altro consiglio.</string>
     <string name="relay_recommended_dm_free_section">Opzioni gratuite</string>
     <string name="relay_recommended_auth_free">Relay inbox DM AUTH gratuito, attualmente in fase alpha.</string>
     <string name="relay_recommended_azzamo_dm">Inbox gratuita per DM e gruppi. Senza Premium è soggetta a limiti e la conservazione dei messaggi gratuiti è temporanea.</string>
