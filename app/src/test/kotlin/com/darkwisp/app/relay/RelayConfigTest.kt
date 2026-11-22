@@ -75,4 +75,29 @@ class RelayConfigTest {
         assertTrue("wss://nostr.land" !in merged)
         assertEquals(merged, RelayConfig.mergeRecommendedDmRelays(merged))
     }
+
+    @Test
+    fun bulkDmRecommendationsDoNotExceedThreeRelays() {
+        val existing = listOf(
+            "wss://my-first-dm.example",
+            "wss://my-second-dm.example"
+        )
+
+        val merged = RelayConfig.mergeRecommendedDmRelays(existing)
+
+        assertEquals(existing, merged.take(2))
+        assertEquals(3, merged.size)
+        assertEquals("wss://auth.nostr1.com", merged.last())
+    }
+
+    @Test
+    fun fullDmRelayListIsNotChangedByRecommendations() {
+        val existing = listOf(
+            "wss://one.example",
+            "wss://two.example",
+            "wss://three.example"
+        )
+
+        assertEquals(existing, RelayConfig.mergeRecommendedDmRelays(existing))
+    }
 }
