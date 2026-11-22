@@ -78,20 +78,24 @@ fun VideoEditorDialog(
     val originalDTag = remember(event.id) { Nip71.getDTag(event).orEmpty() }
     var title by remember(event.id) { mutableStateOf(Nip71.getTitle(event).orEmpty()) }
     var description by remember(event.id) { mutableStateOf(event.content) }
-    var tagsText by remember(event.id) {
-        mutableStateOf(event.tags.filter { it.firstOrNull() == "t" }.mapNotNull { it.getOrNull(1) }.distinct().joinToString(", "))
+    val originalTagsText = remember(event.id) {
+        event.tags.filter { it.firstOrNull() == "t" }.mapNotNull { it.getOrNull(1) }.distinct().joinToString(", ")
     }
-    var language by remember(event.id) {
-        mutableStateOf(event.tags.firstOrNull { it.firstOrNull() == "l" && it.getOrNull(2) == "ISO-639-1" }?.getOrNull(1).orEmpty())
+    var tagsText by remember(event.id) { mutableStateOf(originalTagsText) }
+    val originalLanguage = remember(event.id) {
+        event.tags.firstOrNull { it.firstOrNull() == "l" && it.getOrNull(2) == "ISO-639-1" }?.getOrNull(1).orEmpty()
     }
+    var language by remember(event.id) { mutableStateOf(originalLanguage) }
     val existingWarning = remember(event.id) {
         event.tags.firstOrNull { it.firstOrNull() == "content-warning" }?.getOrNull(1)
     }
     var contentWarning by remember(event.id) { mutableStateOf(existingWarning != null) }
     var warningLabel by remember(event.id) { mutableStateOf(existingWarning.orEmpty()) }
-    var videoFiles by remember(event.id) { mutableStateOf(Nip71.parseVideoMeta(event)) }
+    val originalVideoFiles = remember(event.id) { Nip71.parseVideoMeta(event) }
+    var videoFiles by remember(event.id) { mutableStateOf(originalVideoFiles) }
     var uploading by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var previewExpanded by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -120,8 +124,16 @@ fun VideoEditorDialog(
     }
 
     val isOwner = signer.pubkeyHex == event.pubkey
+    val previewChanges = buildList {
+        if (title != Nip71.getTitle(event).orEmpty()) add(context.getString(R.string.video_edit_title_label))
+        if (description != event.content) add(context.getString(R.string.video_edit_description_label))
+        if (tagsText != originalTagsText) add(context.getString(R.string.video_edit_tags_label))
+        if (language != originalLanguage) add(context.getString(R.string.video_edit_language_label))
+        if (contentWarning != (existingWarning != null)) add(context.getString(R.string.video_edit_nsfw))
+        if (videoFiles != originalVideoFiles) add(context.getString(R.string.video_edit_files))
+    }
     val canSave = isOwner && Nip71.isAddressableVideo(event) && originalDTag.isNotBlank() &&
-        title.isNotBlank() && videoFiles.isNotEmpty() && !uploading && !saving
+        title.isNotBlank() && videoFiles.isNotEmpty() && previewChanges.isNotEmpty() && !uploading && !saving
 
     Dialog(
         onDismissRequest = { if (!saving && !uploading) onDismiss() },
@@ -217,6 +229,16 @@ fun VideoEditorDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = contentWarning, onCheckedChange = { contentWarning = it }, enabled = !saving)
                         Text(stringResource(R.string.video_edit_nsfw), modifier = Modifier.weight(1f))
+                    }
+                    TextButton(onClick = { previewExpanded = !previewExpanded }, enabled = previewChanges.isNotEmpty()) {
+                        Text(stringResource(R.string.video_edit_preview) + " (" + previewChanges.size + ")")
+                    }
+                    if (previewExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            previewChanges.forEach { changedField ->
+                                Text("• $changedField", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
