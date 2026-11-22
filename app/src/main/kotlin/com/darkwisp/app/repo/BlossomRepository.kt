@@ -47,10 +47,13 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
         saveBlossomServers(urls)
     }
 
+    /**
+     * Persists the exact list, including an intentionally empty one received from kind:10063.
+     * First-run defaults are applied only when this preference has never been stored.
+     */
     fun saveBlossomServers(urls: List<String>) {
-        val list = urls.ifEmpty { Blossom.DEFAULT_SERVERS }
-        prefs.edit().putString("blossom_servers", json.encodeToString(list)).apply()
-        _servers.value = list
+        prefs.edit().putString("blossom_servers", json.encodeToString(urls)).apply()
+        _servers.value = urls
     }
 
     // In-memory reset only. `prefs` is shared with KeyRepository
@@ -76,8 +79,7 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
     private fun loadServers(): List<String> {
         val str = prefs.getString("blossom_servers", null) ?: return Blossom.DEFAULT_SERVERS
         return try {
-            val list = json.decodeFromString<List<String>>(str)
-            list.ifEmpty { Blossom.DEFAULT_SERVERS }
+            json.decodeFromString<List<String>>(str)
         } catch (_: Exception) {
             Blossom.DEFAULT_SERVERS
         }
