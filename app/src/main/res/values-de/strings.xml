@@ -1443,4 +1443,6 @@
     <string name="postilla_video_update_failed">Videoänderungen konnten nicht gespeichert werden.</string>
 
     <string name="postilla_profile_sats_sent">%1$d sats gesendet</string>
+
+    <string name="postilla_notif_24h"> · 24 Std.</string>
 </resources>
