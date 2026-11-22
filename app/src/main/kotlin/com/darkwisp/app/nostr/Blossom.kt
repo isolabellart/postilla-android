@@ -8,6 +8,23 @@ object Blossom {
     const val KIND_AUTH = 24242
     const val DEFAULT_SERVER = "https://blossom.primal.net"
 
+    const val BLOSSOM_BAND_SERVER = "https://blossom.band"
+    const val AZZAMO_BLOSSOM_SERVER = "https://blossom.azzamo.media"
+
+    data class RecommendedServer(
+        val name: String,
+        val url: String
+    )
+
+    /**
+     * Curated free tiers confirmed from the providers' own documentation.
+     * The UI explains their different limits; recommendations never replace a user's list.
+     */
+    val RECOMMENDED_FREE_SERVERS = listOf(
+        RecommendedServer("Blossom.band", BLOSSOM_BAND_SERVER),
+        RecommendedServer("Azzamo", AZZAMO_BLOSSOM_SERVER)
+    )
+
     fun parseServerList(event: NostrEvent): List<String> {
         return event.tags.mapNotNull { tag ->
             if (tag.size >= 2 && tag[0] == "server") tag[1] else null
