@@ -109,4 +109,50 @@ class Nip71Test {
         assertTrue(Nip71.isVideo(event(Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL, emptyList())))
         assertFalse(Nip71.isAddressableVideo(event(Nip71.KIND_VIDEO_HORIZONTAL, emptyList())))
     }
+    @Test
+    fun onlyLatestAddressableVideoRevisionIsRenderedPerCoordinate() {
+        fun video(id: String, author: String, kind: Int, dTag: String, createdAt: Long) =
+            NostrEvent(
+                id = id,
+                pubkey = author,
+                created_at = createdAt,
+                kind = kind,
+                tags = listOf(listOf("d", dTag), listOf("title", id)),
+                content = id,
+                sig = "signature"
+            )
+
+        val oldRevision = video("old", "author-a", Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, "same-video", 100L)
+        val latestRevision = video("new", "author-a", Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, "same-video", 200L)
+        val otherAuthor = video("other-author", "author-b", Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, "same-video", 150L)
+        val otherKind = video("other-kind", "author-a", Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL, "same-video", 150L)
+        val legacy = video("legacy", "author-a", Nip71.KIND_VIDEO_HORIZONTAL, "same-video", 90L)
+
+        val visible = Nip71.onlyLatestAddressableVideoRevisions(
+            listOf(oldRevision, otherAuthor, legacy, latestRevision, otherKind)
+        )
+
+        assertEquals(listOf(otherAuthor, legacy, latestRevision, otherKind), visible)
+    }
+
+    @Test
+    fun onlyLatestAddressableVideoRevisionUsesNip01TieBreak() {
+        fun video(id: String) = NostrEvent(
+            id = id,
+            pubkey = "author",
+            created_at = 200L,
+            kind = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
+            tags = listOf(listOf("d", "same-video")),
+            content = id,
+            sig = "signature"
+        )
+
+        val laterId = video("f")
+        val nip01Winner = video("a")
+        assertEquals(
+            listOf(nip01Winner),
+            Nip71.onlyLatestAddressableVideoRevisions(listOf(laterId, nip01Winner))
+        )
+    }
+
 }

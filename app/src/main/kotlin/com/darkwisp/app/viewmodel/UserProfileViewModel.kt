@@ -185,16 +185,10 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         if (!Nip71.isAddressableVideo(event)) return
         val dTag = Nip71.getDTag(event)?.takeIf { it.isNotBlank() } ?: return
 
-        val updatedRoots = _rootNotes.value
-            .filterNot { it.kind == event.kind && it.pubkey == event.pubkey && Nip71.getDTag(it) == dTag }
-            .toMutableList()
-        updatedRoots.add(event)
+        val updatedRoots = Nip71.onlyLatestAddressableVideoRevisions(_rootNotes.value + event)
         _rootNotes.value = updatedRoots.sortedByDescending { it.created_at }
 
-        val updatedGallery = _galleryPosts.value
-            .filterNot { it.kind == event.kind && it.pubkey == event.pubkey && Nip71.getDTag(it) == dTag }
-            .toMutableList()
-        updatedGallery.add(event)
+        val updatedGallery = Nip71.onlyLatestAddressableVideoRevisions(_galleryPosts.value + event)
         _galleryPosts.value = updatedGallery.sortedByDescending { it.created_at }
     }
 
@@ -428,19 +422,11 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                             eventRepo.cacheEvent(event)
                             if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
                             // Add to gallery posts
-                            val gallery = _galleryPosts.value.toMutableList()
-                            if (gallery.none { it.id == event.id }) {
-                                gallery.add(event)
-                                gallery.sortByDescending { it.created_at }
-                                _galleryPosts.value = gallery
-                            }
-                            // Also show in root notes feed
-                            val current = _rootNotes.value.toMutableList()
-                            if (current.none { it.id == event.id }) {
-                                current.add(event)
-                                current.sortByDescending { _repostSortTime[it.id] ?: it.created_at }
-                                _rootNotes.value = current
-                            }
+                            val gallery = Nip71.onlyLatestAddressableVideoRevisions(_galleryPosts.value + event)
+                            _galleryPosts.value = gallery.sortedByDescending { it.created_at }
+                            // Also show in root notes feed; late older revisions are ignored.
+                            val current = Nip71.onlyLatestAddressableVideoRevisions(_rootNotes.value + event)
+                            _rootNotes.value = current.sortedByDescending { _repostSortTime[it.id] ?: it.created_at }
                         }
                         5 -> {
                             // Feed the deletion through the shared repository as well, so
@@ -710,10 +696,11 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        _rootNotes.value = roots.distinctBy { it.id }
+        _rootNotes.value = Nip71.onlyLatestAddressableVideoRevisions(roots.distinctBy { it.id })
             .sortedByDescending { _repostSortTime[it.id] ?: it.created_at }
         _replies.value = replies.distinctBy { it.id }.sortedByDescending { it.created_at }
-        _galleryPosts.value = gallery.distinctBy { it.id }.sortedByDescending { it.created_at }
+        _galleryPosts.value = Nip71.onlyLatestAddressableVideoRevisions(gallery.distinctBy { it.id })
+            .sortedByDescending { it.created_at }
     }
 
     /**

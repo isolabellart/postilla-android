@@ -127,5 +127,29 @@ object Nip71 {
 
     fun isAddressableVideo(event: NostrEvent): Boolean = isAddressableVideoKind(event.kind)
 
+    /**
+     * Keep only the NIP-01 newest revision for each addressable video coordinate.
+     * Old revisions may still be present in local history or arrive late from another
+     * relay; they must not render as separate videos after an edit.
+     */
+    fun onlyLatestAddressableVideoRevisions(events: List<NostrEvent>): List<NostrEvent> {
+        val latestByCoordinate = HashMap<String, NostrEvent>()
+        for (event in events) {
+            if (!isAddressableVideo(event)) continue
+            val dTag = getDTag(event)?.takeIf { it.isNotBlank() } ?: continue
+            val coordinate = event.pubkey + ":" + event.kind + ":" + dTag
+            val current = latestByCoordinate[coordinate]
+            if (current == null || Nip01EventOrder.isNewer(event, current)) {
+                latestByCoordinate[coordinate] = event
+            }
+        }
+        return events.filter { event ->
+            if (!isAddressableVideo(event)) return@filter true
+            val dTag = getDTag(event)?.takeIf { it.isNotBlank() } ?: return@filter true
+            val coordinate = event.pubkey + ":" + event.kind + ":" + dTag
+            latestByCoordinate[coordinate]?.id == event.id
+        }
+    }
+
     fun isVideo(event: NostrEvent): Boolean = isVideoKind(event.kind)
 }

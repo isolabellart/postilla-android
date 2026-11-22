@@ -1,5 +1,7 @@
 package com.darkwisp.app.viewmodel
 
+import com.darkwisp.app.nostr.Nip71
+
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -397,12 +399,15 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         val (type, main, replyAndRelay) = sources
         val (replies, relay) = replyAndRelay
         if (switching) emptyList()
-        else when (type) {
-            FeedType.RELAY, FeedType.TRENDING -> relay
-            // Conversations contains replies/comments only; unrelated content
-            // filters are hidden in this mode and must not transform the list.
-            FeedType.WITH_REPLIES -> replies
-            else -> main
+        else {
+            val selected = when (type) {
+                FeedType.RELAY, FeedType.TRENDING -> relay
+                // Conversations contains replies/comments only; unrelated content
+                // filters are hidden in this mode and must not transform the list.
+                FeedType.WITH_REPLIES -> replies
+                else -> main
+            }
+            Nip71.onlyLatestAddressableVideoRevisions(selected)
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
