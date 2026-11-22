@@ -1065,4 +1065,51 @@
     <string name="default_search_relays_added">%1$d Standard-Such-Relays hinzugefügt.</string>
     <string name="default_search_relays_already_present">Alle Standard-Such-Relays sind bereits vorhanden.</string>
     <string name="search_no_results_relay_hint">Einige Relays unterstützen keine Volltextsuche. Öffne die Relay-Einstellungen, wähle „Suche“ und füge die Standard-Such-Relays hinzu, um die Abdeckung zu verbessern.</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="profile_tab_gallery">Galerie</string>
+    <string name="profile_tab_groups">Chaträume</string>
+    <string name="profile_sort_popular">Beliebt</string>
+    <string name="profile_sort_hot">Aktuell</string>
+    <string name="profile_sort_rising">Steigend</string>
+    <string name="profile_no_gallery">Noch keine Galerie-Beiträge</string>
+    <string name="profile_no_groups">Keine Chaträume</string>
+    <string name="profile_pay">Bezahlen</string>
+    <string name="profile_pay_zap">Profil-Zap</string>
+    <string name="profile_pay_offer">CLINK-Angebot bezahlen</string>
+    <string name="title_join_rejected">Beitritt zum Chatraum abgelehnt</string>
+    <string name="msg_join_rejected_body">Das Relay hat deine Beitrittsanfrage abgelehnt. Dieser Raum ist möglicherweise nur auf Einladung zugänglich. Bitte einen Administrator um einen Einladungslink mit Code.</string>
+    <string name="action_discover_groups">Chaträume entdecken</string>
+    <string name="title_discover_groups">Chaträume entdecken</string>
+    <string name="label_notifications">Benachrichtigungen</string>
+    <string name="label_notifications_on">Ein — neue Nachrichten werden erfasst</string>
+    <string name="label_notifications_off">Aus — zum Aktivieren tippen</string>
+    <string name="group_flag_private_label">Privat</string>
+    <string name="group_flag_private_desc">Nur Mitglieder können Nachrichten lesen</string>
+    <string name="group_flag_closed_label">Geschlossen</string>
+    <string name="group_flag_closed_desc">Nur eingeladene Personen können beitreten</string>
+    <string name="group_flag_restricted_label">Eingeschränkt</string>
+    <string name="group_flag_restricted_desc">Nur Mitglieder können Beiträge veröffentlichen</string>
+    <string name="group_flag_hidden_label">Versteckt</string>
+    <string name="group_flag_hidden_desc">Gruppeninformationen sind für Nichtmitglieder verborgen</string>
+    <string name="group_flag_public_label">Öffentlich</string>
+    <string name="group_flag_public_desc">Jeder kann Nachrichten lesen</string>
+    <string name="group_flag_open_label">Offen</string>
+    <string name="group_flag_open_desc">Jeder kann beitreten</string>
+    <string name="group_flag_unrestricted_label">Uneingeschränkt</string>
+    <string name="group_flag_unrestricted_desc">Jeder kann Beiträge veröffentlichen</string>
+    <string name="group_flag_visible_label">Sichtbar</string>
+    <string name="group_flag_visible_desc">Gruppeninformationen können von allen gefunden werden</string>
+    <string name="section_room_access">Zugriff und Sichtbarkeit</string>
+    <string name="section_invite_codes">Einladungscodes</string>
+    <string name="action_generate_invite">Einladungscode erstellen</string>
+    <string name="label_latest_invite_code">Neuester Einladungscode</string>
+    <string name="action_copy">Kopieren</string>
+    <string name="action_copy_code">Code kopieren</string>
+    <string name="action_copy_invite_link">Einladungslink kopieren</string>
+    <string name="title_assign_role">Rolle zuweisen</string>
+    <string name="label_roles">Rollen (durch Kommas getrennt)</string>
+    <string name="msg_assign_role">Lege Rollen für %s fest. Lass das Feld leer, um den Administratorstatus zu widerrufen.</string>
+    <string name="cd_assign_role">Rolle zuweisen</string>
 </resources>

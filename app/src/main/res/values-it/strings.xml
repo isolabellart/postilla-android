@@ -1230,4 +1230,50 @@
     <string name="thread_tap_to_show">Mostra</string>
     <string name="thread_tap_to_hide">Nascondi</string>
     <string name="thread_not_spam">Non è spam</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="error_no_messages">Ancora nessun messaggio</string>
+    <string name="error_send_message_hint">Invia un messaggio dal profilo di qualcuno</string>
+    <string name="profile_tab_gallery">Galleria</string>
+    <string name="profile_tab_groups">Stanze chat</string>
+    <string name="profile_no_gallery">Nessun post nella galleria</string>
+    <string name="profile_no_groups">Nessuna stanza chat</string>
+    <string name="profile_pay">Paga</string>
+    <string name="profile_pay_zap">Zap del profilo</string>
+    <string name="profile_pay_offer">Paga offerta CLINK</string>
+    <string name="title_join_rejected">Impossibile entrare nella stanza chat</string>
+    <string name="msg_join_rejected_body">Il relay ha rifiutato la richiesta di accesso. La stanza potrebbe essere solo su invito: chiedi a un amministratore un link con codice.</string>
+    <string name="action_discover_groups">Scopri stanze chat</string>
+    <string name="title_discover_groups">Scopri stanze chat</string>
+    <string name="label_notifications">Notifiche</string>
+    <string name="label_notifications_on">Attive — i nuovi messaggi verranno registrati</string>
+    <string name="label_notifications_off">Disattivate — tocca per attivare</string>
+    <string name="group_flag_private_label">Privato</string>
+    <string name="group_flag_private_desc">Solo i membri possono leggere i messaggi</string>
+    <string name="group_flag_closed_label">Chiuso</string>
+    <string name="group_flag_closed_desc">Solo gli invitati possono entrare</string>
+    <string name="group_flag_restricted_label">Limitato</string>
+    <string name="group_flag_restricted_desc">Solo i membri possono pubblicare</string>
+    <string name="group_flag_hidden_label">Nascosto</string>
+    <string name="group_flag_hidden_desc">Le informazioni del gruppo sono nascoste ai non membri</string>
+    <string name="group_flag_public_label">Pubblico</string>
+    <string name="group_flag_public_desc">Chiunque può leggere i messaggi</string>
+    <string name="group_flag_open_label">Aperto</string>
+    <string name="group_flag_open_desc">Chiunque può entrare</string>
+    <string name="group_flag_unrestricted_label">Senza restrizioni</string>
+    <string name="group_flag_unrestricted_desc">Chiunque può pubblicare</string>
+    <string name="group_flag_visible_label">Visibile</string>
+    <string name="group_flag_visible_desc">Le informazioni del gruppo sono visibili a tutti</string>
+    <string name="section_room_access">Accesso e visibilità</string>
+    <string name="section_invite_codes">Codici invito</string>
+    <string name="action_generate_invite">Genera codice invito</string>
+    <string name="label_latest_invite_code">Ultimo codice invito</string>
+    <string name="action_copy">Copia</string>
+    <string name="action_copy_code">Copia codice</string>
+    <string name="action_copy_invite_link">Copia link invito</string>
+    <string name="title_assign_role">Assegna ruolo</string>
+    <string name="label_roles">Ruoli (separati da virgole)</string>
+    <string name="msg_assign_role">Imposta i ruoli per %s. Lascia vuoto per revocare lo stato di amministratore.</string>
+    <string name="cd_assign_role">Assegna ruolo</string>
 </resources>

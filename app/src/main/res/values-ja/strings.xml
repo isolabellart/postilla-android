@@ -1064,4 +1064,51 @@
     <string name="default_search_relays_added">既定の検索リレーを %1$d 件追加しました。</string>
     <string name="default_search_relays_already_present">既定の検索リレーはすべて追加済みです。</string>
     <string name="search_no_results_relay_hint">全文検索に対応していないリレーもあります。リレー設定を開き、「検索」を選択して既定の検索リレーを追加すると、検索範囲を広げられます。</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="profile_tab_gallery">ギャラリー</string>
+    <string name="profile_tab_groups">チャットルーム</string>
+    <string name="profile_sort_popular">人気</string>
+    <string name="profile_sort_hot">話題</string>
+    <string name="profile_sort_rising">上昇中</string>
+    <string name="profile_no_gallery">ギャラリー投稿はまだありません</string>
+    <string name="profile_no_groups">チャットルームはありません</string>
+    <string name="profile_pay">支払う</string>
+    <string name="profile_pay_zap">プロフィール Zap</string>
+    <string name="profile_pay_offer">CLINK オファーを支払う</string>
+    <string name="title_join_rejected">チャットルームに参加できませんでした</string>
+    <string name="msg_join_rejected_body">リレーが参加リクエストを拒否しました。このルームは招待制の可能性があります。管理者にコード付き招待リンクを依頼してください。</string>
+    <string name="action_discover_groups">チャットルームを探す</string>
+    <string name="title_discover_groups">チャットルームを探す</string>
+    <string name="label_notifications">通知</string>
+    <string name="label_notifications_on">オン — 新しいメッセージが追跡されます</string>
+    <string name="label_notifications_off">オフ — タップして有効化</string>
+    <string name="group_flag_private_label">プライベート</string>
+    <string name="group_flag_private_desc">メンバーのみメッセージを読めます</string>
+    <string name="group_flag_closed_label">閉鎖</string>
+    <string name="group_flag_closed_desc">招待されたユーザーのみ参加できます</string>
+    <string name="group_flag_restricted_label">制限付き</string>
+    <string name="group_flag_restricted_desc">メンバーのみ投稿できます</string>
+    <string name="group_flag_hidden_label">非表示</string>
+    <string name="group_flag_hidden_desc">グループ情報はメンバー以外には表示されません</string>
+    <string name="group_flag_public_label">公開</string>
+    <string name="group_flag_public_desc">誰でもメッセージを読めます</string>
+    <string name="group_flag_open_label">オープン</string>
+    <string name="group_flag_open_desc">誰でも参加できます</string>
+    <string name="group_flag_unrestricted_label">制限なし</string>
+    <string name="group_flag_unrestricted_desc">誰でも投稿できます</string>
+    <string name="group_flag_visible_label">公開表示</string>
+    <string name="group_flag_visible_desc">グループ情報は誰でも見つけられます</string>
+    <string name="section_room_access">アクセスと公開範囲</string>
+    <string name="section_invite_codes">招待コード</string>
+    <string name="action_generate_invite">招待コードを作成</string>
+    <string name="label_latest_invite_code">最新の招待コード</string>
+    <string name="action_copy">コピー</string>
+    <string name="action_copy_code">コードをコピー</string>
+    <string name="action_copy_invite_link">招待リンクをコピー</string>
+    <string name="title_assign_role">ロールを割り当て</string>
+    <string name="label_roles">ロール（カンマ区切り）</string>
+    <string name="msg_assign_role">%s のロールを設定します。空欄にすると管理者権限を取り消します。</string>
+    <string name="cd_assign_role">ロールを割り当て</string>
 </resources>

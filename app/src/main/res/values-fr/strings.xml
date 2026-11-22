@@ -1065,4 +1065,51 @@
     <string name="default_search_relays_added">%1$d relais de recherche par défaut ajoutés.</string>
     <string name="default_search_relays_already_present">Tous les relais de recherche par défaut sont déjà présents.</string>
     <string name="search_no_results_relay_hint">Certains relais ne prennent pas en charge la recherche en texte intégral. Ouvrez les paramètres des relais, choisissez « Recherche » et ajoutez les relais par défaut pour améliorer la couverture.</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="profile_tab_gallery">Galerie</string>
+    <string name="profile_tab_groups">Salons de discussion</string>
+    <string name="profile_sort_popular">Populaire</string>
+    <string name="profile_sort_hot">Tendance</string>
+    <string name="profile_sort_rising">En hausse</string>
+    <string name="profile_no_gallery">Aucune publication dans la galerie pour le moment</string>
+    <string name="profile_no_groups">Aucun salon de discussion</string>
+    <string name="profile_pay">Payer</string>
+    <string name="profile_pay_zap">Zap du profil</string>
+    <string name="profile_pay_offer">Payer l\'offre CLINK</string>
+    <string name="title_join_rejected">Impossible de rejoindre le salon</string>
+    <string name="msg_join_rejected_body">Le relais a refusé votre demande. Ce salon est peut-être sur invitation ; demandez à un administrateur un lien d\'invitation avec un code.</string>
+    <string name="action_discover_groups">Découvrir des salons</string>
+    <string name="title_discover_groups">Découvrir des salons de discussion</string>
+    <string name="label_notifications">Notifications</string>
+    <string name="label_notifications_on">Activées — les nouveaux messages seront suivis</string>
+    <string name="label_notifications_off">Désactivées — touchez pour activer</string>
+    <string name="group_flag_private_label">Privé</string>
+    <string name="group_flag_private_desc">Seuls les membres peuvent lire les messages</string>
+    <string name="group_flag_closed_label">Fermé</string>
+    <string name="group_flag_closed_desc">Seules les personnes invitées peuvent rejoindre le salon</string>
+    <string name="group_flag_restricted_label">Restreint</string>
+    <string name="group_flag_restricted_desc">Seuls les membres peuvent publier</string>
+    <string name="group_flag_hidden_label">Masqué</string>
+    <string name="group_flag_hidden_desc">Les informations du groupe sont masquées pour les non-membres</string>
+    <string name="group_flag_public_label">Public</string>
+    <string name="group_flag_public_desc">Tout le monde peut lire les messages</string>
+    <string name="group_flag_open_label">Ouvert</string>
+    <string name="group_flag_open_desc">Tout le monde peut rejoindre le salon</string>
+    <string name="group_flag_unrestricted_label">Sans restriction</string>
+    <string name="group_flag_unrestricted_desc">Tout le monde peut publier</string>
+    <string name="group_flag_visible_label">Visible</string>
+    <string name="group_flag_visible_desc">Les informations du groupe peuvent être trouvées par tout le monde</string>
+    <string name="section_room_access">Accès et visibilité</string>
+    <string name="section_invite_codes">Codes d\'invitation</string>
+    <string name="action_generate_invite">Générer un code d\'invitation</string>
+    <string name="label_latest_invite_code">Dernier code d\'invitation</string>
+    <string name="action_copy">Copier</string>
+    <string name="action_copy_code">Copier le code</string>
+    <string name="action_copy_invite_link">Copier le lien d\'invitation</string>
+    <string name="title_assign_role">Attribuer un rôle</string>
+    <string name="label_roles">Rôles (séparés par des virgules)</string>
+    <string name="msg_assign_role">Définissez les rôles de %s. Laissez vide pour retirer les droits d\'administration.</string>
+    <string name="cd_assign_role">Attribuer un rôle</string>
 </resources>
