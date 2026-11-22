@@ -1445,4 +1445,6 @@
     <string name="postilla_profile_sats_sent">已发送 %1$d sats</string>
 
     <string name="postilla_notif_24h"> · 24 小时</string>
+    <string name="postilla_not_available">不可用</string>
+    <string name="postilla_video_open_failed">无法打开视频。</string>
 </resources>
