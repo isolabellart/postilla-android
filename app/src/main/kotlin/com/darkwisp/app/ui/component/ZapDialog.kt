@@ -514,6 +514,15 @@ fun ZapDialog(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            if (forcePrivate && !canPrivateZap) {
+                Text(
+                    stringResource(R.string.zap_private_not_available),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                )
+            }
+
             // ── 6. Privacy dropdown ─────────────────────────────────
             if (!forcePrivate) {
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -735,7 +744,7 @@ fun ZapDialog(
                             onZap(effectiveAmount * 1000, effectiveMessage.ifEmpty { message }, isAnonymous, isPrivate)
                         }
                     },
-                    enabled = effectiveAmount > 0 && !overHardCap,
+                    enabled = effectiveAmount > 0 && !overHardCap && (!forcePrivate || canPrivateZap),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),

@@ -1037,6 +1037,7 @@
     <string name="article_copy_link">Copia link Nostr</string>
     <string name="article_share">Condividi</string>
     <string name="article_copy_text">Copia testo articolo</string>
+    <string name="zap_private_not_available">Zap privato non disponibile: serve una chiave locale e devono essere configurati i relay DM NIP-51 di entrambi i partecipanti.</string>
     <string name="article_address_copied">Indirizzo articolo copiato</string>
     <string name="article_publish_unconfirmed">Nessun relay ha confermato l\'articolo. Il testo è ancora qui: riprova.</string>
     <string name="article_not_signed_in">Accedi per pubblicare un articolo.</string>

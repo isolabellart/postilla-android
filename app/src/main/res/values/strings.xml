@@ -1207,6 +1207,7 @@
     <string name="article_copy_link">Copy Nostr link</string>
     <string name="article_share">Share</string>
     <string name="article_copy_text">Copy article text</string>
+    <string name="zap_private_not_available">Private zap unavailable: this account needs a local signing key and both participants must have NIP-51 DM relays configured.</string>
     <string name="article_address_copied">Article address copied</string>
     <string name="article_publish_unconfirmed">No relay confirmed the article. Your text is still here; try again.</string>
     <string name="article_not_signed_in">Sign in to publish an article.</string>
