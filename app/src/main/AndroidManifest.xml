@@ -34,6 +34,18 @@
         <!-- Allows simpleperf/Perfetto profiling of release builds on user devices -->
         <profileable android:shell="true" />
         <activity
+            android:name=".TextTranslationActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/text_translation_action"
+            android:theme="@style/Theme.Wisp">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"

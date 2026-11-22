@@ -134,7 +134,8 @@ fun DmConversationScreen(
     unicodeEmojis: List<String> = emptyList(),
     onOpenEmojiLibrary: (() -> Unit)? = null,
     onEmojiUsed: ((String) -> Unit)? = null,
-    fetchPaymentTargets: (suspend (String) -> List<com.darkwisp.app.nostr.NipA3.PaymentTarget>)? = null
+    fetchPaymentTargets: (suspend (String) -> List<com.darkwisp.app.nostr.NipA3.PaymentTarget>)? = null,
+    ensureRecipientDmRelays: suspend (String) -> Boolean = { false }
 ) {
     val messages by viewModel.messages.collectAsState()
     val messageText by viewModel.messageText.collectAsState()
@@ -154,6 +155,15 @@ fun DmConversationScreen(
     var showRelayInfo by remember { mutableStateOf(false) }
     var debugMessage by remember { mutableStateOf<DmMessage?>(null) }
     var zapTargetMessage by remember { mutableStateOf<DmMessage?>(null) }
+    var canPrivateZap by remember { mutableStateOf(false) }
+    LaunchedEffect(zapTargetMessage?.senderPubkey, isLegacyDm) {
+        val recipient = zapTargetMessage?.senderPubkey
+        canPrivateZap = false
+        if (isLegacyDm && !recipient.isNullOrBlank()) {
+            ensureRecipientDmRelays(recipient)
+            canPrivateZap = viewModel.canSendPrivateZap(relayPool)
+        }
+    }
     var zapPendingSats by remember { mutableLongStateOf(0L) }
     var lastZappedMessage by remember { mutableStateOf<DmMessage?>(null) }
     val zapSatsMap = remember { mutableStateMapOf<String, Long>() }
@@ -695,7 +705,7 @@ fun DmConversationScreen(
                 onGoToWallet()
             },
             zapPrefsRepo = zapPrefs,
-            canPrivateZap = isLegacyDm && viewModel.canSendPrivateZap(relayPool),
+            canPrivateZap = canPrivateZap,
             recipientPubkey = zapTargetMessage?.senderPubkey,
             recipientHasLud16 = zapTargetMessage?.senderPubkey
                 ?.let { pk -> eventRepo?.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() } } ?: true,

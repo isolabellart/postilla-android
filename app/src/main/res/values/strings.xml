@@ -1207,7 +1207,7 @@
     <string name="article_copy_link">Copy Nostr link</string>
     <string name="article_share">Share</string>
     <string name="article_copy_text">Copy article text</string>
-    <string name="zap_private_not_available">Private zap unavailable: this account needs a local signing key and both participants must have NIP-51 DM relays configured.</string>
+    <string name="zap_private_not_available">Private Zap requires a local signing key and a NIP-17 DM relay list (kind 10050) published by both participants. Postilla will not send it publicly as a fallback.</string>
     <string name="article_address_copied">Article address copied</string>
     <string name="article_publish_unconfirmed">No relay confirmed the article. Your text is still here; try again.</string>
     <string name="article_not_signed_in">Sign in to publish an article.</string>
@@ -1237,4 +1237,18 @@
     <string name="dm_hide_hidden">Hide hidden chats</string>
     <string name="dm_hide_selected">Hide</string>
     <string name="dm_restore_selected">Restore</string>
+
+    <string name="text_translation_action">Translate with DeepL</string>
+    <string name="text_translation_title">DeepL translation</string>
+    <string name="text_translation_loading">Translating selected text…</string>
+    <string name="text_translation_preparing">Preparing translation…</string>
+    <string name="text_translation_original">Original text</string>
+    <string name="text_translation_result">Translation</string>
+    <string name="text_translation_replace">Replace selection</string>
+    <string name="text_translation_copied">Translation copied</string>
+    <string name="text_translation_failed">Translation failed</string>
+    <string name="text_translation_same_language">The selected text is already in the target language.</string>
+    <string name="curation_empty_entries">This collection has no readable entries.</string>
+    <string name="addressable_event_details">Addressable event details</string>
+    <string name="emoji_pack_items_count">%1$d emojis</string>
 </resources>

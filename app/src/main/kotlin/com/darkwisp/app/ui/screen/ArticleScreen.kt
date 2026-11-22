@@ -68,6 +68,7 @@ import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
@@ -467,6 +468,16 @@ fun ArticleScreen(
                                     }
                                 }
                             }
+                            if (curation.entries.isEmpty()) {
+                                item(key = "curation-empty") {
+                                    Text(
+                                        stringResource(R.string.curation_empty_entries),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                    )
+                                }
+                            }
                             items(curation.entries, key = { entry ->
                                 entry.eventId ?: (entry.kind.toString() + ":" + entry.author + ":" + entry.dTag)
                             }) { entry ->
@@ -487,6 +498,53 @@ fun ArticleScreen(
                                     noteActions = noteActions,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                                 )
+                            }
+                        }
+                    }
+
+                    val emojiPack = article?.takeIf { it.kind == 30030 }?.let(Nip30::parseEmojiSet)
+                    if (emojiPack != null) {
+                        item(key = "emoji-pack-content") {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Text(emojiPack.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    stringResource(R.string.emoji_pack_items_count, emojiPack.emojis.size),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(top = 10.dp)
+                                ) {
+                                    emojiPack.emojis.forEach { emoji ->
+                                        AsyncImage(
+                                            model = emoji.url,
+                                            contentDescription = emoji.shortcode,
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (
+                        article != null &&
+                        article.kind !in setOf(30023, CustomNip.KIND, Nip51.KIND_CURATION_SET, 30030, 30311) &&
+                        article.content.isBlank()
+                    ) {
+                        item(key = "addressable-event-details") {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Text(stringResource(R.string.addressable_event_details), style = MaterialTheme.typography.titleSmall)
+                                article.tags.filter { it.size >= 2 }.forEach { tag ->
+                                    Text(
+                                        tag[0] + ": " + tag.drop(1).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -679,12 +737,12 @@ fun ArticleScreen(
 @Composable
 private fun ArticleHeading(block: MdBlock.Heading, emojiMap: Map<String, String>) {
     val style = when (block.level) {
-        1 -> MaterialTheme.typography.headlineLarge
-        2 -> MaterialTheme.typography.headlineMedium
-        3 -> MaterialTheme.typography.headlineSmall
-        4 -> MaterialTheme.typography.titleLarge
-        5 -> MaterialTheme.typography.titleMedium
-        else -> MaterialTheme.typography.titleSmall
+        1 -> MaterialTheme.typography.headlineLarge.copy(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
+        2 -> MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
+        3 -> MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold)
+        4 -> MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
+        5 -> MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
+        else -> MaterialTheme.typography.titleSmall.copy(fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
     }
     val formatted = formatInlineWithEmoji(block.text, emojiMap)
     Text(

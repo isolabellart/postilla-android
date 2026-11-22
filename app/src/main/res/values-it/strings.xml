@@ -1037,7 +1037,7 @@
     <string name="article_copy_link">Copia link Nostr</string>
     <string name="article_share">Condividi</string>
     <string name="article_copy_text">Copia testo articolo</string>
-    <string name="zap_private_not_available">Zap privato non disponibile: serve una chiave locale e devono essere configurati i relay DM NIP-51 di entrambi i partecipanti.</string>
+    <string name="zap_private_not_available">Lo Zap privato richiede una chiave locale e la lista relay DM NIP-17 (kind 10050) pubblicata da entrambi i partecipanti. Postilla non lo invierà come Zap pubblico di ripiego.</string>
     <string name="article_address_copied">Indirizzo articolo copiato</string>
     <string name="article_publish_unconfirmed">Nessun relay ha confermato l\'articolo. Il testo è ancora qui: riprova.</string>
     <string name="article_not_signed_in">Accedi per pubblicare un articolo.</string>
@@ -1067,4 +1067,18 @@
     <string name="dm_hide_hidden">Nascondi chat nascoste</string>
     <string name="dm_hide_selected">Nascondi</string>
     <string name="dm_restore_selected">Ripristina</string>
+
+    <string name="text_translation_action">Traduci con DeepL</string>
+    <string name="text_translation_title">Traduzione DeepL</string>
+    <string name="text_translation_loading">Traduzione del testo selezionato in corso…</string>
+    <string name="text_translation_preparing">Preparazione della traduzione…</string>
+    <string name="text_translation_original">Testo originale</string>
+    <string name="text_translation_result">Traduzione</string>
+    <string name="text_translation_replace">Sostituisci selezione</string>
+    <string name="text_translation_copied">Traduzione copiata</string>
+    <string name="text_translation_failed">Traduzione non riuscita</string>
+    <string name="text_translation_same_language">Il testo selezionato è già nella lingua di destinazione.</string>
+    <string name="curation_empty_entries">Questa raccolta non contiene elementi leggibili.</string>
+    <string name="addressable_event_details">Dettagli dell'evento addressable</string>
+    <string name="emoji_pack_items_count">%1$d emoji</string>
 </resources>

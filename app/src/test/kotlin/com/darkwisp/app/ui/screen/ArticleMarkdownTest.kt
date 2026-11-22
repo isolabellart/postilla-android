@@ -61,6 +61,14 @@ class ArticleMarkdownTest {
     }
 
     @Test
+    fun previewParserPreservesAllSixHeadingLevels() {
+        val titles = listOf("One", "Two", "Three", "Four", "Five", "Six")
+        val markdown = titles.mapIndexed { index, title -> "#".repeat(index + 1) + " " + title }.joinToString("\\n")
+        val expected = titles.mapIndexed { index, title -> ArticleMarkdownBlock.Heading(index + 1, title) }
+        assertEquals(expected, parseArticleMarkdown(markdown))
+    }
+
+    @Test
     fun tableAndTaskListAreParsedForPreview() {
         val blocks = parseArticleMarkdown("| Name | Value |\n| --- | --- |\n| A | B |\n- [x] done\n- [ ] next")
         assertEquals(3, blocks.size)

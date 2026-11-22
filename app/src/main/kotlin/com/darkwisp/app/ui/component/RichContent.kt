@@ -1132,7 +1132,8 @@ fun RichContent(
                                         onProfileClick = onProfileClick,
                                         onAddEmojiSet = noteActions?.onAddEmojiSet,
                                         onRemoveEmojiSet = noteActions?.onRemoveEmojiSet,
-                                        isEmojiSetAdded = noteActions?.isEmojiSetAdded
+                                        isEmojiSetAdded = noteActions?.isEmojiSetAdded,
+                                        onAddressClick = noteActions?.onArticleClick
                                     )
                                 } else {
                                     UnsupportedKindBadge(kind = kind, style = style)
@@ -2165,7 +2166,8 @@ private fun EmojiPackCard(
     onProfileClick: ((String) -> Unit)?,
     onAddEmojiSet: ((String, String) -> Unit)?,
     onRemoveEmojiSet: ((String, String) -> Unit)?,
-    isEmojiSetAdded: ((String, String) -> Boolean)?
+    isEmojiSetAdded: ((String, String) -> Boolean)?,
+    onAddressClick: ((Int, String, String) -> Unit)? = null
 ) {
     val event = rememberAddressableEvent(eventRepo, 30030, author, dTag)
     val profile = rememberProfile(eventRepo, author)
@@ -2190,6 +2192,11 @@ private fun EmojiPackCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
+            .then(
+                if (onAddressClick != null) {
+                    Modifier.clickable { onAddressClick(30030, author, dTag) }
+                } else Modifier
+            )
     ) {
         if (emojiSet == null) {
             Row(

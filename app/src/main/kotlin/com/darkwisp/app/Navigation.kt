@@ -2188,6 +2188,7 @@ fun WispNavHost(
                 protocol = protocol,
                 socialActionManager = feedViewModel.socialActions,
                 fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                ensureRecipientDmRelays = feedViewModel::fetchDmRelaysIfMissing,
                 isWalletConnected = feedViewModel.activeWalletProvider.hasConnection(),
                 onGoToWallet = { navController.navigate(Routes.WALLET) },
                 zapPrefs = feedViewModel.zapPrefs,
@@ -2196,6 +2197,16 @@ fun WispNavHost(
                         nip05Repo = feedViewModel.nip05Repo,
                         onMarketplaceListingClick = { event ->
                             navController.navigate(marketplaceAddressRoute(event))
+                        },
+                        onArticleClick = { kind, author, dTag ->
+                            navController.navigate("article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}")
+                        },
+                        onLiveStreamClick = { hostPubkey, dTag, relayHint ->
+                            val route = buildString {
+                                append("live_stream/$hostPubkey/${android.net.Uri.encode(dTag)}")
+                                if (relayHint != null) append("?relayHint=${android.net.Uri.encode(relayHint)}")
+                            }
+                            navController.navigate(route)
                         },
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
