@@ -1422,4 +1422,24 @@
     <string name="postilla_compose_remove_image">Eliminar imagen</string>
     <string name="postilla_compose_next">Siguiente</string>
     <string name="postilla_compose_preview">Vista previa</string>
+
+
+    <!-- Additional localization for profile, notification, group and video UI -->
+    <string name="postilla_video">Vídeo</string>
+    <string name="postilla_followers_network">Seguidores en tu red</string>
+    <string name="postilla_network_others">+%1$d más en tu red</string>
+    <string name="postilla_notif_quoted">Citado</string>
+    <string name="postilla_notif_dm">Mensaje directo</string>
+    <string name="postilla_notif_dm_reaction">Reacción a DM</string>
+    <string name="postilla_notif_more">+%1$d más</string>
+    <string name="postilla_notif_voted">Votó: %1$s</string>
+    <string name="postilla_dm_mining">Minando…</string>
+    <string name="postilla_group_online_count">En línea: %1$d</string>
+    <string name="postilla_group_member_count">Miembros: %1$d</string>
+    <string name="postilla_debug_id">ID</string>
+    <string name="postilla_debug_json">JSON</string>
+    <string name="postilla_debug_text">Texto</string>
+    <string name="postilla_video_edit_unavailable">Solo el autor puede editar este vídeo.</string>
+    <string name="postilla_video_invalid_language">Introduce un código de idioma válido de dos letras.</string>
+    <string name="postilla_video_update_failed">No se pudieron guardar los cambios del vídeo.</string>
 </resources>
