@@ -7,6 +7,8 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.widget.TextView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,29 +40,31 @@ internal fun LaTeXFormula(
     // Block formulas use RaTeX's dedicated View so native measurement and re-layout
     // happen after the asynchronous KaTeX-compatible render completes.
     if (displayMode) {
-        AndroidView(
-            factory = { viewContext ->
-                RaTeXView(viewContext).apply {
-                    this.fontSize = fontSizeDp
-                    this.color = colorInt
-                    this.displayMode = true
-                    this.onError = { error ->
+        Box(modifier = modifier, contentAlignment = androidx.compose.ui.Alignment.Center) {
+            AndroidView(
+                factory = { viewContext ->
+                    RaTeXView(viewContext).apply {
+                        this.fontSize = fontSizeDp
+                        this.color = colorInt
+                        this.displayMode = true
+                        this.onError = { error ->
+                            Log.e("PostillaLaTeX", "Unable to render display formula: $formula", error)
+                        }
+                        this.latex = formula
+                    }
+                },
+                modifier = Modifier.wrapContentWidth(),
+                update = { view ->
+                    view.fontSize = fontSizeDp
+                    view.color = colorInt
+                    view.displayMode = true
+                    view.onError = { error ->
                         Log.e("PostillaLaTeX", "Unable to render display formula: $formula", error)
                     }
-                    this.latex = formula
+                    view.latex = formula
                 }
-            },
-            modifier = modifier,
-            update = { view ->
-                view.fontSize = fontSizeDp
-                view.color = colorInt
-                view.displayMode = true
-                view.onError = { error ->
-                    Log.e("PostillaLaTeX", "Unable to render display formula: $formula", error)
-                }
-                view.latex = formula
-            }
-        )
+            )
+        }
         return
     }
 
