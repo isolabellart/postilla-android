@@ -1,5 +1,6 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.R
 import androidx.compose.ui.res.stringResource
 
 import androidx.compose.foundation.layout.WindowInsets
