@@ -1443,4 +1443,6 @@
     <string name="postilla_video_update_failed">无法保存视频更改。</string>
 
     <string name="postilla_profile_sats_sent">已发送 %1$d sats</string>
+
+    <string name="postilla_notif_24h"> · 24 小时</string>
 </resources>
