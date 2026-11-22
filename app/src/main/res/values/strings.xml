@@ -1431,4 +1431,24 @@
     <string name="postilla_compose_remove_image">Remove image</string>
     <string name="postilla_compose_next">Next</string>
     <string name="postilla_compose_preview">Preview</string>
+
+
+    <!-- Additional localization for profile, notification, group and video UI -->
+    <string name="postilla_video">Video</string>
+    <string name="postilla_followers_network">Followers in your network</string>
+    <string name="postilla_network_others">+%1$d others in your network</string>
+    <string name="postilla_notif_quoted">Quoted</string>
+    <string name="postilla_notif_dm">DM</string>
+    <string name="postilla_notif_dm_reaction">DM Reaction</string>
+    <string name="postilla_notif_more">+%1$d more</string>
+    <string name="postilla_notif_voted">voted: %1$s</string>
+    <string name="postilla_dm_mining">Mining…</string>
+    <string name="postilla_group_online_count">Online: %1$d</string>
+    <string name="postilla_group_member_count">Members: %1$d</string>
+    <string name="postilla_debug_id">ID</string>
+    <string name="postilla_debug_json">JSON</string>
+    <string name="postilla_debug_text">Text</string>
+    <string name="postilla_video_edit_unavailable">Only the author can edit this video.</string>
+    <string name="postilla_video_invalid_language">Enter a valid two-letter language code.</string>
+    <string name="postilla_video_update_failed">Unable to save video changes</string>
 </resources>
