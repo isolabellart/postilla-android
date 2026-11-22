@@ -239,6 +239,11 @@ fun ComposeScreen(
     ) { uris ->
         if (uris.isNotEmpty()) viewModel.uploadMedia(uris, context.contentResolver, signer)
     }
+    val replaceVideoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) viewModel.replaceGalleryVideo(uri, context.contentResolver, signer)
+    }
 
     val outputTransformation = remember(profileRepo, resolvedEmojis) {
         MentionOutputTransformation(
@@ -347,6 +352,11 @@ fun ComposeScreen(
                         savedAltUrls = altTexts.keys,
                         isImageUpload = { viewModel.isImageUpload(it) },
                         videoPosterUrl = viewModel::galleryVideoPosterUrl,
+                        onReplaceVideo = {
+                            replaceVideoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            )
+                        },
                         onPreviewVideo = { url ->
                             runCatching {
                                 context.startActivity(android.content.Intent(
@@ -1607,6 +1617,7 @@ private fun GalleryComposeSection(
     savedAltUrls: Set<String>,
     isImageUpload: (String) -> Boolean,
     videoPosterUrl: (String) -> String?,
+    onReplaceVideo: () -> Unit,
     onPreviewVideo: (String) -> Unit,
     onEditAlt: (String) -> Unit,
     onPickMedia: () -> Unit,
@@ -1667,7 +1678,7 @@ private fun GalleryComposeSection(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.compose_gallery_video_count), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 OutlinedButton(
-                    onClick = { onRemoveUrl(url); onPickMedia() },
+                    onClick = onReplaceVideo,
                     enabled = uploadProgress == null && countdownSeconds == null
                 ) { Text(stringResource(R.string.compose_gallery_video_change)) }
             }
