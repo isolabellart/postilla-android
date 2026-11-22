@@ -123,6 +123,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip88
+import com.darkwisp.app.nostr.Nip71
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.EventRepository
@@ -190,6 +191,7 @@ fun ComposeScreen(
     val galleryMode by viewModel.galleryMode.collectAsState()
     val galleryHasVideo by viewModel.galleryHasVideo.collectAsState()
     val galleryVideoTitle by viewModel.galleryVideoTitle.collectAsState()
+    val galleryVideoKind by viewModel.galleryVideoKind.collectAsState()
     // Alt text (NIP-92 imeta) — per-image editor state
     val altTexts by viewModel.altTexts.collectAsState()
     var altEditorUrl by remember { mutableStateOf<String?>(null) }
@@ -362,6 +364,72 @@ fun ComposeScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(8.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.compose_video_publication_title),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = stringResource(R.string.compose_video_publication_classic),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.compose_video_publication_classic_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                FilterChip(
+                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_HORIZONTAL,
+                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_HORIZONTAL) },
+                                    enabled = !publishing && countdownSeconds == null,
+                                    label = { Text(stringResource(R.string.compose_video_type_standard)) }
+                                )
+                                FilterChip(
+                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_VERTICAL,
+                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_VERTICAL) },
+                                    enabled = !publishing && countdownSeconds == null,
+                                    label = { Text(stringResource(R.string.compose_video_type_short)) }
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.compose_video_publication_updatable),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.compose_video_publication_updatable_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                FilterChip(
+                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
+                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL) },
+                                    enabled = !publishing && countdownSeconds == null,
+                                    label = { Text(stringResource(R.string.compose_video_type_standard)) }
+                                )
+                                FilterChip(
+                                    selected = galleryVideoKind == Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL,
+                                    onClick = { viewModel.updateGalleryVideoKind(Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL) },
+                                    enabled = !publishing && countdownSeconds == null,
+                                    label = { Text(stringResource(R.string.compose_video_type_short)) }
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.compose_video_publication_help),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     Spacer(Modifier.height(12.dp))

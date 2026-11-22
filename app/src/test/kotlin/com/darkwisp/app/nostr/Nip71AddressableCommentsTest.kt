@@ -22,6 +22,7 @@ class Nip71AddressableCommentsTest {
         assertTrue(tags.contains(listOf("A", coordinate)))
         assertEquals(coordinate, Nip22.addressableRootCoordinate(comment))
         assertEquals(coordinate, Nip22.getRootScopeId(comment))
+        assertTrue(Nip22.referencesAddressableRoot(comment, coordinate))
         assertTrue(Nip22.referencesRoot(comment, coordinate))
     }
 
@@ -37,6 +38,7 @@ class Nip71AddressableCommentsTest {
         assertTrue(nestedTags.contains(listOf("A", coordinate)))
         assertTrue(nestedTags.contains(listOf("e", parent.id, "", parent.pubkey)))
         assertEquals(coordinate, Nip22.getRootScopeId(nested))
+        assertTrue(Nip22.referencesAddressableRoot(nested, coordinate))
         assertEquals(parent.id, Nip10.getReplyTarget(nested))
     }
 }

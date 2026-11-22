@@ -168,6 +168,17 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
     )
     val galleryVideoTitle: StateFlow<String> = _galleryVideoTitle
 
+    private val _galleryVideoKind = MutableStateFlow(
+        savedStateHandle.get<Int>("gallery_video_kind")?.takeIf(Nip71::isVideoKind) ?: 0
+    )
+    val galleryVideoKind: StateFlow<Int> = _galleryVideoKind
+
+    fun updateGalleryVideoKind(kind: Int) {
+        if (!Nip71.isVideoKind(kind)) return
+        _galleryVideoKind.value = kind
+        savedStateHandle["gallery_video_kind"] = kind
+    }
+
     fun updateGalleryVideoTitle(value: String) {
         val safeValue = value.take(200)
         _galleryVideoTitle.value = safeValue
@@ -387,6 +398,9 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                     )
                     if (_galleryMode.value && mime.startsWith("video/")) {
                         _galleryHasVideo.value = true
+                        if (!Nip71.isVideoKind(_galleryVideoKind.value)) {
+                            updateGalleryVideoKind(Nip71.defaultVideoKind(dims?.first, dims?.second))
+                        }
                     }
                     // In gallery mode, don't insert URLs into the text — they're shown in the pager
                     if (!_galleryMode.value) {
@@ -412,6 +426,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (_uploadedUrls.value.isEmpty()) {
             _galleryHasVideo.value = false
             _galleryVideoTitle.value = ""
+            _galleryVideoKind.value = 0
+            savedStateHandle.remove<Int>("gallery_video_kind")
             savedStateHandle.remove<String>("gallery_video_title")
         }
         if (!_galleryMode.value) {
@@ -801,7 +817,6 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 val meta = _uploadedMediaMeta[videoUrl]
                 val dims = meta?.dimensions
                 val dimStr = dims?.let { "${it.first}x${it.second}" }
-                val isVertical = dims != null && dims.second > dims.first
                 val videoMeta = listOf(Nip71.VideoMeta(
                     url = videoUrl,
                     mimeType = meta?.mimeType,
@@ -814,7 +829,13 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 } else {
                     System.currentTimeMillis() / 1000
                 }
-                val dTag = java.util.UUID.randomUUID().toString()
+                val selectedKind = _galleryVideoKind.value.takeIf(Nip71::isVideoKind)
+                    ?: Nip71.defaultVideoKind(dims?.first, dims?.second)
+                val dTag = if (Nip71.isAddressableVideoKind(selectedKind)) {
+                    java.util.UUID.randomUUID().toString()
+                } else {
+                    null
+                }
                 tags.addAll(Nip71.buildVideoTags(
                     title = title,
                     media = videoMeta,
@@ -822,11 +843,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                     dTag = dTag,
                     publishedAt = publishedAt
                 ))
-                eventKind = if (isVertical) {
-                    Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL
-                } else {
-                    Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
-                }
+                eventKind = selectedKind
             } else {
                 val altTexts = _altTexts.value
                 val imetaEntries = urls.map { url ->
@@ -932,6 +949,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             _uploadedUrls.value = emptyList()
             _galleryHasVideo.value = false
             _galleryVideoTitle.value = ""
+            _galleryVideoKind.value = 0
+            savedStateHandle.remove<Int>("gallery_video_kind")
             savedStateHandle.remove<String>("gallery_video_title")
             _uploadedMediaMeta.clear()
             _altTexts.value = emptyMap()
@@ -975,6 +994,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             _uploadedUrls.value = emptyList()
             _galleryHasVideo.value = false
             _galleryVideoTitle.value = ""
+            _galleryVideoKind.value = 0
+            savedStateHandle.remove<Int>("gallery_video_kind")
             savedStateHandle.remove<String>("gallery_video_title")
             _uploadedMediaMeta.clear()
             _altTexts.value = emptyMap()

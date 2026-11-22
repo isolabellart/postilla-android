@@ -1094,4 +1094,12 @@
     <string name="compose_gallery_video_title">Titolo del video</string>
     <string name="compose_gallery_video_title_hint">Obbligatorio per i video NIP-71.</string>
     <string name="compose_gallery_video_title_required">Inserisci un titolo per il video prima di pubblicarlo.</string>
+    <string name="compose_video_publication_title">Scegli come pubblicare</string>
+    <string name="compose_video_publication_classic">Classica</string>
+    <string name="compose_video_publication_classic_hint">Il post non potrà essere modificato dopo la pubblicazione.</string>
+    <string name="compose_video_publication_updatable">Modificabile</string>
+    <string name="compose_video_publication_updatable_hint">Potrai correggere i dettagli del video anche dopo la pubblicazione.</string>
+    <string name="compose_video_type_standard">Video standard</string>
+    <string name="compose_video_type_short">Video breve</string>
+    <string name="compose_video_publication_help">Viene pubblicato un solo post. Il video può essere orizzontale o verticale con entrambe le modalità.</string>
 </resources>

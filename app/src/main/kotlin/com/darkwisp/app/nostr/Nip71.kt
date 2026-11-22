@@ -6,6 +6,22 @@ object Nip71 {
     const val KIND_VIDEO_ADDRESSABLE_HORIZONTAL = 34235
     const val KIND_VIDEO_ADDRESSABLE_VERTICAL = 34236
 
+    /** All NIP-71 video event kinds supported by Postilla. */
+    val VIDEO_KINDS: List<Int> = listOf(
+        KIND_VIDEO_HORIZONTAL,
+        KIND_VIDEO_VERTICAL,
+        KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
+        KIND_VIDEO_ADDRESSABLE_VERTICAL
+    )
+
+    /** Choose a familiar default from the uploaded video's shape; users can change it. */
+    fun defaultVideoKind(width: Int?, height: Int?): Int =
+        if (width != null && height != null && width > 0 && height > width) {
+            KIND_VIDEO_VERTICAL
+        } else {
+            KIND_VIDEO_HORIZONTAL
+        }
+
     data class VideoMeta(
         val url: String,
         val mimeType: String? = null,
@@ -104,12 +120,7 @@ object Nip71 {
     fun getPublishedAt(event: NostrEvent): Long? =
         event.tags.firstOrNull { it.firstOrNull() == "published_at" && it.size > 1 }?.get(1)?.toLongOrNull()
 
-    fun isVideoKind(kind: Int): Boolean = kind in setOf(
-        KIND_VIDEO_HORIZONTAL,
-        KIND_VIDEO_VERTICAL,
-        KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
-        KIND_VIDEO_ADDRESSABLE_VERTICAL
-    )
+    fun isVideoKind(kind: Int): Boolean = kind in VIDEO_KINDS
 
     fun isAddressableVideoKind(kind: Int): Boolean =
         kind == KIND_VIDEO_ADDRESSABLE_HORIZONTAL || kind == KIND_VIDEO_ADDRESSABLE_VERTICAL

@@ -10,6 +10,7 @@ import com.darkwisp.app.nostr.Nip02
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip71
 import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip65
@@ -173,7 +174,10 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private val SUB_IDS = setOf("userprofile", "userposts", "usergallery", "userfollows", "userrelays", "userpins", "usergroups", "userpaytargets", "followprofiles")
-        private val PROFILE_CACHE_KINDS = setOf(1, 6, 20, 21, 22, 1068, 6969, Nip22.KIND_COMMENT, 30023)
+        private val PROFILE_CACHE_KINDS = setOf(
+            1, 6, 20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL,
+            Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL, 1068, 6969, Nip22.KIND_COMMENT, 30023
+        )
     }
 
     fun loadProfile(
@@ -260,9 +264,22 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
 
         // Request fresh profile, posts, follow list, and relay list
         val profileFilter = Filter(kinds = listOf(0), authors = listOf(pubkey), limit = 1)
-        val postsFilter = Filter(kinds = listOf(1, Nip22.KIND_COMMENT, 5, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(pubkey), limit = 50)
+        val postsFilter = Filter(
+            kinds = listOf(
+                1, Nip22.KIND_COMMENT, 5, 6, 1068, 6969, 30023, 20, 21, 22,
+                Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL
+            ),
+            authors = listOf(pubkey),
+            limit = 50
+        )
         // Gallery posts can be old and curated — fetch separately with no since filter, higher limit
-        val galleryFilter = Filter(kinds = listOf(20, 21, 22), authors = listOf(pubkey), limit = 100)
+        val galleryFilter = Filter(
+            kinds = listOf(
+                20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL
+            ),
+            authors = listOf(pubkey),
+            limit = 100
+        )
         val followFilter = Filter(kinds = listOf(3), authors = listOf(pubkey), limit = 1)
         val relayFilter = Filter(kinds = listOf(10002), authors = listOf(pubkey), limit = 1)
         val pinFilter = Filter(kinds = listOf(10001), authors = listOf(pubkey), limit = 1)
@@ -389,7 +406,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                             addRootNoteToList(current, event)
                             _rootNotes.value = current
                         }
-                        20, 21, 22 -> {
+                        20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL -> {
                             eventRepo.cacheEvent(event)
                             if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
                             // Add to gallery posts
@@ -648,7 +665,7 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
                     if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
                     addRootNoteToList(roots, event)
                 }
-                20, 21, 22 -> {
+                20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL -> {
                     if (event.created_at < oldestNoteTimestamp) oldestNoteTimestamp = event.created_at
                     if (gallery.none { it.id == event.id }) gallery.add(event)
                     if (roots.none { it.id == event.id }) roots.add(event)
@@ -752,7 +769,15 @@ class UserProfileViewModel(app: Application) : AndroidViewModel(app) {
         if (oldestNoteTimestamp == Long.MAX_VALUE) { isLoadingMoreNotes = false; return }
 
         val pool = relayPoolRef ?: run { isLoadingMoreNotes = false; return }
-        val filter = Filter(kinds = listOf(1, 5, 6, 1068, 6969, 30023, 20, 21, 22), authors = listOf(targetPubkey), until = oldestNoteTimestamp - 1, limit = 50)
+        val filter = Filter(
+            kinds = listOf(
+                1, 5, 6, 1068, 6969, 30023, 20, 21, 22,
+                Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL
+            ),
+            authors = listOf(targetPubkey),
+            until = oldestNoteTimestamp - 1,
+            limit = 50
+        )
         val eoseWaiter = startProfileEoseWait(pool, "userposts-more")
         sendProfilePaginationQuery(pool, "userposts-more", filter)
 

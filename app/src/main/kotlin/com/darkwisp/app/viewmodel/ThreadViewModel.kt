@@ -7,6 +7,7 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
 import com.darkwisp.app.nostr.Nip22
+import com.darkwisp.app.nostr.Nip71
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
@@ -162,13 +163,27 @@ class ThreadViewModel : ViewModel() {
         // Resolve root from cached event (we clicked on it, so it's in cache)
         val cached = eventRepo.getEvent(eventId)
         if (cached != null) {
-            val resolvedRoot = Nip10.getRootId(cached) ?: Nip10.getReplyTarget(cached) ?: eventId
+            // NIP-22 replies to addressable videos carry the root coordinate in A/a,
+            // not necessarily the root event ID in an e/E tag.
+            val addressableRoot = Nip22.addressableRootCoordinate(cached)?.let { coordinate ->
+                val parts = coordinate.split(":", limit = 3)
+                val kind = parts.getOrNull(0)?.toIntOrNull()
+                if (parts.size == 3 && kind != null && Nip71.isAddressableVideoKind(kind)) {
+                    eventRepo.findAddressableEvent(kind, parts[1], parts[2])
+                } else {
+                    null
+                }
+            }
+            val resolvedRoot = Nip10.getRootId(cached)
+                ?: addressableRoot?.id
+                ?: Nip10.getReplyTarget(cached)
+                ?: eventId
             rootId = resolvedRoot
             scrollTargetId = if (resolvedRoot != eventId) eventId else null
             threadEvents[cached.id] = cached
 
             if (resolvedRoot != eventId) {
-                val cachedRoot = eventRepo.getEvent(resolvedRoot)
+                val cachedRoot = addressableRoot ?: eventRepo.getEvent(resolvedRoot)
                 if (cachedRoot != null) {
                     _rootEvent.value = cachedRoot
                     threadEvents[cachedRoot.id] = cachedRoot
@@ -220,7 +235,11 @@ class ThreadViewModel : ViewModel() {
                 // Admit NIP-22 comments (kind 1111). Clients increasingly reply with
                 // comments rather than kind 1, so a kind-1-only gate shows those
                 // threads as empty — every reply on some notes is a 1111.
-                if (event.kind != 1 && event.kind != Nip22.KIND_COMMENT) return@collect
+                val isAddressableVideoRoot =
+                    event.id == rootId && Nip71.isAddressableVideoKind(event.kind)
+                if (event.kind != 1 && event.kind != Nip22.KIND_COMMENT && !isAddressableVideoRoot) {
+                    return@collect
+                }
 
                 // Silently drop events the user has already deleted on some other client/session.
                 if (eventRepo.deletedEventsRepo?.isDeleted(event.id) == true) return@collect
@@ -233,7 +252,15 @@ class ThreadViewModel : ViewModel() {
                 // Validate: event must reference the thread root (some relays ignore eTags filter).
                 // NIP-22 replies-to-comments point at the root only via uppercase E
                 // scope — lowercase e names the parent comment — so accept either.
-                if (event.id != rootId && !Nip22.referencesRoot(event, rootId)) {
+                val addressableRoot = _rootEvent.value
+                    ?.takeIf { Nip71.isAddressableVideoKind(it.kind) }
+                    ?.let(Nip22::addressableRootTag)
+                val referencesAddressableVideo = addressableRoot != null &&
+                    Nip22.getAddressableRootTag(event) == addressableRoot
+                if (event.id != rootId &&
+                    !Nip22.referencesRoot(event, rootId) &&
+                    !referencesAddressableVideo
+                ) {
                     return@collect
                 }
 
@@ -289,10 +316,19 @@ class ThreadViewModel : ViewModel() {
             // top-level 1111s); uppercase #E catches nested NIP-22 comment replies
             // whose lowercase e points at the parent comment, not the root.
             // They must be separate filters — one object would AND the conditions.
-            val repliesFilters = listOf(
-                Filter(kinds = listOf(1, 5, Nip22.KIND_COMMENT), eTags = listOf(rootId)),
-                Filter(kinds = listOf(Nip22.KIND_COMMENT), bigETags = listOf(rootId))
-            )
+            val repliesFilters = if (
+                rootEvent != null && Nip71.isAddressableVideoKind(rootEvent.kind)
+            ) {
+                Nip22.addressableRootCommentFilters(
+                    Nip22.addressableRootTag(rootEvent),
+                    rootId
+                ) + Filter(kinds = listOf(5), eTags = listOf(rootId))
+            } else {
+                listOf(
+                    Filter(kinds = listOf(1, 5, Nip22.KIND_COMMENT), eTags = listOf(rootId)),
+                    Filter(kinds = listOf(Nip22.KIND_COMMENT), bigETags = listOf(rootId))
+                )
+            }
             if (rootEvent != null) {
                 outboxRouter.subscribeToUserReadRelays(
                     "thread-replies", rootEvent.pubkey, repliesFilters

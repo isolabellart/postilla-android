@@ -81,6 +81,27 @@ class Nip71Test {
     }
 
     @Test
+    fun selectsLegacyDefaultFromVideoShapeButAllowsAllFourKinds() {
+        assertEquals(Nip71.KIND_VIDEO_HORIZONTAL, Nip71.defaultVideoKind(1920, 1080))
+        assertEquals(Nip71.KIND_VIDEO_VERTICAL, Nip71.defaultVideoKind(1080, 1920))
+        assertEquals(Nip71.KIND_VIDEO_HORIZONTAL, Nip71.defaultVideoKind(null, null))
+        assertEquals(listOf(21, 22, 34235, 34236), Nip71.VIDEO_KINDS)
+    }
+
+    @Test
+    fun legacyVideoBuilderDoesNotAddAddressableIdentifier() {
+        val tags = Nip71.buildVideoTags(
+            title = "A classic video",
+            media = listOf(Nip71.VideoMeta("https://media.example/video.mp4", "video/mp4")),
+            dTag = null,
+            publishedAt = 1_700_000_000L
+        )
+        assertFalse(tags.any { it.firstOrNull() == "d" })
+        assertEquals(listOf("title", "A classic video"), tags.first { it.firstOrNull() == "title" })
+        assertTrue(tags.any { it.firstOrNull() == "imeta" })
+    }
+
+    @Test
     fun detectsBothLegacyAndAddressableVideoKinds() {
         assertTrue(Nip71.isVideo(event(Nip71.KIND_VIDEO_HORIZONTAL, emptyList())))
         assertTrue(Nip71.isVideo(event(Nip71.KIND_VIDEO_VERTICAL, emptyList())))

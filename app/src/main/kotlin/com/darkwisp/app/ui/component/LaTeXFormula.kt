@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.viewinterop.AndroidView
 import io.ratex.RaTeXSpan
+import io.ratex.RaTeXView
 
 @Composable
 internal fun LaTeXFormula(
@@ -31,8 +32,38 @@ internal fun LaTeXFormula(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val fontSizeDp = with(LocalDensity.current) { fontSize.toDp().value }
+    val fontSizeDp = with(LocalDensity.current) { fontSize.toDp().value }.coerceAtLeast(12f)
     val colorInt = formulaColor.toArgb()
+
+    // Block formulas use RaTeX's dedicated View so native measurement and re-layout
+    // happen after the asynchronous KaTeX-compatible render completes.
+    if (displayMode) {
+        AndroidView(
+            factory = { viewContext ->
+                RaTeXView(viewContext).apply {
+                    this.fontSize = fontSizeDp
+                    this.color = colorInt
+                    this.displayMode = true
+                    this.onError = { error ->
+                        Log.e("PostillaLaTeX", "Unable to render display formula: $formula", error)
+                    }
+                    this.latex = formula
+                }
+            },
+            modifier = modifier,
+            update = { view ->
+                view.fontSize = fontSizeDp
+                view.color = colorInt
+                view.displayMode = true
+                view.onError = { error ->
+                    Log.e("PostillaLaTeX", "Unable to render display formula: $formula", error)
+                }
+                view.latex = formula
+            }
+        )
+        return
+    }
+
     var renderedText by remember(formula, displayMode, fontSizeDp, colorInt) {
         mutableStateOf<SpannableStringBuilder?>(null)
     }

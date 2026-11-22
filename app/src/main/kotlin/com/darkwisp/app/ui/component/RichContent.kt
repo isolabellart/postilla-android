@@ -2882,14 +2882,17 @@ internal fun InlineVideoPlayerWithFullscreen(meta: MediaMeta, onFullScreen: (pos
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-    Box(
+        val constrainedRatio = videoAspectRatio.coerceIn(0.3f, 3f)
+        val playerWidth = minOf(maxWidth, 500.dp * constrainedRatio)
+        val playerHeight = playerWidth / constrainedRatio
+        Box(
         modifier = Modifier
-            .heightIn(max = 500.dp)
-            .aspectRatio(videoAspectRatio)
+            .width(playerWidth)
+            .height(playerHeight)
             .clip(RoundedCornerShape(12.dp))
             .onGloballyPositioned { coordinates ->
                 val bounds = coordinates.boundsInWindow()
