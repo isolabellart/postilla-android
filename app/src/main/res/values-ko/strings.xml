@@ -1425,4 +1425,6 @@
     <string name="postilla_compose_preview">미리보기</string>
 
     <string name="postilla_profile_sats_sent">sats %1$d개 전송됨</string>
+
+    <string name="postilla_notif_24h"> · 24시간</string>
 </resources>
