@@ -1406,4 +1406,18 @@
     <string name="postilla_blossom_primary">メイン</string>
     <string name="postilla_blossom_remove">削除</string>
     <string name="postilla_relay_custom_kind">Kind %1$d</string>
+
+
+    <!-- Localized labels for feed, compose and profile controls -->
+    <string name="postilla_feed_no_polls">フィードに投票はまだありません</string>
+    <string name="postilla_feed_no_notes">フィードにノートはまだありません</string>
+    <string name="postilla_feed_no_gallery">フィードにギャラリー投稿はまだありません</string>
+    <string name="postilla_select_list_title">リストを選択</string>
+    <string name="postilla_exit">終了</string>
+    <string name="postilla_new_post">新しい投稿</string>
+    <string name="postilla_change_timeframe">期間を変更</string>
+    <string name="postilla_profile_following">フォロー中</string>
+    <string name="postilla_compose_remove_image">画像を削除</string>
+    <string name="postilla_compose_next">次へ</string>
+    <string name="postilla_compose_preview">プレビュー</string>
 </resources>

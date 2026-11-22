@@ -1407,4 +1407,18 @@
     <string name="postilla_blossom_primary">Primär</string>
     <string name="postilla_blossom_remove">Entfernen</string>
     <string name="postilla_relay_custom_kind">Kind %1$d</string>
+
+
+    <!-- Localized labels for feed, compose and profile controls -->
+    <string name="postilla_feed_no_polls">Noch keine Umfragen in deinem Feed</string>
+    <string name="postilla_feed_no_notes">Noch keine Notizen in deinem Feed</string>
+    <string name="postilla_feed_no_gallery">Noch keine Galerie-Beiträge in deinem Feed</string>
+    <string name="postilla_select_list_title">Liste auswählen</string>
+    <string name="postilla_exit">Beenden</string>
+    <string name="postilla_new_post">Neuer Beitrag</string>
+    <string name="postilla_change_timeframe">Zeitraum ändern</string>
+    <string name="postilla_profile_following">Folge ich</string>
+    <string name="postilla_compose_remove_image">Bild entfernen</string>
+    <string name="postilla_compose_next">Weiter</string>
+    <string name="postilla_compose_preview">Vorschau</string>
 </resources>
