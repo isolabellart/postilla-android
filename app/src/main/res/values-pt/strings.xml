@@ -1408,4 +1408,18 @@
     <string name="postilla_blossom_primary">Principal</string>
     <string name="postilla_blossom_remove">Remover</string>
     <string name="postilla_relay_custom_kind">Kind %1$d</string>
+
+
+    <!-- Localized labels for feed, compose and profile controls -->
+    <string name="postilla_feed_no_polls">Ainda não há sondagens no seu feed</string>
+    <string name="postilla_feed_no_notes">Ainda não há notas no seu feed</string>
+    <string name="postilla_feed_no_gallery">Ainda não há publicações de galeria no seu feed</string>
+    <string name="postilla_select_list_title">Selecionar lista</string>
+    <string name="postilla_exit">Sair</string>
+    <string name="postilla_new_post">Nova publicação</string>
+    <string name="postilla_change_timeframe">Alterar período</string>
+    <string name="postilla_profile_following">A seguir</string>
+    <string name="postilla_compose_remove_image">Remover imagem</string>
+    <string name="postilla_compose_next">Seguinte</string>
+    <string name="postilla_compose_preview">Pré-visualização</string>
 </resources>

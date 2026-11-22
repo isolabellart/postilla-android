@@ -1406,4 +1406,18 @@
     <string name="postilla_blossom_primary">Primair</string>
     <string name="postilla_blossom_remove">Verwijderen</string>
     <string name="postilla_relay_custom_kind">Kind %1$d</string>
+
+
+    <!-- Localized labels for feed, compose and profile controls -->
+    <string name="postilla_feed_no_polls">Nog geen peilingen in je feed</string>
+    <string name="postilla_feed_no_notes">Nog geen notities in je feed</string>
+    <string name="postilla_feed_no_gallery">Nog geen galerijberichten in je feed</string>
+    <string name="postilla_select_list_title">Lijst selecteren</string>
+    <string name="postilla_exit">Afsluiten</string>
+    <string name="postilla_new_post">Nieuw bericht</string>
+    <string name="postilla_change_timeframe">Tijdsperiode wijzigen</string>
+    <string name="postilla_profile_following">Volgend</string>
+    <string name="postilla_compose_remove_image">Afbeelding verwijderen</string>
+    <string name="postilla_compose_next">Volgende</string>
+    <string name="postilla_compose_preview">Voorbeeld</string>
 </resources>

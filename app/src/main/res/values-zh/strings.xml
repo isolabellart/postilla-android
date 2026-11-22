@@ -1407,4 +1407,18 @@
     <string name="postilla_blossom_primary">主要</string>
     <string name="postilla_blossom_remove">移除</string>
     <string name="postilla_relay_custom_kind">Kind %1$d</string>
+
+
+    <!-- Localized labels for feed, compose and profile controls -->
+    <string name="postilla_feed_no_polls">动态中暂无投票</string>
+    <string name="postilla_feed_no_notes">动态中暂无笔记</string>
+    <string name="postilla_feed_no_gallery">动态中暂无图库帖子</string>
+    <string name="postilla_select_list_title">选择列表</string>
+    <string name="postilla_exit">退出</string>
+    <string name="postilla_new_post">新帖子</string>
+    <string name="postilla_change_timeframe">更改时间范围</string>
+    <string name="postilla_profile_following">正在关注</string>
+    <string name="postilla_compose_remove_image">移除图片</string>
+    <string name="postilla_compose_next">下一步</string>
+    <string name="postilla_compose_preview">预览</string>
 </resources>

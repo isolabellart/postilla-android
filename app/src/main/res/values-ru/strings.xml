@@ -1367,4 +1367,18 @@
     <string name="postilla_blossom_primary">Основной</string>
     <string name="postilla_blossom_remove">Удалить</string>
     <string name="postilla_relay_custom_kind">Kind %1$d</string>
+
+
+    <!-- Localized labels for feed, compose and profile controls -->
+    <string name="postilla_feed_no_polls">В ленте пока нет опросов</string>
+    <string name="postilla_feed_no_notes">В ленте пока нет заметок</string>
+    <string name="postilla_feed_no_gallery">В ленте пока нет публикаций галереи</string>
+    <string name="postilla_select_list_title">Выбрать список</string>
+    <string name="postilla_exit">Выйти</string>
+    <string name="postilla_new_post">Новая публикация</string>
+    <string name="postilla_change_timeframe">Изменить период</string>
+    <string name="postilla_profile_following">Подписки</string>
+    <string name="postilla_compose_remove_image">Удалить изображение</string>
+    <string name="postilla_compose_next">Далее</string>
+    <string name="postilla_compose_preview">Предпросмотр</string>
 </resources>
