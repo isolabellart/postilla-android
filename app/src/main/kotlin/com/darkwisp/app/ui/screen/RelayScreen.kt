@@ -257,14 +257,14 @@ fun RelayScreen(
                             url = "wss://auth.nostr1.com",
                             description = stringResource(R.string.relay_recommended_auth_free),
                             isPaid = false,
-                            alreadyAdded = "wss://auth.nostr1.com" in dmRelays,
+                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://auth.nostr1.com", ignoreCase = true) },
                             onAdd = { viewModel.addRecommendedDmRelay("wss://auth.nostr1.com") }
                         )
                         RecommendedDmRelayRow(
                             url = "wss://inbox.azzamo.net",
                             description = stringResource(R.string.relay_recommended_azzamo_dm),
                             isPaid = false,
-                            alreadyAdded = "wss://inbox.azzamo.net" in dmRelays,
+                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.azzamo.net", ignoreCase = true) },
                             onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.azzamo.net") }
                         )
                         OutlinedButton(
@@ -291,14 +291,14 @@ fun RelayScreen(
                             url = "wss://inbox.nostr.wine",
                             description = stringResource(R.string.relay_recommended_paid_description),
                             isPaid = true,
-                            alreadyAdded = "wss://inbox.nostr.wine" in dmRelays,
+                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://inbox.nostr.wine", ignoreCase = true) },
                             onAdd = { viewModel.addRecommendedDmRelay("wss://inbox.nostr.wine") }
                         )
                         RecommendedDmRelayRow(
                             url = "wss://nostr.land",
                             description = stringResource(R.string.relay_recommended_paid_description),
                             isPaid = true,
-                            alreadyAdded = "wss://nostr.land" in dmRelays,
+                            alreadyAdded = dmRelays.any { it.trimEnd('/').equals("wss://nostr.land", ignoreCase = true) },
                             onAdd = { viewModel.addRecommendedDmRelay("wss://nostr.land") }
                         )
                     }
