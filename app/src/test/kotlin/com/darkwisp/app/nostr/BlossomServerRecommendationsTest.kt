@@ -18,5 +18,6 @@ class BlossomServerRecommendationsTest {
         )
         assertTrue(servers.all { it.url.startsWith("https://") })
         assertEquals(servers.size, servers.map { it.url.lowercase().trimEnd('/') }.distinct().size)
+        assertEquals(servers.map { it.url }, Blossom.DEFAULT_SERVERS)
     }
 }
