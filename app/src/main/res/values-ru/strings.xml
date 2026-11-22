@@ -1405,4 +1405,6 @@
     <string name="postilla_profile_sats_sent">Отправлено sats: %1$d</string>
 
     <string name="postilla_notif_24h"> · 24 ч</string>
+    <string name="postilla_not_available">Недоступно</string>
+    <string name="postilla_video_open_failed">Не удалось открыть видео.</string>
 </resources>
