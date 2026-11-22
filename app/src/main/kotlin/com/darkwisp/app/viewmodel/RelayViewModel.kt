@@ -75,7 +75,10 @@ class RelayViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun addRecommendedDmRelay(url: String): Boolean {
-        if (!RelayConfig.isValidUrl(url) || url in dmRelays.value) return false
+        val normalized = url.trimEnd('/').lowercase()
+        if (!RelayConfig.isValidUrl(url) ||
+            dmRelays.value.any { it.trimEnd('/').lowercase() == normalized }
+        ) return false
         keyRepo.saveDmRelays(dmRelays.value + url)
         return true
     }
