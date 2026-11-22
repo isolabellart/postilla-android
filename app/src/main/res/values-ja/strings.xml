@@ -1444,4 +1444,6 @@
     <string name="postilla_profile_sats_sent">%1$d sats を送信しました</string>
 
     <string name="postilla_notif_24h"> · 24 時間</string>
+    <string name="postilla_not_available">利用できません</string>
+    <string name="postilla_video_open_failed">動画を開けませんでした。</string>
 </resources>
