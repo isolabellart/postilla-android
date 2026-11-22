@@ -59,7 +59,6 @@ internal fun formatArticleMarkdownSelection(
         ArticleMarkdownFormat.ITALIC -> "*" to "*"
         ArticleMarkdownFormat.STRIKE -> "~~" to "~~"
         ArticleMarkdownFormat.INLINE_CODE -> 96.toChar().toString() to 96.toChar().toString()
-        ArticleMarkdownFormat.MATH -> "\$" to "\$"
         else -> null
     }
     if (inlineMarkers != null) {
@@ -72,6 +71,13 @@ internal fun formatArticleMarkdownSelection(
         val updated = text.substring(0, start) + opening + closing + text.substring(start)
         val cursor = start + opening.length
         return ArticleMarkdownEdit(updated, cursor, cursor)
+    }
+
+    if (format == ArticleMarkdownFormat.MATH) {
+        val replacement = mathFence + "\n" + selected + "\n" + mathFence
+        val updated = text.replaceRange(start, end, replacement)
+        val cursor = start + mathFence.length + 1
+        return ArticleMarkdownEdit(updated, cursor, if (hasSelection) cursor + selected.length else cursor)
     }
 
     if (format == ArticleMarkdownFormat.FOOTNOTE) {

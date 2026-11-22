@@ -259,7 +259,7 @@ fun ArticleScreen(
                                             if (rawTitle.isNotBlank()) append(rawTitle).append("\n\n")
                                             if (rawDescription.isNotBlank()) append(rawDescription).append("\n\n")
                                             append(shareableArticle.content)
-                                        }.trim()
+                                        }
                                         clipboardManager.setText(AnnotatedString(fullText))
                                         Toast.makeText(context, context.getString(R.string.article_copy_text), Toast.LENGTH_SHORT).show()
                                     }

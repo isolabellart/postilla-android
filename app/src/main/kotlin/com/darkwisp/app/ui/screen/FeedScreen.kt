@@ -972,11 +972,11 @@ fun FeedScreen(
                     onDrafts()
                 },
                 onMediaServers = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onMediaServers()
                 },
                 onSocialGraph = {
-                    scope.launch { drawerState.close() }
+                    closeSettingsDrawerForNavigation()
                     onSocialGraph()
                 },
                 onSafety = {
