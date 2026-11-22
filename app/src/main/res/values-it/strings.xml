@@ -1091,4 +1091,7 @@
     <string name="curation_empty_entries">Questa raccolta non contiene elementi leggibili.</string>
     <string name="postilla_addressable_event_details">Dettagli evento addressable</string>
     <string name="emoji_pack_items_count">%1$d emoji</string>
+    <string name="compose_gallery_video_title">Titolo del video</string>
+    <string name="compose_gallery_video_title_hint">Obbligatorio per i video NIP-71.</string>
+    <string name="compose_gallery_video_title_required">Inserisci un titolo per il video prima di pubblicarlo.</string>
 </resources>
