@@ -277,7 +277,7 @@ fun VideoEditorDialog(
                                         listOf("L", "ISO-639-1"), listOf("l", language, "ISO-639-1")
                                     )
                                     val revised = signer.signEvent(kind = event.kind, content = description, tags = videoTags + languageTags + preservedTags)
-                                    val send = { relayPool.sendToWriteRelays(ClientMessage.event(revised)) }
+                                    val send: suspend () -> Int = { relayPool.sendToWriteRelays(ClientMessage.event(revised)) }
                                     var outcome = relayPool.publishWithConfirmation(revised.id, send = send)
                                     if (outcome.sentCount == 0 && relayPool.ensureWriteRelaysConnected() > 0) {
                                         outcome = relayPool.publishWithConfirmation(revised.id, send = send)
