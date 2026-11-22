@@ -1155,4 +1155,46 @@
     <string name="profile_gallery_videos">Video</string>
     <string name="profile_gallery_empty_filter">Ancora nulla qui</string>
     <string name="video_edit_preview">Anteprima modifiche</string>
+
+
+    <!-- Localization audit: core and relay interface -->
+    <string name="drawer_tor">Tor</string>
+    <string name="tor_status_connecting">Connessione in corso: %1$d%%</string>
+    <string name="tor_status_on">Attivo</string>
+    <string name="tor_status_error">Errore — tocca per riprovare</string>
+    <string name="cd_tor_toggle">Attiva o disattiva Tor</string>
+    <string name="tor_channel_name">Tor</string>
+    <string name="tor_channel_description">Stato della connessione Tor integrata</string>
+    <string name="drawer_payment_targets">Destinazioni di pagamento</string>
+    <string name="auth_read_only_notice">Accesso in sola lettura con una chiave pubblica. Puoi esplorare, ma pubblicazione e reazioni sono disabilitate.</string>
+    <string name="compose_scheduling">Programmazione…</string>
+    <string name="compose_schedule_post">Programma il post</string>
+    <string name="btn_copy_text">Copia testo</string>
+    <string name="reply_placeholder">Rispondi…</string>
+    <string name="placeholder_amount_currency">Importo (%1$s)</string>
+    <string name="tab_feed">Feed</string>
+    <string name="tab_all_relays">Tutti i relay</string>
+    <string name="group_room_comment">Commento</string>
+    <string name="group_room_section_zap">Zap</string>
+    <string name="group_room_section_actions">Azioni</string>
+    <string name="group_room_eyebrow_react">REAGISCI</string>
+    <string name="group_room_eyebrow_zap">Zap</string>
+    <string name="group_room_eyebrow_actions">AZIONI</string>
+    <string name="cd_open_full_zap">Apri finestra Zap</string>
+    <string name="cd_open_reaction_picker">Apri selettore delle reazioni</string>
+    <string name="cd_send_options">Opzioni di invio</string>
+    <string name="send_options_coming_soon">Le opzioni di invio arriveranno a breve.</string>
+    <string name="cd_watch_only">Sola osservazione</string>
+    <string name="cd_move_account_up">Sposta account in alto</string>
+    <string name="cd_move_account_down">Sposta account in basso</string>
+    <string name="account_switcher_title">Account</string>
+    <string name="account_switcher_add">Accedi con un altro account</string>
+    <string name="poll_votes">Voti</string>
+    <string name="cd_notif_style_compact">Passa alle notifiche compatte</string>
+    <string name="cd_notif_style_expanded">Passa alle notifiche espanse</string>
+    <string name="notif_filtered">Filtrato</string>
+    <string name="notif_filter_title">Filtri notifiche</string>
+    <string name="notif_chat_rooms">Stanze chat</string>
+    <string name="notif_enable_all">Attiva tutto</string>
+    <string name="notif_disable_all">Disattiva tutto</string>
 </resources>
