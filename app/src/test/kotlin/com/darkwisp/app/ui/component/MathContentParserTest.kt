@@ -65,7 +65,7 @@ class MathContentParserTest {
     fun displayDelimiterIsNeverMisreadAsInlineDollarMath() {
         assertEquals(
             listOf(MathContentToken.DisplayMath("x^2")),
-            splitMathContent("$$x^2$$")
+            splitMathContent("\$\$x^2\$\$")
         )
     }
 }
