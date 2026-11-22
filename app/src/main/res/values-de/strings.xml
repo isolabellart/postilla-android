@@ -1018,4 +1018,51 @@
     <string name="notif_chat_rooms">Chaträume</string>
     <string name="notif_enable_all">Alle aktivieren</string>
     <string name="notif_disable_all">Alle deaktivieren</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">Reaktion</string>
+    <string name="cd_mention">Erwähnung</string>
+    <string name="cd_vote">Abstimmung</string>
+    <string name="cd_send_reply">Antwort senden</string>
+    <string name="cd_send_zap">Zap senden</string>
+    <string name="blossom_recommended_title">Empfohlene kostenlose Blossom-Server</string>
+    <string name="blossom_recommended_description">Füge einen oder beide zu deiner Upload-Liste hinzu. Deine aktuellen Server und ihre Reihenfolge bleiben erhalten.</string>
+    <string name="blossom_band_free_details">Kostenlose Uploads bis 20 MiB pro Datei; laut Anbieter ohne Mengenbegrenzung oder Ablaufdatum.</string>
+    <string name="blossom_azzamo_free_details">Kostenlose Seed-Stufe. Der Anbieter nennt auf seiner Informationsseite kein konkretes Seed-Kontingent.</string>
+    <string name="blossom_add_recommended">Server hinzufügen</string>
+    <string name="blossom_add_all_recommended">Alle kostenlosen Empfehlungen hinzufügen</string>
+    <string name="blossom_recommended_all_added">Alle empfohlenen kostenlosen Server sind bereits in deiner Liste.</string>
+    <string name="blossom_recommended_broadcast_note">Diese Änderungen werden auf diesem Gerät gespeichert. Tippe auf „Serverliste übertragen“, wenn du deine Liste vom Typ 10063 veröffentlichen möchtest.</string>
+    <string name="cd_show_balance">Kontostand anzeigen</string>
+    <string name="cd_hide_balance">Kontostand ausblenden</string>
+    <string name="onboarding_followed">Gefolgt!</string>
+    <string name="zap_other_ways_to_pay">Weitere Zahlungsmethoden</string>
+    <string name="zap_connect_wallet_to_zap">Verbinde stattdessen eine Wallet für Zaps</string>
+    <string name="zap_private_locked_for_private_reply">Privat — Antwort in einem privaten Thread</string>
+    <string name="zap_private_requires_dm_relays">Ein privater Zap erfordert DM-Relays auf beiden Seiten</string>
+    <string name="settings_auto_hide_feed_chrome">Feed-Leisten beim Scrollen ausblenden</string>
+    <string name="settings_auto_hide_feed_chrome_description">Feed-Kategorien und untere Navigation beim Scrollen nach unten ausblenden und beim Scrollen nach oben wieder anzeigen.</string>
+    <string name="settings_undo_duration">Dauer</string>
+    <string name="settings_private_key_copied_autoclear">Privater Schlüssel kopiert. Die Zwischenablage wird in 60 Sekunden geleert.</string>
+    <string name="tab_filters">Filter</string>
+    <string name="safety_spam_filter_title">Spam-Antworten</string>
+    <string name="safety_spam_filter_description">Verwendet ein Gerätemodell, um wahrscheinlich von Bots stammende Antworten in Threads und Benachrichtigungen von Konten auszublenden, denen du nicht folgst. Das Modell läuft lokal; keine Daten verlassen dein Gerät.</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">Zeige nur Inhalte von Konten innerhalb deines sozialen Netzwerks. Dafür muss ein soziales Netzwerk berechnet worden sein.</string>
+    <string name="safety_wot_ready">Soziales Netzwerk bereit (%d qualifizierte Konten)</string>
+    <string name="safety_wot_last_computed">Zuletzt vor %s berechnet</string>
+    <string name="safety_wot_not_computed">Soziales Netzwerk nicht berechnet</string>
+    <string name="safety_wot_stale">Soziales Netzwerk ist veraltet</string>
+    <string name="safety_wot_compute_now">Jetzt berechnen</string>
+    <string name="safety_wot_recompute">Erneut berechnen</string>
+    <string name="safety_wot_inactive">Filter ist inaktiv, bis das Netzwerk berechnet wurde</string>
+    <string name="thread_hidden_spam">%d ausgeblendete Antworten von vermutlich Spam-Konten</string>
+    <string name="thread_tap_to_show">Anzeigen</string>
+    <string name="thread_tap_to_hide">Ausblenden</string>
+    <string name="thread_not_spam">Kein Spam</string>
+    <string name="default_search_relays_button">Standard-Such-Relays hinzufügen</string>
+    <string name="default_search_relays_added">%1$d Standard-Such-Relays hinzugefügt.</string>
+    <string name="default_search_relays_already_present">Alle Standard-Such-Relays sind bereits vorhanden.</string>
+    <string name="search_no_results_relay_hint">Einige Relays unterstützen keine Volltextsuche. Öffne die Relay-Einstellungen, wähle „Suche“ und füge die Standard-Such-Relays hinzu, um die Abdeckung zu verbessern.</string>
 </resources>

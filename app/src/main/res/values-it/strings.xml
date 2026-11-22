@@ -1197,4 +1197,37 @@
     <string name="notif_chat_rooms">Stanze chat</string>
     <string name="notif_enable_all">Attiva tutto</string>
     <string name="notif_disable_all">Disattiva tutto</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">Reazione</string>
+    <string name="cd_mention">Menzione</string>
+    <string name="cd_vote">Voto</string>
+    <string name="cd_send_reply">Invia risposta</string>
+    <string name="cd_send_zap">Invia zap</string>
+    <string name="cd_show_balance">Mostra saldo</string>
+    <string name="cd_hide_balance">Nascondi saldo</string>
+    <string name="onboarding_followed">Seguito!</string>
+    <string name="zap_other_ways_to_pay">Altri metodi di pagamento</string>
+    <string name="zap_connect_wallet_to_zap">Collega un wallet per inviare zap</string>
+    <string name="zap_private_locked_for_private_reply">Privato — risposta in una discussione privata</string>
+    <string name="zap_private_requires_dm_relays">Uno zap privato richiede relay DM su entrambi i lati</string>
+    <string name="settings_undo_duration">Durata</string>
+    <string name="settings_private_key_copied_autoclear">Chiave privata copiata. Gli appunti verranno cancellati tra 60 secondi.</string>
+    <string name="tab_filters">Filtri</string>
+    <string name="safety_spam_filter_title">Risposte spam</string>
+    <string name="safety_spam_filter_description">Usa un modello sul dispositivo per nascondere le risposte probabilmente automatiche nelle discussioni e nelle notifiche di persone che non segui. Il modello funziona localmente e nessun dato lascia il dispositivo.</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">Mostra solo contenuti di account appartenenti al tuo grafo sociale. È necessario aver calcolato il grafo sociale.</string>
+    <string name="safety_wot_ready">Grafo sociale pronto (%d account idonei)</string>
+    <string name="safety_wot_last_computed">Ultimo calcolo %s fa</string>
+    <string name="safety_wot_not_computed">Grafo sociale non calcolato</string>
+    <string name="safety_wot_stale">Il grafo sociale non è aggiornato</string>
+    <string name="safety_wot_compute_now">Calcola ora</string>
+    <string name="safety_wot_recompute">Ricalcola</string>
+    <string name="safety_wot_inactive">Il filtro è inattivo finché il grafo non viene calcolato</string>
+    <string name="thread_hidden_spam">%d risposte nascoste da account probabilmente spam</string>
+    <string name="thread_tap_to_show">Mostra</string>
+    <string name="thread_tap_to_hide">Nascondi</string>
+    <string name="thread_not_spam">Non è spam</string>
 </resources>

@@ -1017,4 +1017,51 @@
     <string name="notif_chat_rooms">チャットルーム</string>
     <string name="notif_enable_all">すべて有効にする</string>
     <string name="notif_disable_all">すべて無効にする</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">リアクション</string>
+    <string name="cd_mention">メンション</string>
+    <string name="cd_vote">投票</string>
+    <string name="cd_send_reply">返信を送信</string>
+    <string name="cd_send_zap">Zap を送信</string>
+    <string name="blossom_recommended_title">おすすめの無料 Blossom サーバー</string>
+    <string name="blossom_recommended_description">アップロード先リストに 1 つまたは両方を追加できます。現在のサーバーと順序は保持されます。</string>
+    <string name="blossom_band_free_details">1 ファイルあたり最大 20 MiB の無料アップロード。提供元は回数制限や有効期限を明示していません。</string>
+    <string name="blossom_azzamo_free_details">無料の Seed プランです。提供元の案内ページには具体的な Seed 容量の記載がありません。</string>
+    <string name="blossom_add_recommended">サーバーを追加</string>
+    <string name="blossom_add_all_recommended">無料のおすすめをすべて追加</string>
+    <string name="blossom_recommended_all_added">おすすめの無料サーバーはすべてリストに追加済みです。</string>
+    <string name="blossom_recommended_broadcast_note">変更はこの端末に保存されます。kind 10063 のリストを公開するときは「サーバーリストをブロードキャスト」をタップしてください。</string>
+    <string name="cd_show_balance">残高を表示</string>
+    <string name="cd_hide_balance">残高を非表示</string>
+    <string name="onboarding_followed">フォローしました！</string>
+    <string name="zap_other_ways_to_pay">その他の支払い方法</string>
+    <string name="zap_connect_wallet_to_zap">代わりにウォレットを接続して Zap を送信</string>
+    <string name="zap_private_locked_for_private_reply">非公開 — プライベートスレッドへの返信</string>
+    <string name="zap_private_requires_dm_relays">プライベート Zap には双方の DM リレーが必要です</string>
+    <string name="settings_auto_hide_feed_chrome">スクロール中にフィードバーを隠す</string>
+    <string name="settings_auto_hide_feed_chrome_description">下にスクロールするとフィードカテゴリと下部ナビゲーションを隠し、上にスクロールすると再表示します。</string>
+    <string name="settings_undo_duration">時間</string>
+    <string name="settings_private_key_copied_autoclear">秘密鍵をコピーしました。クリップボードは 60 秒後に消去されます。</string>
+    <string name="tab_filters">フィルター</string>
+    <string name="safety_spam_filter_title">スパム返信</string>
+    <string name="safety_spam_filter_description">端末内モデルを使用し、フォローしていない人からのスレッド返信や通知に含まれるボットの可能性が高い内容を非表示にします。モデルは端末内で動作し、データは外部に送信されません。</string>
+    <string name="safety_wot_title">Web of Trust</string>
+    <string name="safety_wot_description">ソーシャルグラフ内のアカウントのコンテンツのみを表示します。ソーシャルグラフの計算が必要です。</string>
+    <string name="safety_wot_ready">ソーシャルグラフの準備完了（対象アカウント %d 件）</string>
+    <string name="safety_wot_last_computed">最終計算：%s 前</string>
+    <string name="safety_wot_not_computed">ソーシャルグラフは未計算です</string>
+    <string name="safety_wot_stale">ソーシャルグラフが古くなっています</string>
+    <string name="safety_wot_compute_now">今すぐ計算</string>
+    <string name="safety_wot_recompute">再計算</string>
+    <string name="safety_wot_inactive">グラフが計算されるまでフィルターは無効です</string>
+    <string name="thread_hidden_spam">スパムの可能性があるアカウントからの返信を %d 件非表示にしました</string>
+    <string name="thread_tap_to_show">表示</string>
+    <string name="thread_tap_to_hide">非表示</string>
+    <string name="thread_not_spam">スパムではない</string>
+    <string name="default_search_relays_button">既定の検索リレーを追加</string>
+    <string name="default_search_relays_added">既定の検索リレーを %1$d 件追加しました。</string>
+    <string name="default_search_relays_already_present">既定の検索リレーはすべて追加済みです。</string>
+    <string name="search_no_results_relay_hint">全文検索に対応していないリレーもあります。リレー設定を開き、「検索」を選択して既定の検索リレーを追加すると、検索範囲を広げられます。</string>
 </resources>

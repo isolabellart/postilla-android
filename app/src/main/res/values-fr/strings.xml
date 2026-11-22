@@ -1018,4 +1018,51 @@
     <string name="notif_chat_rooms">Salons de discussion</string>
     <string name="notif_enable_all">Tout activer</string>
     <string name="notif_disable_all">Tout désactiver</string>
+
+
+    <!-- Localization audit: security, notifications, relay and Blossom UI -->
+    <string name="cd_reaction">Réaction</string>
+    <string name="cd_mention">Mention</string>
+    <string name="cd_vote">Vote</string>
+    <string name="cd_send_reply">Envoyer la réponse</string>
+    <string name="cd_send_zap">Envoyer un zap</string>
+    <string name="blossom_recommended_title">Serveurs Blossom gratuits recommandés</string>
+    <string name="blossom_recommended_description">Ajoutez-en un ou les deux à votre liste d\'envoi. Vos serveurs actuels et leur ordre seront conservés.</string>
+    <string name="blossom_band_free_details">Envois gratuits jusqu\'à 20 Mio par fichier, sans limite de nombre ni date d\'expiration annoncées par le fournisseur.</string>
+    <string name="blossom_azzamo_free_details">Offre Seed gratuite. Le fournisseur ne publie pas de quota Seed précis sur sa page d\'information.</string>
+    <string name="blossom_add_recommended">Ajouter le serveur</string>
+    <string name="blossom_add_all_recommended">Ajouter toutes les recommandations gratuites</string>
+    <string name="blossom_recommended_all_added">Tous les serveurs gratuits recommandés figurent déjà dans votre liste.</string>
+    <string name="blossom_recommended_broadcast_note">Ces modifications sont enregistrées sur cet appareil. Touchez « Diffuser la liste des serveurs » pour publier votre liste kind 10063.</string>
+    <string name="cd_show_balance">Afficher le solde</string>
+    <string name="cd_hide_balance">Masquer le solde</string>
+    <string name="onboarding_followed">Abonné !</string>
+    <string name="zap_other_ways_to_pay">Autres moyens de paiement</string>
+    <string name="zap_connect_wallet_to_zap">Connectez un portefeuille pour envoyer des zaps</string>
+    <string name="zap_private_locked_for_private_reply">Privé — réponse dans un fil privé</string>
+    <string name="zap_private_requires_dm_relays">Un zap privé nécessite des relais MP des deux côtés</string>
+    <string name="settings_auto_hide_feed_chrome">Masquer les barres du fil pendant le défilement</string>
+    <string name="settings_auto_hide_feed_chrome_description">Masquer les catégories du fil et la navigation inférieure lors du défilement vers le bas ; les réafficher en remontant.</string>
+    <string name="settings_undo_duration">Durée</string>
+    <string name="settings_private_key_copied_autoclear">Clé privée copiée. Le presse-papiers sera effacé dans 60 secondes.</string>
+    <string name="tab_filters">Filtres</string>
+    <string name="safety_spam_filter_title">Réponses indésirables</string>
+    <string name="safety_spam_filter_description">Utilise un modèle sur l\'appareil pour masquer les réponses probablement automatisées dans les fils et les notifications des personnes que vous ne suivez pas. Le modèle fonctionne localement ; aucune donnée ne quitte votre appareil.</string>
+    <string name="safety_wot_title">Réseau de confiance</string>
+    <string name="safety_wot_description">N\'afficher que le contenu des comptes appartenant à votre graphe social. Un graphe social doit avoir été calculé.</string>
+    <string name="safety_wot_ready">Graphe social prêt (%d comptes qualifiés)</string>
+    <string name="safety_wot_last_computed">Calculé pour la dernière fois il y a %s</string>
+    <string name="safety_wot_not_computed">Graphe social non calculé</string>
+    <string name="safety_wot_stale">Le graphe social n\'est plus à jour</string>
+    <string name="safety_wot_compute_now">Calculer maintenant</string>
+    <string name="safety_wot_recompute">Recalculer</string>
+    <string name="safety_wot_inactive">Le filtre est inactif tant que le graphe n\'a pas été calculé</string>
+    <string name="thread_hidden_spam">%d réponses masquées provenant de comptes probablement indésirables</string>
+    <string name="thread_tap_to_show">Afficher</string>
+    <string name="thread_tap_to_hide">Masquer</string>
+    <string name="thread_not_spam">Pas indésirable</string>
+    <string name="default_search_relays_button">Ajouter les relais de recherche par défaut</string>
+    <string name="default_search_relays_added">%1$d relais de recherche par défaut ajoutés.</string>
+    <string name="default_search_relays_already_present">Tous les relais de recherche par défaut sont déjà présents.</string>
+    <string name="search_no_results_relay_hint">Certains relais ne prennent pas en charge la recherche en texte intégral. Ouvrez les paramètres des relais, choisissez « Recherche » et ajoutez les relais par défaut pour améliorer la couverture.</string>
 </resources>
