@@ -1036,7 +1036,7 @@ fun RichContent(
                         ) {
                             LaTeXFormula(
                                 formula = segment.formula, displayMode = true,
-                                fontSize = maxOf(20.sp, style.fontSize),
+                                fontSize = 20.sp,
                                 formulaColor = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
                                     .padding(horizontal = 16.dp, vertical = 12.dp)
