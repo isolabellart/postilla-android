@@ -1268,7 +1268,7 @@
     <string name="compose_video_publication_classic">Classic</string>
     <string name="compose_video_publication_classic_hint">The post cannot be changed after publishing.</string>
     <string name="compose_video_publication_updatable">Editable</string>
-    <string name="compose_video_publication_updatable_hint">You can correct the video's details after publishing.</string>
+    <string name="compose_video_publication_updatable_hint">You can correct video details after publishing.</string>
     <string name="compose_video_type_standard">Standard video</string>
     <string name="compose_video_type_short">Short video</string>
     <string name="compose_video_publication_help">Only one post is published. The video can be horizontal or vertical with either choice.</string>
