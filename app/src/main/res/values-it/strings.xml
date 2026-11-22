@@ -1079,6 +1079,6 @@
     <string name="text_translation_failed">Traduzione non riuscita</string>
     <string name="text_translation_same_language">Il testo selezionato è già nella lingua di destinazione.</string>
     <string name="curation_empty_entries">Questa raccolta non contiene elementi leggibili.</string>
-    <string name="postilla_addressable_event_details">Dettagli dell'evento addressable</string>
+    <string name="postilla_addressable_event_details">Dettagli evento addressable</string>
     <string name="emoji_pack_items_count">%1$d emoji</string>
 </resources>
