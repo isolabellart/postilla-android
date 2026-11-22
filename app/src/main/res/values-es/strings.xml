@@ -1448,4 +1448,57 @@
     <string name="postilla_notif_24h"> · 24 h</string>
     <string name="postilla_not_available">No disponible</string>
     <string name="postilla_video_open_failed">No se pudo abrir el vídeo.</string>
+
+
+    <!-- Localized wallet, bookmark and marketplace labels -->
+    <string name="postilla_wallet_connecting">Conectando…</string>
+    <string name="postilla_wallet_address">Dirección</string>
+    <string name="postilla_wallet_view_mempool">Ver en mempool.space</string>
+    <string name="postilla_wallet_recovery_intro">Introduce la frase de recuperación de 12 palabras de una cartera basada en Spark.</string>
+    <string name="postilla_wallet_recovery_phrase">Frase de recuperación</string>
+    <string name="postilla_wallet_recovery_input">Introduce 12 o 24 palabras…</string>
+    <string name="postilla_wallet_restore">Restaurar cartera</string>
+    <string name="postilla_wallet_recovery_title">Frase de recuperación</string>
+    <string name="postilla_wallet_recovery_safety">Anota estas palabras en orden y guárdalas en un lugar seguro. Es la única forma de recuperar tu cartera.</string>
+    <string name="postilla_wallet_reveal_phrase">Mostrar frase de recuperación</string>
+    <string name="postilla_wallet_tap_reveal">Toca para mostrar</string>
+    <string name="postilla_wallet_lightning_address">Dirección Lightning</string>
+    <string name="postilla_wallet_lightning_address_description">Elige un nombre de usuario para obtener una dirección Lightning y recibir pagos.</string>
+    <string name="postilla_wallet_username">Nombre de usuario</string>
+    <string name="postilla_wallet_available">¡Disponible!</string>
+    <string name="postilla_wallet_not_available">No disponible</string>
+    <string name="postilla_wallet_check_availability">Comprobar disponibilidad</string>
+    <string name="postilla_wallet_register">Registrar</string>
+    <string name="postilla_wallet_update_profile_title">¿Actualizar el perfil de Nostr?</string>
+    <string name="postilla_wallet_update_profile_message">¿Añadir esta dirección Lightning a tu perfil de Nostr para que otras personas puedan enviarte zaps?</string>
+    <string name="postilla_wallet_yes">Sí</string>
+    <string name="postilla_wallet_no">No</string>
+    <string name="postilla_wallet_lightning_qr">Código QR de la dirección Lightning</string>
+    <string name="postilla_wallet_share">Compartir</string>
+    <string name="postilla_wallet_backup_warning">Asegúrate de haber guardado una copia de seguridad de tu frase de recuperación antes de continuar.</string>
+    <string name="postilla_wallet_delete_confirm">Escribe DELETE para confirmar</string>
+    <string name="postilla_wallet_backup_title">Copia de seguridad en relays Nostr</string>
+    <string name="postilla_wallet_backup_description">Cifra la frase de recuperación de tu cartera con NIP-44 y publícala en tus relays de Nostr. Solo tú puedes descifrarla con tu clave privada de Nostr.</string>
+    <string name="postilla_wallet_backup_mnemonic_info">Tu frase mnemotécnica se cifra con NIP-44 para tu propia clave pública. Los operadores de los relays no pueden leerla. Compatible con otras aplicaciones de cartera Spark.</string>
+    <string name="postilla_wallet_backup_now">Crear copia ahora</string>
+    <string name="postilla_wallet_encrypting">Cifrando y publicando…</string>
+    <string name="postilla_wallet_backup_complete">Copia de seguridad completada</string>
+    <string name="postilla_wallet_backup_published">Tu cartera se ha cifrado y publicado en tus relays de Nostr.</string>
+    <string name="postilla_wallet_try_again">Intentar de nuevo</string>
+    <string name="postilla_wallet_restore_from_relays">Restaurar desde relays</string>
+    <string name="postilla_wallet_restore_from_relays_description">Busca en tus relays de Nostr una copia de seguridad cifrada de la cartera. Se descifrará con tu clave privada de Nostr.</string>
+    <string name="postilla_wallet_search_relays">Buscar relays</string>
+    <string name="postilla_wallet_searching_backup">Buscando copia de seguridad en los relays…</string>
+    <string name="postilla_wallet_backup_found">¡Copia de seguridad encontrada!</string>
+    <string name="postilla_wallet_restore_this">Restaurar esta cartera</string>
+    <string name="postilla_wallet_multiple_found">Se encontraron varias carteras</string>
+    <string name="postilla_wallet_choose_backup">Elige una copia de seguridad para restaurar:</string>
+    <string name="postilla_wallet_no_backup_found">No se encontró ninguna copia de seguridad de la cartera en tus relays.</string>
+    <string name="postilla_wallet_search_again">Buscar de nuevo</string>
+    <string name="postilla_close_image">Cerrar imagen</string>
+    <string name="postilla_bookmark_delete_list">Eliminar lista</string>
+    <string name="postilla_bookmark_remove_from_list">Quitar de la lista</string>
+    <string name="postilla_bookmarks_title">Marcadores</string>
+    <string name="postilla_bookmarks_empty">No hay notas guardadas</string>
+    <string name="postilla_bookmarks_not_loaded">Las notas aún no se han cargado</string>
 </resources>
