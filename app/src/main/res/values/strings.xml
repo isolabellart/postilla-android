@@ -1261,4 +1261,7 @@
     <string name="curation_empty_entries">This collection has no readable entries.</string>
     <string name="postilla_addressable_event_details">Addressable event details</string>
     <string name="emoji_pack_items_count">%1$d emojis</string>
+    <string name="compose_gallery_video_title">Video title</string>
+    <string name="compose_gallery_video_title_hint">Required for NIP-71 videos.</string>
+    <string name="compose_gallery_video_title_required">Enter a title for this video before publishing.</string>
 </resources>
