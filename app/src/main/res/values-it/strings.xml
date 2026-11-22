@@ -1122,4 +1122,8 @@
     <string name="video_edit_unconfirmed">Il relay non ha confermato la modifica. Nessun cambiamento è stato salvato.</string>
     <string name="video_edit_uploading">Caricamento variante video…</string>
     <string name="video_edit_empty_files">Aggiungi almeno un file video.</string>
+    <string name="profile_gallery_all">Tutti</string>
+    <string name="profile_gallery_photos">Foto</string>
+    <string name="profile_gallery_videos">Video</string>
+    <string name="profile_gallery_empty_filter">Ancora nulla qui</string>
 </resources>
