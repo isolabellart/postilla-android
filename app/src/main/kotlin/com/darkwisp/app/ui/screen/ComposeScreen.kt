@@ -347,6 +347,14 @@ fun ComposeScreen(
                         savedAltUrls = altTexts.keys,
                         isImageUpload = { viewModel.isImageUpload(it) },
                         videoPosterUrl = viewModel::galleryVideoPosterUrl,
+                        onPreviewVideo = { url ->
+                            runCatching {
+                                context.startActivity(android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(url)
+                                ))
+                            }
+                        },
                         onEditAlt = { altEditorUrl = it },
                         onPickMedia = {
                             photoPickerLauncher.launch(
@@ -1599,6 +1607,7 @@ private fun GalleryComposeSection(
     savedAltUrls: Set<String>,
     isImageUpload: (String) -> Boolean,
     videoPosterUrl: (String) -> String?,
+    onPreviewVideo: (String) -> Unit,
     onEditAlt: (String) -> Unit,
     onPickMedia: () -> Unit,
     onRemoveUrl: (String) -> Unit
@@ -1634,6 +1643,7 @@ private fun GalleryComposeSection(
             Box(
                 modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { onPreviewVideo(url) }
             ) {
                 val poster = videoPosterUrl(url)
                 if (poster != null) {
