@@ -211,14 +211,14 @@ fun ArticleScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = displayTitle?.takeIf(String::isNotBlank) ?: if (article?.kind == CustomNip.KIND) "NIP" else "Article",
+                        text = displayTitle?.takeIf(String::isNotBlank) ?: if (article?.kind == CustomNip.KIND) "NIP" else stringResource(R.string.article_draft_label),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
                 actions = {
@@ -302,7 +302,7 @@ fun ArticleScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Article not found",
+                        text = stringResource(R.string.postilla_article_not_found),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -660,7 +660,7 @@ fun ArticleScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                text = "Comments",
+                                text = stringResource(R.string.postilla_article_comments),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
