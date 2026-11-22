@@ -480,6 +480,8 @@
     <string name="settings_video_autoplay_description">Riproduci automaticamente i video quando scorrono nella vista</string>
     <string name="settings_hide_live_streams">Nascondi le dirette</string>
     <string name="settings_hide_live_streams_description">Nascondi la riga delle dirette in cima al feed</string>
+    <string name="settings_auto_hide_feed_chrome">Nascondi le barre durante lo scorrimento</string>
+    <string name="settings_auto_hide_feed_chrome_description">Nascondi le categorie e la navigazione inferiore mentre scorri verso il basso; mostrale di nuovo tornando verso l’inizio.</string>
     <string name="settings_client_tag">Tag Cliente</string>
     <string name="settings_tag_notes">Etichetta le note con Postilla</string>
     <string name="settings_tag_notes_description">Includi un\'etichetta che identifica Postilla come client. Questo è visibile agli altri.</string>
@@ -1032,6 +1034,9 @@
     <string name="article_body_required">Inserisci il testo dell\'articolo prima di pubblicare.</string>
     <string name="article_uploading_cover">Caricamento copertina…</string>
     <string name="article_copy_address">Copia indirizzo articolo</string>
+    <string name="article_copy_link">Copia link Nostr</string>
+    <string name="article_share">Condividi</string>
+    <string name="article_copy_text">Copia testo articolo</string>
     <string name="article_address_copied">Indirizzo articolo copiato</string>
     <string name="article_publish_unconfirmed">Nessun relay ha confermato l\'articolo. Il testo è ancora qui: riprova.</string>
     <string name="article_not_signed_in">Accedi per pubblicare un articolo.</string>

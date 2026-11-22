@@ -539,6 +539,8 @@
     <string name="settings_media_layout_stack">Stack</string>
     <string name="settings_hide_live_streams">Hide live streams</string>
     <string name="settings_hide_live_streams_description">Hide the live streams row from the top of your feed</string>
+    <string name="settings_auto_hide_feed_chrome">Hide feed bars while scrolling</string>
+    <string name="settings_auto_hide_feed_chrome_description">Hide feed categories and bottom navigation while scrolling down; show them again when scrolling up.</string>
     <!-- Notifications display -->
     <string name="settings_notifications">Notifications</string>
     <string name="settings_notif_list_style">List style</string>
@@ -1202,6 +1204,9 @@
     <string name="article_body_required">Add the article text before publishing.</string>
     <string name="article_uploading_cover">Uploading cover…</string>
     <string name="article_copy_address">Copy article address</string>
+    <string name="article_copy_link">Copy Nostr link</string>
+    <string name="article_share">Share</string>
+    <string name="article_copy_text">Copy article text</string>
     <string name="article_address_copied">Article address copied</string>
     <string name="article_publish_unconfirmed">No relay confirmed the article. Your text is still here; try again.</string>
     <string name="article_not_signed_in">Sign in to publish an article.</string>

@@ -59,6 +59,13 @@ data class RelaySet(
     val createdAt: Long
 )
 
+data class CurationSetEntry(val kind: Int, val author: String, val dTag: String, val relayHint: String? = null)
+
+data class CurationSet(
+    val pubkey: String, val dTag: String, val title: String, val description: String,
+    val image: String?, val entries: List<CurationSetEntry>, val createdAt: Long
+)
+
 object Nip51 {
     const val KIND_BLOCKED_RELAYS = 10006
     const val KIND_SEARCH_RELAYS = 10007
@@ -72,6 +79,7 @@ object Nip51 {
     const val KIND_RELAY_SET = 30002
     const val KIND_BOOKMARK_SET = 30003
     const val KIND_INTEREST_SET = 30015
+    const val KIND_CURATION_SET = 30004
 
     fun parseRelaySet(event: NostrEvent): List<String> {
         return event.tags.mapNotNull { tag ->
@@ -383,6 +391,26 @@ object Nip51 {
             val hint = relayHints[id]
             if (hint != null) listOf("e", id, hint) else listOf("e", id)
         }
+    }
+
+
+    fun parseCurationSet(event: NostrEvent): CurationSet? {
+        if (event.kind != KIND_CURATION_SET) return null
+        val dTag = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)?.takeIf { it.isNotBlank() } ?: return null
+        val title = event.tags.firstOrNull { it.size >= 2 && it[0] == "title" }?.get(1)?.takeIf { it.isNotBlank() } ?: dTag
+        val description = event.tags.firstOrNull { it.size >= 2 && (it[0] == "description" || it[0] == "summary") }?.get(1)?.takeIf { it.isNotBlank() } ?: event.content
+        val image = event.tags.firstOrNull { it.size >= 2 && (it[0] == "image" || it[0] == "thumb") }?.get(1)?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        val entries = event.tags.mapNotNull { tag ->
+            if (tag.size < 2 || tag[0] != "a") return@mapNotNull null
+            val parts = tag[1].split(":", limit = 3)
+            if (parts.size != 3) return@mapNotNull null
+            val kind = parts[0].toIntOrNull() ?: return@mapNotNull null
+            val author = parts[1].takeIf { value -> value.length == 64 && value.all { ch -> ch.isDigit() || ch.lowercaseChar() in 'a'..'f' } } ?: return@mapNotNull null
+            val itemDTag = parts[2].takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val relay = tag.getOrNull(2)?.takeIf { it.startsWith("wss://") || it.startsWith("ws://") }
+            CurationSetEntry(kind, author, itemDTag, relay)
+        }.distinctBy { it.kind.toString() + ":" + it.author + ":" + it.dTag }
+        return CurationSet(event.pubkey, dTag, title, description, image, entries, event.created_at)
     }
 
     fun parseSimpleGroups(event: NostrEvent): List<SimpleGroupEntry> {
