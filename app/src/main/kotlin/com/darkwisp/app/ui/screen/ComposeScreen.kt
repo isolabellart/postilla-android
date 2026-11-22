@@ -479,11 +479,11 @@ fun ComposeScreen(
                         IconButton(onClick = {
                             val nextState = !explicit
                             viewModel.toggleExplicit()
-                            android.widget.Toast.makeText(context, "NSFW ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.getString(if (nextState) R.string.postilla_compose_nsfw_on else R.string.postilla_compose_nsfw_off), android.widget.Toast.LENGTH_SHORT).show()
                         }) {
                             Icon(
                                 Icons.Outlined.Warning,
-                                contentDescription = "Mark as explicit",
+                                contentDescription = stringResource(R.string.postilla_compose_mark_explicit),
                                 tint = if (explicit) MaterialTheme.colorScheme.error
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -494,12 +494,12 @@ fun ComposeScreen(
                             if (prefs != null) {
                                 val nextState = !powEnabled
                                 viewModel.togglePow(prefs)
-                                android.widget.Toast.makeText(context, "Mining ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, context.getString(if (nextState) R.string.postilla_compose_mining_on else R.string.postilla_compose_mining_off), android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }) {
                             Icon(
                                 Icons.Outlined.Shield,
-                                contentDescription = "Proof of Work",
+                                contentDescription = stringResource(R.string.postilla_compose_proof_of_work),
                                 tint = if (powEnabled) WispThemeColors.zapColor
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -515,7 +515,7 @@ fun ComposeScreen(
                         }) {
                             Icon(
                                 Icons.Outlined.Schedule,
-                                contentDescription = "Schedule post",
+                                contentDescription = stringResource(R.string.postilla_compose_schedule),
                                 tint = if (scheduleEnabled) MaterialTheme.colorScheme.primary
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -587,14 +587,14 @@ fun ComposeScreen(
                                     fmt.format(Date(it * 1000))
                                 } ?: ""
                                 Text(
-                                    text = "Scheduled for $formattedTime",
+                                    text = stringResource(R.string.postilla_compose_scheduled_for, formattedTime),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Icon(
                                     Icons.Filled.Close,
-                                    contentDescription = "Remove schedule",
+                                    contentDescription = stringResource(R.string.postilla_compose_remove_schedule),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier
                                         .size(18.dp)
@@ -910,17 +910,17 @@ fun ComposeScreen(
                             },
                             enabled = uploadProgress == null && countdownSeconds == null
                         ) {
-                            Icon(Icons.Outlined.Image, contentDescription = "Attach media")
+                            Icon(Icons.Outlined.Image, contentDescription = stringResource(R.string.postilla_compose_add_media))
                         }
 
                         IconButton(onClick = {
                             val nextState = !explicit
                             viewModel.toggleExplicit()
-                            android.widget.Toast.makeText(context, "NSFW ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.getString(if (nextState) R.string.postilla_compose_nsfw_on else R.string.postilla_compose_nsfw_off), android.widget.Toast.LENGTH_SHORT).show()
                         }) {
                             Icon(
                                 Icons.Outlined.Warning,
-                                contentDescription = "Mark as explicit",
+                                contentDescription = stringResource(R.string.postilla_compose_mark_explicit),
                                 tint = if (explicit) MaterialTheme.colorScheme.error
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -931,12 +931,12 @@ fun ComposeScreen(
                             if (prefs != null) {
                                 val nextState = !powEnabled
                                 viewModel.togglePow(prefs)
-                                android.widget.Toast.makeText(context, "Mining ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, context.getString(if (nextState) R.string.postilla_compose_mining_on else R.string.postilla_compose_mining_off), android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }) {
                             Icon(
                                 Icons.Outlined.Shield,
-                                contentDescription = "Proof of Work",
+                                contentDescription = stringResource(R.string.postilla_compose_proof_of_work),
                                 tint = if (powEnabled) WispThemeColors.zapColor
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -945,7 +945,7 @@ fun ComposeScreen(
                         IconButton(onClick = { viewModel.togglePoll() }) {
                             Icon(
                                 Icons.Outlined.BarChart,
-                                contentDescription = "Add poll",
+                                contentDescription = stringResource(R.string.postilla_compose_add_poll),
                                 tint = if (pollEnabled) MaterialTheme.colorScheme.primary
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -961,11 +961,11 @@ fun ComposeScreen(
                                 // Locked toggles short-circuit in the VM, so the state stays ON.
                                 val nextState = if (privateReplyLocked) true else !privateReply
                                 viewModel.togglePrivateReply()
-                                android.widget.Toast.makeText(context, "Private Reply ${if (nextState) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, context.getString(if (nextState) R.string.postilla_compose_private_reply_on else R.string.postilla_compose_private_reply_off), android.widget.Toast.LENGTH_SHORT).show()
                             }) {
                                 Icon(
                                     imageVector = Icons.Outlined.VisibilityOff,
-                                    contentDescription = "Private reply",
+                                    contentDescription = stringResource(R.string.postilla_compose_private_reply),
                                     tint = if (privateReply) androidx.compose.ui.graphics.Color(0xFFFF8C00)
                                            else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -982,7 +982,7 @@ fun ComposeScreen(
                         }) {
                             Icon(
                                 Icons.Outlined.Schedule,
-                                contentDescription = "Schedule post",
+                                contentDescription = stringResource(R.string.postilla_compose_schedule),
                                 tint = if (scheduleEnabled) MaterialTheme.colorScheme.primary
                                        else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1192,7 +1192,7 @@ fun ComposeScreen(
                                         ) {
                                             Icon(
                                                 Icons.Filled.Close,
-                                                contentDescription = "Remove option",
+                                                contentDescription = stringResource(R.string.postilla_compose_remove_option),
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
@@ -1232,7 +1232,7 @@ fun ComposeScreen(
                                     OutlinedTextField(
                                         value = zapPollMinSats?.toString() ?: "",
                                         onValueChange = { viewModel.setZapPollMinSats(it.toLongOrNull()) },
-                                        label = { Text("Min sats") },
+                                        label = { Text(stringResource(R.string.postilla_compose_min_sats)) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f),
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -1240,7 +1240,7 @@ fun ComposeScreen(
                                     OutlinedTextField(
                                         value = zapPollMaxSats?.toString() ?: "",
                                         onValueChange = { viewModel.setZapPollMaxSats(it.toLongOrNull()) },
-                                        label = { Text("Max sats") },
+                                        label = { Text(stringResource(R.string.postilla_compose_max_sats)) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f),
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -1313,14 +1313,14 @@ fun ComposeScreen(
                                     fmt.format(Date(it * 1000))
                                 } ?: ""
                                 Text(
-                                    text = "Scheduled for $formattedTime",
+                                    text = stringResource(R.string.postilla_compose_scheduled_for, formattedTime),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Icon(
                                     Icons.Filled.Close,
-                                    contentDescription = "Remove schedule",
+                                    contentDescription = stringResource(R.string.postilla_compose_remove_schedule),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier
                                         .size(18.dp)
@@ -1502,13 +1502,13 @@ fun ComposeScreen(
                             showDatePicker = false
                             showTimePicker = true
                         }
-                    }) { Text("Next") }
+                    }) { Text(stringResource(R.string.postilla_compose_next)) }
                 },
                 dismissButton = {
                     TextButton(onClick = {
                         showDatePicker = false
                         if (scheduleTimestamp == null) viewModel.toggleSchedule()
-                    }) { Text("Cancel") }
+                    }) { Text(stringResource(R.string.cancel)) }
                 }
             ) {
                 DatePicker(state = datePickerState)
@@ -1528,7 +1528,7 @@ fun ComposeScreen(
                     showTimePicker = false
                     if (scheduleTimestamp == null) viewModel.toggleSchedule()
                 },
-                title = { Text("Select time") },
+                title = { Text(stringResource(R.string.postilla_compose_select_time)) },
                 text = { TimePicker(state = timePickerState) },
                 confirmButton = {
                     TextButton(onClick = {
@@ -1548,14 +1548,14 @@ fun ComposeScreen(
                         viewModel.setScheduleTimestamp(calendar.timeInMillis / 1000)
                         showTimePicker = false
                         pendingDateMillis = null
-                    }) { Text("Confirm") }
+                    }) { Text(stringResource(R.string.postilla_compose_confirm)) }
                 },
                 dismissButton = {
                     TextButton(onClick = {
                         showTimePicker = false
                         pendingDateMillis = null
                         if (scheduleTimestamp == null) viewModel.toggleSchedule()
-                    }) { Text("Cancel") }
+                    }) { Text(stringResource(R.string.cancel)) }
                 }
             )
         }
@@ -1600,7 +1600,7 @@ private fun MentionCandidateRow(
         }
         if (candidate.isContact) {
             Text(
-                text = "Following",
+                text = stringResource(R.string.postilla_profile_following),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -1673,7 +1673,7 @@ private fun GalleryComposeSection(
                     onClick = { onRemoveUrl(url) },
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                         .size(36.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f))
-                ) { Icon(Icons.Filled.Close, contentDescription = "Remove video", tint = Color.White) }
+                ) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.postilla_compose_remove_video), tint = Color.White) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.compose_gallery_video_count), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
@@ -1697,7 +1697,7 @@ private fun GalleryComposeSection(
                             onClick = { onRemoveUrl(pageUrl) },
                             modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
                                 .size(28.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.58f))
-                        ) { Icon(Icons.Filled.Close, contentDescription = "Remove image", tint = Color.White, modifier = Modifier.size(16.dp)) }
+                        ) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.postilla_compose_remove_image), tint = Color.White, modifier = Modifier.size(16.dp)) }
                     }
                 }
                 Surface(

@@ -806,15 +806,15 @@ fun FeedScreen(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = androidx.compose.ui.Modifier.width(12.dp))
-                        Text("Checking relays for an existing follow list...")
+                        Text(stringResource(R.string.postilla_follow_list_checking))
                     }
                 } else {
-                    Text("No existing follow list was found on your relays. If you follow this person, your follow list will start at 1. If you believe this is wrong, rebroadcast your follow list from another client first, then try again.")
+                    Text(stringResource(R.string.postilla_follow_list_not_found))
                 }
             },
             confirmButton = {
                 if (firstFollowCheckDone) {
-                    TextButton(onClick = { viewModel.confirmFirstFollow() }) { Text("Follow anyway") }
+                    TextButton(onClick = { viewModel.confirmFirstFollow() }) { Text(stringResource(R.string.postilla_follow_anyway)) }
                 }
             },
             dismissButton = {
@@ -853,9 +853,9 @@ fun FeedScreen(
         val torState by TorManager.state.collectAsState()
         AlertDialog(
             onDismissRequest = { showAnonTorDialog = false },
-            title = { Text("Enable Tor?") },
+            title = { Text(stringResource(R.string.postilla_tor_enable_title)) },
             text = {
-                Text("Anon Mode works best with Tor. Route your anonymous traffic through the Tor network?")
+                Text(stringResource(R.string.postilla_tor_enable_message))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -866,7 +866,7 @@ fun FeedScreen(
                     scope.launch { drawerState.close() }
                     onEnterAnonMode()
                 }) {
-                    Text("Enable Tor")
+                    Text(stringResource(R.string.postilla_tor_enable_action))
                 }
             },
             dismissButton = {
@@ -875,7 +875,7 @@ fun FeedScreen(
                     scope.launch { drawerState.close() }
                     onEnterAnonMode()
                 }) {
-                    Text("No Thanks")
+                    Text(stringResource(R.string.postilla_tor_enable_decline))
                 }
             }
         )
@@ -1056,7 +1056,7 @@ fun FeedScreen(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        "No relays connected",
+                                        stringResource(R.string.postilla_no_relays_connected),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -1343,7 +1343,7 @@ fun FeedScreen(
                     containerColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.graphicsLayer { alpha = fabAlpha }
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = "New post")
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.postilla_new_post))
                 }
             }
         ) { padding ->
@@ -1404,7 +1404,7 @@ fun FeedScreen(
                         when {
                             feedType == FeedType.FOLLOWS && viewModel.contactRepo.getFollowList().isEmpty() -> {
                                 Text(
-                                    "Follow some people to see their posts here",
+                                    stringResource(R.string.postilla_feed_empty_follow),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -1413,7 +1413,7 @@ fun FeedScreen(
                                 // but handle it as a fallback
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        "Compute your social graph to see posts from friends-of-friends",
+                                        stringResource(R.string.postilla_feed_empty_wot),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = TextAlign.Center
                                     )
@@ -1425,13 +1425,13 @@ fun FeedScreen(
                             }
                             feedType == FeedType.LIST && selectedList == null -> {
                                 Text(
-                                    "Select a list to see posts",
+                                    stringResource(R.string.postilla_feed_select_list),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             feedType == FeedType.LIST && selectedList != null && selectedList!!.members.isEmpty() -> {
                                 Text(
-                                    "This list is empty",
+                                    stringResource(R.string.postilla_feed_list_empty),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -1456,17 +1456,17 @@ fun FeedScreen(
                                 // Content filter active but no matching posts
                                 Text(
                                     when (contentFilter) {
-                                        FeedContentFilter.GALLERY_ONLY -> "No gallery posts in your feed yet"
-                                        FeedContentFilter.POLLS_ONLY -> "No polls in your feed yet"
-                                        FeedContentFilter.TEXT_ONLY -> "No notes in your feed yet"
-                                        else -> "No posts yet"
+                                        FeedContentFilter.GALLERY_ONLY -> stringResource(R.string.postilla_feed_no_gallery)
+                                        FeedContentFilter.POLLS_ONLY -> stringResource(R.string.postilla_feed_no_polls)
+                                        FeedContentFilter.TEXT_ONLY -> stringResource(R.string.postilla_feed_no_notes)
+                                        else -> stringResource(R.string.postilla_feed_no_posts)
                                     },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             else -> {
                                 Text(
-                                    "No posts yet",
+                                    stringResource(R.string.postilla_feed_no_posts),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -1497,13 +1497,13 @@ fun FeedScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "Anon Mode",
+                                                text = stringResource(R.string.postilla_anon_mode),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = anonAccent
                                             )
                                             val anonName = anonMode?.name ?: ""
                                             Text(
-                                                text = "Posting as $anonName — tap to exit",
+                                                text = stringResource(R.string.postilla_anon_mode_exit, anonName),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -1511,7 +1511,7 @@ fun FeedScreen(
                                         TextButton(onClick = {
                                             onExitAnonMode()
                                         }) {
-                                            Text("Exit", color = anonAccent)
+                                            Text(stringResource(R.string.postilla_exit), color = anonAccent)
                                         }
                                     }
                                 }
@@ -2113,7 +2113,7 @@ private fun FeedArticleItem(
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
                         Text(
-                            text = "ARTICLE",
+                            text = stringResource(R.string.article_draft_label).uppercase(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -2539,12 +2539,12 @@ private fun ListPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
-        title = { Text("Select List") },
+        title = { Text(stringResource(R.string.postilla_select_list_title)) },
         text = {
             Column {
                 if (lists.isEmpty()) {
                     Text(
-                        "No lists yet. Create one below.",
+                        stringResource(R.string.postilla_feed_no_lists),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -2584,7 +2584,7 @@ private fun ListPickerDialog(
                     androidx.compose.material3.OutlinedTextField(
                         value = newListName,
                         onValueChange = { newListName = it },
-                        placeholder = { Text("New list name") },
+                        placeholder = { Text(stringResource(R.string.postilla_list_name_hint)) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -2598,7 +2598,7 @@ private fun ListPickerDialog(
                         },
                         enabled = newListName.isNotBlank()
                     ) {
-                        Text("Create")
+                        Text(stringResource(R.string.postilla_list_create))
                     }
                 }
             }
@@ -2672,7 +2672,7 @@ private fun HashtagPickerDialog(
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.size(12.dp))
                         Text(
-                            "Loading interest sets\u2026",
+                            stringResource(R.string.postilla_feed_loading_interests),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -3090,7 +3090,7 @@ private fun TrendingFilterBar(
                 FilterChip(
                     selected = mode == TrendingMode.USERS,
                     onClick = { onModeChange(TrendingMode.USERS) },
-                    label = { Icon(Icons.Outlined.Person, contentDescription = "People", modifier = Modifier.size(16.dp)) },
+                    label = { Icon(Icons.Outlined.Person, contentDescription = stringResource(R.string.postilla_people), modifier = Modifier.size(16.dp)) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
@@ -3141,7 +3141,7 @@ private fun TrendingFilterBar(
                                 Spacer(Modifier.width(2.dp))
                                 Icon(
                                     Icons.Default.ArrowDropDown,
-                                    contentDescription = "Change timeframe",
+                                    contentDescription = stringResource(R.string.postilla_change_timeframe),
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -3225,7 +3225,7 @@ private fun TrendingUsersContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Up & Coming",
+                    stringResource(R.string.postilla_feed_trending),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -3233,7 +3233,7 @@ private fun TrendingUsersContent(
                     FilledTonalButton(
                         onClick = { onFollowAll(unfollowedPubkeys) }
                     ) {
-                        Text("Follow All (${unfollowedPubkeys.size})")
+                        Text(stringResource(R.string.postilla_follow_all, unfollowedPubkeys.size))
                     }
                 }
             }
@@ -3582,7 +3582,7 @@ private fun RelayFeedEmptyState(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Contacting $domain...",
+                    stringResource(R.string.postilla_source_contacting, domain),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3594,39 +3594,39 @@ private fun RelayFeedEmptyState(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Loading results from $domain...",
+                    stringResource(R.string.postilla_source_loading, domain),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             is RelayFeedStatus.NoEvents -> {
                 Text(
-                    "No results available from $domain",
+                    stringResource(R.string.postilla_source_no_results, domain),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             is RelayFeedStatus.TimedOut -> {
                 Text(
-                    "Connection timed out",
+                    stringResource(R.string.postilla_source_timeout),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onRetry) { Text("Retry") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.postilla_source_retry)) }
             }
             is RelayFeedStatus.RateLimited -> {
                 Text(
-                    "This source is rate limiting requests",
+                    stringResource(R.string.postilla_source_rate_limited),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onRetry) { Text("Retry") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.postilla_source_retry)) }
             }
             is RelayFeedStatus.BadRelay -> {
                 Text(
-                    "This source has been marked unreliable",
+                    stringResource(R.string.postilla_source_unreliable),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3637,11 +3637,11 @@ private fun RelayFeedEmptyState(
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onRetry) { Text("Try anyway") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.postilla_source_try_anyway)) }
             }
             is RelayFeedStatus.Cooldown -> {
                 Text(
-                    "Source on cooldown",
+                    stringResource(R.string.postilla_source_cooldown),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3654,7 +3654,7 @@ private fun RelayFeedEmptyState(
             }
             is RelayFeedStatus.ConnectionFailed -> {
                 Text(
-                    "Connection failed",
+                    stringResource(R.string.postilla_source_connection_failed),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -3665,16 +3665,16 @@ private fun RelayFeedEmptyState(
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onRetry) { Text("Retry") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.postilla_source_retry)) }
             }
             is RelayFeedStatus.Disconnected -> {
                 Text(
-                    "Source disconnected",
+                    stringResource(R.string.postilla_source_disconnected),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onRetry) { Text("Reconnect") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.postilla_source_reconnect)) }
             }
             is RelayFeedStatus.Streaming, is RelayFeedStatus.Idle -> {
                 // Streaming with empty feed shouldn't normally happen, show spinner
