@@ -189,7 +189,7 @@ fun DmBubble(
                 )
                 .offset { IntOffset(animatedSwipe.roundToInt(), 0) }
                 .draggable(
-                    enabled = message.protocol == DmProtocol.NIP17,
+                    enabled = true,
                     orientation = Orientation.Horizontal,
                     state = rememberDraggableState { delta ->
                         val newOffset = (swipeOffsetPx + delta).coerceIn(0f, swipeThresholdPx * 1.3f)
@@ -409,7 +409,6 @@ fun DmBubble(
                     .padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (message.protocol == DmProtocol.NIP17) {
                 // Comment / Reply section
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -545,8 +544,6 @@ fun DmBubble(
                         }
                     }
                 }
-                }
-
                 // Actions panel
                 Column(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -565,7 +562,7 @@ fun DmBubble(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Spacer(Modifier.width(4.dp))
-                        if (message.protocol == DmProtocol.NIP17) DmActionPanelButton(
+                        DmActionPanelButton(
                             modifier = Modifier.width(82.dp),
                             onClick = { showActionsSheet = false; onZap(message) },
                             icon = {

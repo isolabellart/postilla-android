@@ -660,7 +660,8 @@ class SocialActionManager(
         amountMsats: Long,
         message: String = "",
         isAnonymous: Boolean = false,
-        rumorId: String? = null
+        rumorId: String? = null,
+        isPrivate: Boolean = false
     ) {
         val lud16 = eventRepo.getProfileData(pubkey)?.lud16
         if (lud16.isNullOrBlank()) {
@@ -678,7 +679,7 @@ class SocialActionManager(
                 amountMsats = amountMsats,
                 message = message,
                 isAnonymous = isAnonymous,
-                isPrivate = false
+                isPrivate = isPrivate
             )
             _zapInProgress.value = _zapInProgress.value - pubkey
             result.fold(

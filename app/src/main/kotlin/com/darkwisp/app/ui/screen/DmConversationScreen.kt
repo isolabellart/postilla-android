@@ -431,9 +431,9 @@ fun DmConversationScreen(
                                 }
                             },
                             onSelect = { viewModel.selectMessage(msg.id) },
-                            onReply = { if (!isLegacyDm) viewModel.setReplyingTo(it) },
-                            onReact = { m, emoji -> if (!isLegacyDm) { viewModel.sendReaction(m.rumorId, emoji, relayPool, signer, resolvedEmojis); onEmojiUsed?.invoke(emoji) } },
-                            onZap = { m -> if (!isLegacyDm) zapTargetMessage = m },
+                            onReply = { viewModel.setReplyingTo(it) },
+                            onReact = { m, emoji -> viewModel.sendReaction(if (isLegacyDm) m.id else m.rumorId, emoji, relayPool, signer, resolvedEmojis); onEmojiUsed?.invoke(emoji) },
+                            onZap = { m -> zapTargetMessage = m },
                             isZapInProgress = msg.senderPubkey in zapInProgress,
                             zapSats = msg.zaps.sumOf { it.sats }.coerceAtLeast(zapSatsMap[msg.id] ?: 0L),
                             onProfileClick = onProfileClick,
@@ -509,7 +509,7 @@ fun DmConversationScreen(
                     Column(modifier = Modifier.padding(8.dp)) {
                         // Reply preview inside the composer surface
                         val replyMsg = replyingTo
-                        if (replyMsg != null && !isLegacyDm) {
+                        if (replyMsg != null) {
                             val senderName = remember(replyMsg.senderPubkey) {
                                 if (replyMsg.senderPubkey == userPubkey) "You"
                                 else eventRepo?.getProfileData(replyMsg.senderPubkey)?.displayString
@@ -674,12 +674,20 @@ fun DmConversationScreen(
         ZapDialog(
             isWalletConnected = isWalletConnected,
             onDismiss = { zapTargetMessage = null },
-            onZap = { amountMsats, message, isAnonymous, _ ->
+            forcePrivate = isLegacyDm,
+            onZap = { amountMsats, message, isAnonymous, isPrivate ->
                 val target = zapTargetMessage ?: return@ZapDialog
                 zapPendingSats = amountMsats
                 lastZappedMessage = target
                 zapTargetMessage = null
-                socialActionManager?.sendZapToPubkey(target.senderPubkey, amountMsats, message, isAnonymous, rumorId = target.rumorId.ifEmpty { null })
+                socialActionManager?.sendZapToPubkey(
+                    target.senderPubkey,
+                    amountMsats,
+                    message,
+                    isAnonymous,
+                    rumorId = if (isLegacyDm) target.id else target.rumorId.ifEmpty { null },
+                    isPrivate = isPrivate
+                )
             },
             onGoToWallet = {
                 zapTargetMessage = null

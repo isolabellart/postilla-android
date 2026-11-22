@@ -697,7 +697,13 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         val text = _messageText.value.trim()
         if (text.isBlank() || _sending.value) return
         if (protocol == DmProtocol.NIP04) {
-            sendLegacyMessage(relayPool, signer, text)
+            // NIP-04 kind 4 has no structured reply field. Keep the quote inside
+            // the encrypted payload instead of publishing a public e-tag.
+            val replyingTo = _replyingToMessage.value
+            val quotedText = replyingTo?.let {
+                "↪ " + it.content.take(400) + "\n\n" + text
+            } ?: text
+            sendLegacyMessage(relayPool, signer, quotedText)
             return
         }
         val replyingTo = _replyingToMessage.value
@@ -1060,42 +1066,81 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun sendReaction(targetRumorId: String, emoji: String, relayPool: RelayPool, signer: NostrSigner? = null, resolvedEmojis: Map<String, String> = emptyMap()) {
-        if (protocol != DmProtocol.NIP17) return
-        val originalSenderPubkey = _messages.value.firstOrNull { it.rumorId == targetRumorId }?.senderPubkey
-            ?: return
+    /**
+     * NIP-17 reactions target the private rumor (kind 14); NIP-04 reactions
+     * target the real kind-4 event ID. Both are carried only inside Gift Wraps.
+     */
+    fun sendReaction(targetMessageId: String, emoji: String, relayPool: RelayPool, signer: NostrSigner? = null, resolvedEmojis: Map<String, String> = emptyMap()) {
+        if (protocol != DmProtocol.NIP17 && protocol != DmProtocol.NIP04) return
+        val target = _messages.value.firstOrNull {
+            it.rumorId == targetMessageId || it.id == targetMessageId
+        } ?: return
+        val targetEventId = if (protocol == DmProtocol.NIP04) target.id else target.rumorId
+        if (targetEventId.isBlank()) return
+        val targetKind = if (protocol == DmProtocol.NIP04) 4 else 14
+        val targetAuthor = target.senderPubkey
 
         viewModelScope.launch(Dispatchers.Default) {
             try {
                 val myPubkey = signer?.pubkeyHex ?: keyRepo.getKeypair()?.pubkey?.toHex() ?: return@launch
-                // Resolve custom emoji URL if this is a shortcode reaction
                 val emojiUrl = if (emoji.startsWith(":") && emoji.endsWith(":")) {
                     resolvedEmojis[emoji.removeSurrounding(":")]
                 } else null
-                // Optimistic local update — show the reaction immediately
-                dmRepo?.addReaction(conversationKey, targetRumorId, DmReaction(myPubkey, emoji, System.currentTimeMillis() / 1000))
+                dmRepo?.addReaction(conversationKey, targetEventId, DmReaction(myPubkey, emoji, System.currentTimeMillis() / 1000, emojiUrl))
 
                 if (signer != null) {
                     for (recipient in participants) {
-                        val wrap = Nip17.createDmReactionRemote(signer, recipient, targetRumorId, originalSenderPubkey, emoji, emojiUrl)
+                        val wrap = Nip17.createGiftWrappedReactionRemote(
+                            signer = signer,
+                            recipientPubkeyHex = recipient,
+                            targetRumorId = targetEventId,
+                            targetAuthor = targetAuthor,
+                            targetKind = targetKind,
+                            emoji = emoji,
+                            emojiUrl = emojiUrl
+                        )
                         val relays = fetchRelaysForParticipant(recipient, relayPool)
                             .ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
                         sendToDeliveryRelays(relayPool, relays, ClientMessage.event(wrap))
                     }
-                    // Self-copy
-                    val selfWrap = Nip17.createDmReactionRemote(signer, signer.pubkeyHex, targetRumorId, originalSenderPubkey, emoji, emojiUrl)
+                    val selfWrap = Nip17.createGiftWrappedReactionRemote(
+                        signer = signer,
+                        recipientPubkeyHex = signer.pubkeyHex,
+                        targetRumorId = targetEventId,
+                        targetAuthor = targetAuthor,
+                        targetKind = targetKind,
+                        emoji = emoji,
+                        emojiUrl = emojiUrl
+                    )
                     if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(ClientMessage.event(selfWrap))
                     else relayPool.sendToWriteRelays(ClientMessage.event(selfWrap))
                 } else {
                     val keypair = keyRepo.getKeypair() ?: return@launch
                     for (recipient in participants) {
-                        val wrap = Nip17.createDmReaction(keypair.privkey, keypair.pubkey, recipient.hexToByteArray(), targetRumorId, originalSenderPubkey, emoji, emojiUrl)
+                        val wrap = Nip17.createGiftWrappedReaction(
+                            senderPrivkey = keypair.privkey,
+                            senderPubkey = keypair.pubkey,
+                            recipientPubkey = recipient.hexToByteArray(),
+                            targetRumorId = targetEventId,
+                            targetAuthor = targetAuthor,
+                            targetKind = targetKind,
+                            emoji = emoji,
+                            emojiUrl = emojiUrl
+                        )
                         val relays = fetchRelaysForParticipant(recipient, relayPool)
                             .ifEmpty { resolveRelaysForParticipant(recipient, relayPool) }
                         sendToDeliveryRelays(relayPool, relays, ClientMessage.event(wrap))
                     }
-                    // Self-copy
-                    val selfWrap = Nip17.createDmReaction(keypair.privkey, keypair.pubkey, keypair.pubkey, targetRumorId, originalSenderPubkey, emoji, emojiUrl)
+                    val selfWrap = Nip17.createGiftWrappedReaction(
+                        senderPrivkey = keypair.privkey,
+                        senderPubkey = keypair.pubkey,
+                        recipientPubkey = keypair.pubkey,
+                        targetRumorId = targetEventId,
+                        targetAuthor = targetAuthor,
+                        targetKind = targetKind,
+                        emoji = emoji,
+                        emojiUrl = emojiUrl
+                    )
                     if (relayPool.hasDmRelays()) relayPool.sendToDmRelays(ClientMessage.event(selfWrap))
                     else relayPool.sendToWriteRelays(ClientMessage.event(selfWrap))
                 }
