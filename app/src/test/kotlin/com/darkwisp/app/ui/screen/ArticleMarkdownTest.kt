@@ -75,4 +75,14 @@ class ArticleMarkdownTest {
         assertEquals(ArticleMarkdownBlock.Paragraph("[Postilla](https://example.com)"), blocks[0])
         assertEquals(ArticleMarkdownBlock.Footnote("note", "Extra context"), blocks[1])
     }
+    @Test
+    fun mathBlockFormattingInsertsDollarFencedFormulaAndParsesIt() {
+        val edit = formatArticleMarkdownSelection("before after", 7, 7, ArticleMarkdownFormat.MATH)
+        assertEquals("before $\\n\\n$after", edit.text)
+        assertEquals(10, edit.selectionStart)
+        assertEquals(
+            listOf(ArticleMarkdownBlock.Math("x^2")),
+            parseArticleMarkdown("$\\nx^2\\n$")
+        )
+    }
 }

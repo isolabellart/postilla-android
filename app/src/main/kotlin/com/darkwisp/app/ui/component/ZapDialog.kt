@@ -145,7 +145,7 @@ fun ZapDialog(
     canPrivateZap: Boolean = false,
     /**
      * Lock the zap to DIP-03 private mode (private + anon toggles hidden, isPrivate held true).
-     * Used when zapping a NIP-17 private reply — falling back to a public zap would attach an
+     * Used for private-message targets (NIP-04 kind 4 or NIP-17 kind 14) — falling back to a public zap would attach an
      * e-tag pointing at the rumor id on public relays.
      */
     forcePrivate: Boolean = false,
