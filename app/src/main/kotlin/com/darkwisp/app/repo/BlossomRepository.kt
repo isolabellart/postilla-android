@@ -48,7 +48,7 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
     }
 
     fun saveBlossomServers(urls: List<String>) {
-        val list = urls.ifEmpty { listOf(Blossom.DEFAULT_SERVER) }
+        val list = urls.ifEmpty { Blossom.DEFAULT_SERVERS }
         prefs.edit().putString("blossom_servers", json.encodeToString(list)).apply()
         _servers.value = list
     }
@@ -58,7 +58,7 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
     // `local_relay`, `relays`, `dm_relays`, etc. `reload(newPubkey)` below
     // repoints to the new account's file.
     fun clear() {
-        _servers.value = listOf(Blossom.DEFAULT_SERVER)
+        _servers.value = Blossom.DEFAULT_SERVERS
     }
 
     fun reload(pubkeyHex: String?) {
@@ -74,12 +74,12 @@ class BlossomRepository(private val context: Context, pubkeyHex: String? = null)
     }
 
     private fun loadServers(): List<String> {
-        val str = prefs.getString("blossom_servers", null) ?: return listOf(Blossom.DEFAULT_SERVER)
+        val str = prefs.getString("blossom_servers", null) ?: return Blossom.DEFAULT_SERVERS
         return try {
             val list = json.decodeFromString<List<String>>(str)
-            list.ifEmpty { listOf(Blossom.DEFAULT_SERVER) }
+            list.ifEmpty { Blossom.DEFAULT_SERVERS }
         } catch (_: Exception) {
-            listOf(Blossom.DEFAULT_SERVER)
+            Blossom.DEFAULT_SERVERS
         }
     }
 
