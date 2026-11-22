@@ -268,15 +268,24 @@ fun VideoEditorDialog(
                                         .distinct().take(30)
                                     val managedTags = setOf("d", "title", "published_at", "imeta", "duration", "t", "content-warning", "l", "L")
                                     val preservedTags = event.tags.filter { it.firstOrNull() !in managedTags }
+                                    val revisionTimestamp = maxOf(
+                                        System.currentTimeMillis() / 1000,
+                                        event.created_at + 1L
+                                    )
                                     val videoTags = Nip71.buildVideoTags(
                                         title = title.trim(), media = videoFiles, hashtags = cleanedTags,
                                         contentWarning = if (contentWarning) warningLabel.ifBlank { "sensitive" } else null,
-                                        dTag = originalDTag, publishedAt = System.currentTimeMillis() / 1000
+                                        dTag = originalDTag, publishedAt = revisionTimestamp
                                     )
                                     val languageTags = if (language.isBlank()) emptyList() else listOf(
                                         listOf("L", "ISO-639-1"), listOf("l", language, "ISO-639-1")
                                     )
-                                    val revised = signer.signEvent(kind = event.kind, content = description, tags = videoTags + languageTags + preservedTags)
+                                    val revised = signer.signEvent(
+                                        kind = event.kind,
+                                        content = description,
+                                        tags = videoTags + languageTags + preservedTags,
+                                        createdAt = revisionTimestamp
+                                    )
                                     val send: suspend () -> Int = { relayPool.sendToWriteRelays(ClientMessage.event(revised)) }
                                     var outcome = relayPool.publishWithConfirmation(revised.id, send = send)
                                     if (outcome.sentCount == 0 && relayPool.ensureWriteRelaysConnected() > 0) {
