@@ -1113,4 +1113,46 @@
     <string name="label_roles">Funções (separadas por vírgulas)</string>
     <string name="msg_assign_role">Defina as funções de %s. Deixe vazio para revogar o estatuto de administrador.</string>
     <string name="cd_assign_role">Atribuir função</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">A publicação não pode estar vazia</string>
+    <string name="error_not_logged_in">Não iniciou sessão</string>
+    <string name="error_schedule_date_required">Escolha uma data e hora para agendar</string>
+    <string name="error_schedule_future">A hora agendada tem de estar no futuro</string>
+    <string name="error_publish_failed">Falha ao publicar: %s</string>
+    <string name="error_poll_options">A sondagem precisa de pelo menos 2 opções</string>
+    <string name="error_scheduler_relay">Não foi possível ligar ao relay de agendamento</string>
+    <string name="error_no_relays_connected">Sem relays ligados — a nota não foi publicada</string>
+    <string name="error_publish_unconfirmed">Nenhum relay confirmou a sua nota. Verifique a ligação e toque novamente em Publicar.</string>
+    <string name="logout_warning">Certifique-se de que fez uma cópia de segurança da sua chave privada antes de terminar sessão. Encontra-a nas definições de chaves. Sem ela, não poderá recuperar a conta.</string>
+    <string name="spark_setup_subtitle">Lightning em autocustódia, com tecnologia Spark e Breez.</string>
+    <string name="retry">Tentar novamente</string>
+    <string name="cancel">Cancelar</string>
+    <string name="done">Concluído</string>
+    <string name="error_invalid_invite_link">Link de convite inválido</string>
+    <string name="drawer_fiat_mode">Modo fiduciário</string>
+    <string name="fiat_settings_description">Mostra os valores de zap e da carteira numa moeda fiduciária em vez de satoshis. As taxas são obtidas uma vez ao iniciar a aplicação; são aproximadas, não preços em tempo real.</string>
+    <string name="fiat_settings_currency">Moeda</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">Enviar dinheiro</string>
+    <string name="zap_x_amount">Enviar %1$s</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">Um zap privado requer uma chave de assinatura local e uma lista de relays de DM NIP-17 (kind 10050) publicada por ambos os participantes. O Postilla não o enviará publicamente como alternativa.</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">Descrição</string>
+    <string name="cd_view_image_description">Ver descrição da imagem</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">Adicionar texto alternativo</string>
+    <string name="cd_remove_image">Remover imagem</string>
+    <string name="alt_editor_explainer">Uma breve descrição torna a fotografia acessível a leitores de ecrã e dá contexto caso a imagem não carregue.</string>
+    <string name="alt_editor_hint">Descreva esta imagem…</string>
+    <string name="alt_editor_chars_remaining">Restam %1$d</string>
+    <string name="alt_editor_clear">Limpar descrição</string>
+    <string name="translation_deepl_key_missing">Adicione uma chave API DeepL nas definições da interface para usar o DeepL.</string>
+    <string name="drawer_privacy_security">Privacidade e segurança</string>
+    <string name="dm_translation_cloud_title">Traduzir esta mensagem privada com o DeepL?</string>
+    <string name="dm_translation_cloud_message">O texto da mensagem será enviado ao DeepL para tradução. Sairá deste dispositivo e será processado de acordo com os termos de privacidade do DeepL. Continue apenas se concordar em partilhar esta mensagem com o serviço.</string>
+    <string name="dm_translation_cloud_confirm">Enviar para o DeepL</string>
 </resources>

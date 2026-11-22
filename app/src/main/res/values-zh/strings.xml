@@ -1112,4 +1112,46 @@
     <string name="label_roles">角色（以逗号分隔）</string>
     <string name="msg_assign_role">为 %s 设置角色。留空可撤销管理员身份。</string>
     <string name="cd_assign_role">分配角色</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">帖子不能为空</string>
+    <string name="error_not_logged_in">未登录</string>
+    <string name="error_schedule_date_required">选择要安排的日期和时间</string>
+    <string name="error_schedule_future">预定时间必须在未来</string>
+    <string name="error_publish_failed">发布失败：%s</string>
+    <string name="error_poll_options">投票至少需要 2 个选项</string>
+    <string name="error_scheduler_relay">无法连接到计划中继</string>
+    <string name="error_no_relays_connected">没有连接的中继 — 帖子未发布</string>
+    <string name="error_publish_unconfirmed">没有中继确认你的帖子。请检查连接并再次点按“发布”。</string>
+    <string name="logout_warning">退出登录前，请确保已备份私钥。你可以在密钥设置中找到它。没有私钥将无法恢复账户。</string>
+    <string name="spark_setup_subtitle">由 Spark 和 Breez 提供支持的自托管 Lightning。</string>
+    <string name="retry">重试</string>
+    <string name="cancel">取消</string>
+    <string name="done">完成</string>
+    <string name="error_invalid_invite_link">邀请链接无效</string>
+    <string name="drawer_fiat_mode">法币模式</string>
+    <string name="fiat_settings_description">以法定货币而非 satoshi 显示 zap 和钱包金额。汇率在应用启动时获取一次，仅供参考，并非实时价格。</string>
+    <string name="fiat_settings_currency">货币</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">发送款项</string>
+    <string name="zap_x_amount">发送 %1$s</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">私密 zap 需要本地签名密钥，以及双方都已发布的 NIP-17 DM 中继列表（kind 10050）。Postilla 不会将其作为后备方案公开发送。</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">说明</string>
+    <string name="cd_view_image_description">查看图片说明</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">添加替代文本</string>
+    <string name="cd_remove_image">移除图片</string>
+    <string name="alt_editor_explainer">简短描述可以让屏幕阅读器用户了解照片内容，并在图片无法加载时提供上下文。</string>
+    <string name="alt_editor_hint">描述此图片…</string>
+    <string name="alt_editor_chars_remaining">还剩 %1$d</string>
+    <string name="alt_editor_clear">清除说明</string>
+    <string name="translation_deepl_key_missing">要使用 DeepL，请在界面设置中添加 DeepL API 密钥。</string>
+    <string name="drawer_privacy_security">隐私与安全</string>
+    <string name="dm_translation_cloud_title">要使用 DeepL 翻译此私信吗？</string>
+    <string name="dm_translation_cloud_message">消息文本将发送到 DeepL 进行翻译。它会离开此设备，并根据 DeepL 的隐私条款进行处理。只有在你愿意与该服务分享此消息时才继续。</string>
+    <string name="dm_translation_cloud_confirm">发送到 DeepL</string>
 </resources>

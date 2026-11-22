@@ -1114,4 +1114,46 @@
     <string name="label_roles">역할 (쉼표로 구분)</string>
     <string name="msg_assign_role">%s의 역할을 설정합니다. 관리자 권한을 취소하려면 비워 두세요.</string>
     <string name="cd_assign_role">역할 할당</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">게시물은 비워 둘 수 없습니다</string>
+    <string name="error_not_logged_in">로그인하지 않았습니다</string>
+    <string name="error_schedule_date_required">예약할 날짜와 시간을 선택하세요</string>
+    <string name="error_schedule_future">예약 시간은 미래여야 합니다</string>
+    <string name="error_publish_failed">게시하지 못했습니다: %s</string>
+    <string name="error_poll_options">투표에는 최소 2개의 선택지가 필요합니다</string>
+    <string name="error_scheduler_relay">스케줄러 릴레이에 연결할 수 없습니다</string>
+    <string name="error_no_relays_connected">연결된 릴레이가 없어 게시물이 전송되지 않았습니다</string>
+    <string name="error_publish_unconfirmed">어떤 릴레이도 게시물을 확인하지 않았습니다. 연결을 확인하고 게시를 다시 탭하세요.</string>
+    <string name="logout_warning">로그아웃하기 전에 개인 키를 백업했는지 확인하세요. 키 설정에서 찾을 수 있습니다. 키가 없으면 계정을 복구할 수 없습니다.</string>
+    <string name="spark_setup_subtitle">Spark와 Breez가 제공하는 자기 관리형 Lightning.</string>
+    <string name="retry">다시 시도</string>
+    <string name="cancel">취소</string>
+    <string name="done">완료</string>
+    <string name="error_invalid_invite_link">잘못된 초대 링크</string>
+    <string name="drawer_fiat_mode">법정화폐 모드</string>
+    <string name="fiat_settings_description">Zap 및 지갑 금액을 satoshi 대신 법정화폐로 표시합니다. 환율은 앱 시작 시 한 번 가져오며 실시간 가격이 아닌 대략적인 값입니다.</string>
+    <string name="fiat_settings_currency">통화</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">송금</string>
+    <string name="zap_x_amount">%1$s 보내기</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">비공개 Zap에는 로컬 서명 키와 양측 모두가 게시한 NIP-17 DM 릴레이 목록(kind 10050)이 필요합니다. Postilla는 대체 수단으로 공개 전송하지 않습니다.</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">설명</string>
+    <string name="cd_view_image_description">이미지 설명 보기</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">대체 텍스트 추가</string>
+    <string name="cd_remove_image">이미지 제거</string>
+    <string name="alt_editor_explainer">짧은 설명을 추가하면 스크린 리더 사용자도 사진을 이해할 수 있고, 이미지가 로드되지 않을 때도 맥락을 알 수 있습니다.</string>
+    <string name="alt_editor_hint">이 이미지를 설명하세요…</string>
+    <string name="alt_editor_chars_remaining">남은 글자 %1$d개</string>
+    <string name="alt_editor_clear">설명 지우기</string>
+    <string name="translation_deepl_key_missing">DeepL을 사용하려면 인터페이스 설정에 DeepL API 키를 추가하세요.</string>
+    <string name="drawer_privacy_security">개인정보 및 보안</string>
+    <string name="dm_translation_cloud_title">이 비공개 메시지를 DeepL로 번역할까요?</string>
+    <string name="dm_translation_cloud_message">번역을 위해 메시지 텍스트가 DeepL로 전송됩니다. 이 기기를 떠나 DeepL의 개인정보 처리 약관에 따라 처리됩니다. 서비스와 메시지를 공유해도 괜찮은 경우에만 계속하세요.</string>
+    <string name="dm_translation_cloud_confirm">DeepL로 보내기</string>
 </resources>

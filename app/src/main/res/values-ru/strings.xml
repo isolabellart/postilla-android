@@ -1072,4 +1072,46 @@
     <string name="label_roles">Роли (через запятую)</string>
     <string name="msg_assign_role">Назначьте роли для %s. Оставьте поле пустым, чтобы отозвать права администратора.</string>
     <string name="cd_assign_role">Назначить роль</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">Публикация не может быть пустой</string>
+    <string name="error_not_logged_in">Вы не вошли в систему</string>
+    <string name="error_schedule_date_required">Выберите дату и время для планирования</string>
+    <string name="error_schedule_future">Запланированное время должно быть в будущем</string>
+    <string name="error_publish_failed">Не удалось опубликовать: %s</string>
+    <string name="error_poll_options">В опросе должно быть не менее 2 вариантов</string>
+    <string name="error_scheduler_relay">Не удалось подключиться к ретранслятору планировщика</string>
+    <string name="error_no_relays_connected">Нет подключённых ретрансляторов — заметка не опубликована</string>
+    <string name="error_publish_unconfirmed">Ни один ретранслятор не подтвердил публикацию. Проверьте подключение и нажмите «Опубликовать» ещё раз.</string>
+    <string name="logout_warning">Перед выходом убедитесь, что сохранили резервную копию приватного ключа. Он находится в настройках ключей. Без него вы не сможете восстановить аккаунт.</string>
+    <string name="spark_setup_subtitle">Lightning с самостоятельным хранением на базе Spark и Breez.</string>
+    <string name="retry">Повторить</string>
+    <string name="cancel">Отмена</string>
+    <string name="done">Готово</string>
+    <string name="error_invalid_invite_link">Недействительная ссылка-приглашение</string>
+    <string name="drawer_fiat_mode">Фиатный режим</string>
+    <string name="fiat_settings_description">Показывать суммы zap и кошелька в фиатной валюте вместо сатоши. Курсы загружаются один раз при запуске приложения и являются приблизительными, а не актуальными в реальном времени.</string>
+    <string name="fiat_settings_currency">Валюта</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">Отправить деньги</string>
+    <string name="zap_x_amount">Отправить %1$s</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">Для приватного zap требуется локальный ключ подписи и список ретрансляторов ЛС NIP-17 (kind 10050), опубликованный обоими участниками. Postilla не будет отправлять его публично в качестве запасного варианта.</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">Описание</string>
+    <string name="cd_view_image_description">Просмотреть описание изображения</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">Добавить альтернативный текст</string>
+    <string name="cd_remove_image">Удалить изображение</string>
+    <string name="alt_editor_explainer">Краткое описание делает фотографию доступной для пользователей программ чтения с экрана и даёт контекст, если изображение не загрузится.</string>
+    <string name="alt_editor_hint">Опишите это изображение…</string>
+    <string name="alt_editor_chars_remaining">Осталось: %1$d</string>
+    <string name="alt_editor_clear">Очистить описание</string>
+    <string name="translation_deepl_key_missing">Добавьте ключ API DeepL в настройках интерфейса, чтобы использовать DeepL.</string>
+    <string name="drawer_privacy_security">Конфиденциальность и безопасность</string>
+    <string name="dm_translation_cloud_title">Перевести это личное сообщение с помощью DeepL?</string>
+    <string name="dm_translation_cloud_message">Текст сообщения будет отправлен в DeepL для перевода. Он покинет это устройство и будет обработан в соответствии с условиями конфиденциальности DeepL. Продолжайте, только если согласны поделиться сообщением с сервисом.</string>
+    <string name="dm_translation_cloud_confirm">Отправить в DeepL</string>
 </resources>

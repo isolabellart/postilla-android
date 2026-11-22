@@ -1111,4 +1111,46 @@
     <string name="label_roles">Rollen (gescheiden door komma\'s)</string>
     <string name="msg_assign_role">Stel rollen in voor %s. Laat leeg om de beheerdersstatus in te trekken.</string>
     <string name="cd_assign_role">Rol toewijzen</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">Bericht mag niet leeg zijn</string>
+    <string name="error_not_logged_in">Niet aangemeld</string>
+    <string name="error_schedule_date_required">Kies een datum en tijd om in te plannen</string>
+    <string name="error_schedule_future">De geplande tijd moet in de toekomst liggen</string>
+    <string name="error_publish_failed">Publiceren mislukt: %s</string>
+    <string name="error_poll_options">Een peiling heeft minstens 2 opties nodig</string>
+    <string name="error_scheduler_relay">Kan geen verbinding maken met de scheduler-relay</string>
+    <string name="error_no_relays_connected">Geen relays verbonden — bericht is niet gepubliceerd</string>
+    <string name="error_publish_unconfirmed">Geen enkele relay heeft je bericht bevestigd. Controleer je verbinding en tik op Publiceren om opnieuw te proberen.</string>
+    <string name="logout_warning">Zorg dat je een back-up van je privésleutel hebt voordat je uitlogt. Je vindt deze bij Sleutels. Zonder sleutel kun je je account niet herstellen.</string>
+    <string name="spark_setup_subtitle">Zelfbeheer-Lightning, mogelijk gemaakt door Spark en Breez.</string>
+    <string name="retry">Opnieuw proberen</string>
+    <string name="cancel">Annuleren</string>
+    <string name="done">Gereed</string>
+    <string name="error_invalid_invite_link">Ongeldige uitnodigingslink</string>
+    <string name="drawer_fiat_mode">Fiatmodus</string>
+    <string name="fiat_settings_description">Toon zap- en walletbedragen in een fiatvaluta in plaats van satoshi. Koersen worden opgehaald wanneer de app start; dit is een benadering, geen realtime prijs.</string>
+    <string name="fiat_settings_currency">Valuta</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">Geld verzenden</string>
+    <string name="zap_x_amount">%1$s verzenden</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">Een privé-zap vereist een lokale ondertekeningssleutel en een NIP-17 DM-relaylijst (kind 10050) die door beide deelnemers is gepubliceerd. Postilla verstuurt deze niet openbaar als alternatief.</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">Beschrijving</string>
+    <string name="cd_view_image_description">Afbeeldingsbeschrijving bekijken</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">Alternatieve tekst toevoegen</string>
+    <string name="cd_remove_image">Afbeelding verwijderen</string>
+    <string name="alt_editor_explainer">Een korte beschrijving maakt je foto toegankelijk voor schermlezers en geeft context als de afbeelding niet laadt.</string>
+    <string name="alt_editor_hint">Beschrijf deze afbeelding…</string>
+    <string name="alt_editor_chars_remaining">%1$d resterend</string>
+    <string name="alt_editor_clear">Beschrijving wissen</string>
+    <string name="translation_deepl_key_missing">Voeg een DeepL API-sleutel toe bij Interface-instellingen om DeepL te gebruiken.</string>
+    <string name="drawer_privacy_security">Privacy en beveiliging</string>
+    <string name="dm_translation_cloud_title">Dit privébericht vertalen met DeepL?</string>
+    <string name="dm_translation_cloud_message">De berichttekst wordt voor vertaling naar DeepL verzonden. De tekst verlaat dit apparaat en wordt verwerkt volgens de privacyvoorwaarden van DeepL. Ga alleen door als je ermee instemt dit bericht met de dienst te delen.</string>
+    <string name="dm_translation_cloud_confirm">Naar DeepL verzenden</string>
 </resources>
