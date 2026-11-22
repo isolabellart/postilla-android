@@ -275,7 +275,7 @@ fun DmConversationScreen(
                                 Box {
                                     Icon(
                                         Icons.Outlined.Cloud,
-                                        contentDescription = "DM relays",
+                                        contentDescription = stringResource(R.string.cd_dm_relays),
                                         tint = if (showRelayInfo) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -547,7 +547,7 @@ fun DmConversationScreen(
                                 )
                                 Icon(
                                     Icons.Outlined.Close,
-                                    contentDescription = "Cancel reply",
+                                    contentDescription = stringResource(R.string.postilla_dm_cancel_reply),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
                                         .size(14.dp)
@@ -626,7 +626,7 @@ fun DmConversationScreen(
                                     verticalArrangement = Arrangement.Center
                                 ) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Text("Mining…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 7.sp)
+                                    Text(stringResource(R.string.postilla_dm_mining), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 7.sp)
                                 }
                             } else if (sending) {
                                 Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
@@ -719,7 +719,7 @@ fun DmConversationScreen(
 private fun DmDebugDialog(message: DmMessage, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
-    val json = if (tab == 0) message.debugGiftWrapJson ?: "(not available)" else message.debugRumorJson ?: "(not available)"
+    val json = if (tab == 0) message.debugGiftWrapJson ?: context.getString(R.string.postilla_not_available) else message.debugRumorJson ?: context.getString(R.string.postilla_not_available)
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -743,10 +743,10 @@ private fun DmDebugDialog(message: DmMessage, onDismiss: () -> Unit) {
             androidx.compose.material3.TextButton(onClick = {
                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("dm_debug", json))
-            }) { Text("Copy") }
+            }) { Text(stringResource(R.string.postilla_dm_debug_copy)) }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Close") }
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.postilla_dm_debug_close)) }
         }
     )
 }
