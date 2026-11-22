@@ -161,6 +161,18 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
 
     /** Tracks whether the current gallery upload contains a video (to prevent mixing). */
     private val _galleryHasVideo = MutableStateFlow(false)
+    val galleryHasVideo: StateFlow<Boolean> = _galleryHasVideo
+
+    private val _galleryVideoTitle = MutableStateFlow(
+        savedStateHandle.get<String>("gallery_video_title") ?: ""
+    )
+    val galleryVideoTitle: StateFlow<String> = _galleryVideoTitle
+
+    fun updateGalleryVideoTitle(value: String) {
+        val safeValue = value.take(200)
+        _galleryVideoTitle.value = safeValue
+        savedStateHandle["gallery_video_title"] = safeValue
+    }
 
     /** Tracks uploaded media metadata for imeta tags and gallery orientation detection. */
     private val _uploadedMediaMeta = mutableMapOf<String, UploadedMediaMeta>()
@@ -384,8 +396,12 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         _uploadedUrls.value = _uploadedUrls.value - url
         _uploadedMediaMeta.remove(url)
         _altTexts.value = _altTexts.value - url
-        // Reset video flag if all media removed
-        if (_uploadedUrls.value.isEmpty()) _galleryHasVideo.value = false
+        // Reset video state when the last uploaded media item is removed.
+        if (_uploadedUrls.value.isEmpty()) {
+            _galleryHasVideo.value = false
+            _galleryVideoTitle.value = ""
+            savedStateHandle.remove<String>("gallery_video_title")
+        }
         if (!_galleryMode.value) {
             val current = _content.value.text
             val newText = current.replace(url, "").replace("\n\n", "\n").trim()
@@ -750,21 +766,47 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 _publishing.value = false
                 return 0
             }
-            // Detect if media is video or image based on URL extension
-            val videoExts = setOf("mp4", "webm", "mov", "avi", "mkv", "m4v")
-            val isVideo = urls.any { url ->
+            // Detect videos from uploaded MIME metadata first; URL extensions are a fallback.
+            val videoExts = setOf("mp4", "webm", "mov", "avi", "mkv", "m4v", "m3u8")
+            val isVideo = _galleryHasVideo.value || urls.any { url ->
+                val mime = _uploadedMediaMeta[url]?.mimeType.orEmpty()
                 val ext = url.substringAfterLast('.').lowercase().substringBefore('?')
-                ext in videoExts
+                mime.startsWith("video/") || ext in videoExts
             }
             if (isVideo) {
-                val videoUrl = urls.first()
+                val title = _galleryVideoTitle.value.trim()
+                if (title.isBlank()) {
+                    _error.value = getApplication<Application>().getString(R.string.compose_gallery_video_title_required)
+                    _publishing.value = false
+                    return 0
+                }
+                val videoUrl = urls.firstOrNull { url ->
+                    _uploadedMediaMeta[url]?.mimeType?.startsWith("video/") == true ||
+                        url.substringAfterLast('.').lowercase().substringBefore('?') in videoExts
+                } ?: urls.first()
                 val meta = _uploadedMediaMeta[videoUrl]
                 val dims = meta?.dimensions
                 val dimStr = dims?.let { "${it.first}x${it.second}" }
                 val isVertical = dims != null && dims.second > dims.first
                 val videoMeta = listOf(Nip71.VideoMeta(url = videoUrl, mimeType = meta?.mimeType, dim = dimStr))
-                tags.addAll(Nip71.buildVideoTags(title = null, media = videoMeta, hashtags = _hashtags.value))
-                eventKind = if (isVertical) Nip71.KIND_VIDEO_VERTICAL else Nip71.KIND_VIDEO_HORIZONTAL
+                val publishedAt = if (_scheduleEnabled.value) {
+                    _scheduleTimestamp.value ?: (System.currentTimeMillis() / 1000)
+                } else {
+                    System.currentTimeMillis() / 1000
+                }
+                val dTag = java.util.UUID.randomUUID().toString()
+                tags.addAll(Nip71.buildVideoTags(
+                    title = title,
+                    media = videoMeta,
+                    hashtags = emptyList(),
+                    dTag = dTag,
+                    publishedAt = publishedAt
+                ))
+                eventKind = if (isVertical) {
+                    Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL
+                } else {
+                    Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
+                }
             } else {
                 val altTexts = _altTexts.value
                 val imetaEntries = urls.map { url ->
@@ -868,6 +910,9 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             savedStateHandle.remove<String>("draft_content")
             savedStateHandle.remove<Array<String>>("draft_mentions")
             _uploadedUrls.value = emptyList()
+            _galleryHasVideo.value = false
+            _galleryVideoTitle.value = ""
+            savedStateHandle.remove<String>("gallery_video_title")
             _uploadedMediaMeta.clear()
             _altTexts.value = emptyMap()
             _error.value = null
@@ -908,6 +953,9 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             savedStateHandle.remove<String>("draft_content")
             savedStateHandle.remove<Array<String>>("draft_mentions")
             _uploadedUrls.value = emptyList()
+            _galleryHasVideo.value = false
+            _galleryVideoTitle.value = ""
+            savedStateHandle.remove<String>("gallery_video_title")
             _uploadedMediaMeta.clear()
             _altTexts.value = emptyMap()
             _error.value = null
@@ -972,6 +1020,9 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         _content.value = TextFieldValue()
         savedStateHandle.remove<String>("draft_content")
         _uploadedUrls.value = emptyList()
+        _galleryHasVideo.value = false
+        _galleryVideoTitle.value = ""
+        savedStateHandle.remove<String>("gallery_video_title")
         _uploadedMediaMeta.clear()
         _altTexts.value = emptyMap()
         _error.value = null
@@ -1026,6 +1077,9 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         savedStateHandle.remove<String>("draft_content")
         savedStateHandle.remove<Array<String>>("draft_mentions")
         _uploadedUrls.value = emptyList()
+        _galleryHasVideo.value = false
+        _galleryVideoTitle.value = ""
+        savedStateHandle.remove<String>("gallery_video_title")
         _uploadedMediaMeta.clear()
         _altTexts.value = emptyMap()
         _error.value = null
@@ -1290,6 +1344,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         _privateReplyLocked.value = false
         _galleryMode.value = false
         _galleryHasVideo.value = false
+        _galleryVideoTitle.value = ""
+        savedStateHandle.remove<String>("gallery_video_title")
         _uploadedMediaMeta.clear()
         _altTexts.value = emptyMap()
         _pollEnabled.value = false
