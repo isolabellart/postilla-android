@@ -390,10 +390,48 @@ class ListCrudManager(
     fun deleteEmojiSet(dTag: String) {
         val s = getSigner() ?: return
         val myPubkey = s.pubkeyHex
-        val deletionTags = Nip09.buildAddressableDeletionTags(Nip30.KIND_EMOJI_SET, myPubkey, dTag)
+        val deletionTags = Nip09.buildAddressableDeletionTags(
+            Nip30.KIND_EMOJI_SET,
+            myPubkey,
+            dTag
+        )
+        val setReference = Nip30.buildSetReference(myPubkey, dTag)
+
         scope.launch {
-            val deleteEvent = s.signEvent(kind = 5, content = "", tags = deletionTags)
-            relayPool.sendToWriteRelays(ClientMessage.event(deleteEvent))
+            try {
+                val deleteEvent = s.signEvent(
+                    kind = Nip09.KIND_DELETION,
+                    content = "",
+                    tags = deletionTags
+                )
+
+                // Hide stale copies immediately and persist the deletion coordinate locally.
+                eventRepo.deletedEventsRepo?.markDeletedAddress(
+                    Nip30.KIND_EMOJI_SET,
+                    myPubkey,
+                    dTag
+                )
+                customEmojiRepo.removeOwnSet(myPubkey, dTag)
+                relayPool.sendToWriteRelays(ClientMessage.event(deleteEvent))
+
+                // Remove the owned set from kind-10030 without touching direct emojis
+                // or references to any other emoji set.
+                val currentList = customEmojiRepo.userEmojiList.value
+                if (currentList?.setReferences?.contains(setReference) == true) {
+                    val updatedList = s.signEvent(
+                        kind = Nip30.KIND_USER_EMOJI_LIST,
+                        content = "",
+                        tags = Nip30.buildUserEmojiListTags(
+                            currentList.emojis,
+                            currentList.setReferences.filterNot { it == setReference }
+                        )
+                    )
+                    relayPool.sendToWriteRelays(ClientMessage.event(updatedList))
+                    customEmojiRepo.updateFromEvent(updatedList)
+                }
+            } catch (error: Exception) {
+                Log.e("ListCrudManager", "Failed to delete custom emoji set $dTag", error)
+            }
         }
     }
 

@@ -105,6 +105,26 @@ class CustomEmojiRepository(private val context: Context, pubkeyHex: String? = n
         return _userEmojiList.value?.setReferences ?: emptyList()
     }
 
+    /**
+     * Removes one of the current account's own NIP-30 emoji sets from local state.
+     * The caller is responsible for publishing the NIP-09 deletion event.
+     */
+    fun removeOwnSet(pubkey: String, dTag: String): Boolean {
+        val key = "$pubkey:$dTag"
+        val removed = emojiSets.remove(key) != null
+
+        if (pubkey == ownerPubkey) {
+            _ownSets.value = _ownSets.value.filterNot {
+                it.pubkey == pubkey && it.dTag == dTag
+            }
+            saveOwnSetsToPrefs()
+        }
+
+        resolveEmojis()
+        saveReferencedSetsToPrefs()
+        return removed
+    }
+
     fun getEventEmojis(eventId: String): Map<String, String>? = eventEmojiCache.get(eventId)
 
     fun cacheEventEmojis(eventId: String, map: Map<String, String>) {

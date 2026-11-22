@@ -84,6 +84,28 @@ class ArticleMarkdownTest {
         assertEquals(ArticleMarkdownBlock.Footnote("note", "Extra context"), blocks[1])
     }
     @Test
+    fun inlineDollarMathIsRecognizedInsideParagraphText() {
+        val content = "before \$x^2\$ after"
+        val match = findInlineMathAt(content, 7)
+        assertEquals("x^2", match?.formula)
+        assertEquals(12, match?.endExclusive)
+    }
+
+    @Test
+    fun inlineBracketMathIsRecognizedInsideParagraphText() {
+        val content = "value \\(\\frac{a}{b}\\)"
+        val match = findInlineMathAt(content, 6)
+        assertEquals("\\frac{a}{b}", match?.formula)
+        assertEquals(content.length, match?.endExclusive)
+    }
+
+    @Test
+    fun inlineMathRecognizerIgnoresEscapedAndDisplayDollarDelimiters() {
+        assertEquals(null, findInlineMathAt("\\\$not-math", 1))
+        assertEquals(null, findInlineMathAt("\$\$x^2\$\$", 0))
+    }
+
+    @Test
     fun bracketDelimitedDisplayMathIsParsedAsFormula() {
         val open = "\\" + "["
         val close = "\\" + "]"
