@@ -59,7 +59,7 @@ internal fun formatArticleMarkdownSelection(
         ArticleMarkdownFormat.ITALIC -> "*" to "*"
         ArticleMarkdownFormat.STRIKE -> "~~" to "~~"
         ArticleMarkdownFormat.INLINE_CODE -> 96.toChar().toString() to 96.toChar().toString()
-        ArticleMarkdownFormat.MATH -> "$" to "$"
+        ArticleMarkdownFormat.MATH -> "\$" to "\$"
         else -> null
     }
     if (inlineMarkers != null) {
@@ -172,7 +172,8 @@ private val footnoteDefinitionRegex = Regex("""^\[\^([^\]]+)]\s*:\s*(.+)$""")
 private val inlineRegex = Regex("""(\*\*.+?\*\*|~~.+?~~|\u0060[^\u0060]+\u0060|\[[^\]]+]\(https?://[^)]+\)|(?<!\*)\*[^*\n]+\*)""")
 private val ruleRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})$""")
 private val tableSeparatorRegex = Regex("""^:?-{3,}:?$""")
-private val mathFence = "$" + "$"
+private val mathFence = "\$" + "\$"
+private val codeFence = 96.toChar().toString().repeat(3)
 
 private fun tableCells(line: String): List<String> =
     line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim().replace("\\|", "|") }
@@ -188,7 +189,7 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
     var index = 0
 
     fun isBlockStart(line: String): Boolean =
-        headingRegex.matches(line) || line.startsWith(">") || line.startsWith(96.toChar()) ||
+        headingRegex.matches(line) || line.startsWith(">") || line.startsWith(codeFence) ||
             orderedListRegex.matches(line) || taskRegex.matches(line) || unorderedListRegex.matches(line) ||
             ruleRegex.matches(line) || imageRegex.matches(line) || nostrRegex.matches(line) ||
             footnoteDefinitionRegex.matches(line) ||
@@ -198,11 +199,11 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
         val line = lines[index].trim()
         when {
             line.isEmpty() -> index++
-            line.startsWith(96.toChar()) -> {
-                val language = line.drop(3).trim().ifEmpty { null }
+            line.startsWith(codeFence) -> {
+                val language = line.removePrefix(codeFence).trim().ifEmpty { null }
                 index++
                 val codeLines = mutableListOf<String>()
-                while (index < lines.size && !lines[index].trim().startsWith(96.toChar())) {
+                while (index < lines.size && !lines[index].trim().startsWith(codeFence)) {
                     codeLines.add(lines[index])
                     index++
                 }
