@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
