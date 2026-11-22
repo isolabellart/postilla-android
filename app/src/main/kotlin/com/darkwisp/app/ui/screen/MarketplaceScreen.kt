@@ -2096,7 +2096,7 @@ private fun ZoomableMarketplaceImage(
                 ) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = "Close image",
+                        contentDescription = stringResource(R.string.postilla_close_image),
                         tint = Color.White
                     )
                 }
