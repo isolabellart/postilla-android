@@ -358,7 +358,7 @@ fun GroupRoomScreen(
                                     }
                                     Spacer(Modifier.width(4.dp))
                                     Text(
-                                        text = "${onlineMembersForGroup.size} Online",
+                                        text = stringResource(R.string.postilla_group_online_count, onlineMembersForGroup.size),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -392,7 +392,7 @@ fun GroupRoomScreen(
                     }) {
                         Icon(
                             if (searchActive) Icons.Outlined.Close else Icons.Filled.Search,
-                            contentDescription = "Search messages"
+                            contentDescription = stringResource(R.string.postilla_group_search_messages)
                         )
                     }
                 },
@@ -475,7 +475,7 @@ fun GroupRoomScreen(
                                 Box(contentAlignment = Alignment.CenterStart) {
                                     if (searchQuery.isEmpty()) {
                                         Text(
-                                            "Search messages…",
+                                            stringResource(R.string.postilla_group_search_messages),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -507,7 +507,7 @@ fun GroupRoomScreen(
                                 enabled = searchMatches.size > 1,
                                 modifier = Modifier.size(28.dp)
                             ) {
-                                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Previous match", modifier = Modifier.size(20.dp))
+                                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.postilla_group_search_previous), modifier = Modifier.size(20.dp))
                             }
                             IconButton(
                                 onClick = {
@@ -520,7 +520,7 @@ fun GroupRoomScreen(
                                 enabled = searchMatches.size > 1,
                                 modifier = Modifier.size(28.dp)
                             ) {
-                                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Next match", modifier = Modifier.size(20.dp))
+                                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.postilla_group_search_next), modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -928,14 +928,14 @@ private fun JoinRoomPrompt(
             val memberCount = preview?.members?.size ?: 0
             if (memberCount > 0) {
                 Text(
-                    text = "$memberCount member${if (memberCount != 1) "s" else ""}",
+                    text = stringResource(R.string.postilla_group_member_count, memberCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onJoin) {
-                Text("Join Chat Room")
+                Text(stringResource(R.string.postilla_group_join_chat))
             }
         }
     }
@@ -1742,7 +1742,7 @@ private fun GroupMessageBubble(
                         icon = {
                             Icon(Icons.Outlined.ContentCopy, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         },
-                        label = "ID"
+                        label = stringResource(R.string.postilla_debug_id)
                     )
                     GroupChatCamPanelButton(
                         modifier = Modifier.width(82.dp),
@@ -1757,7 +1757,7 @@ private fun GroupMessageBubble(
                         icon = {
                             Icon(Icons.Outlined.ContentCopy, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         },
-                        label = "JSON"
+                        label = stringResource(R.string.postilla_debug_json)
                     )
                     GroupChatCamPanelButton(
                         modifier = Modifier.width(82.dp),
@@ -1769,7 +1769,7 @@ private fun GroupMessageBubble(
                         icon = {
                             Icon(Icons.Outlined.ContentCopy, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         },
-                        label = "Text"
+                        label = stringResource(R.string.postilla_debug_text)
                     )
                     Spacer(Modifier.width(4.dp))
                     }
