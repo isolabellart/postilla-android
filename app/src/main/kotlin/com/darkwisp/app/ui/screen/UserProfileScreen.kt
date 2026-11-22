@@ -73,6 +73,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -444,6 +445,7 @@ fun UserProfileScreen(
     val groupsLoading by viewModel.groupsLoading.collectAsState()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var galleryFilter by rememberSaveable { mutableIntStateOf(0) }
     var showSortDropdown by remember { mutableStateOf(false) }
 
     if (selectedTab == 5) {
@@ -1098,11 +1100,30 @@ fun UserProfileScreen(
                     }
                 }
                 2 -> {
-                    // Gallery tab — 2-column grid of gallery posts
-                    if (galleryPosts.isEmpty()) {
-                        item { EmptyTabContent(stringResource(R.string.profile_no_gallery)) }
+                    val filteredGalleryPosts = when (galleryFilter) {
+                        1 -> galleryPosts.filterNot { Nip71.isVideoKind(it.kind) }
+                        2 -> galleryPosts.filter { Nip71.isVideoKind(it.kind) }
+                        else -> galleryPosts
+                    }
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(selected = galleryFilter == 0, onClick = { galleryFilter = 0 }, label = { Text(stringResource(R.string.profile_gallery_all)) })
+                            FilterChip(selected = galleryFilter == 1, onClick = { galleryFilter = 1 }, label = { Text(stringResource(R.string.profile_gallery_photos)) })
+                            FilterChip(selected = galleryFilter == 2, onClick = { galleryFilter = 2 }, label = { Text(stringResource(R.string.profile_gallery_videos)) })
+                        }
+                    }
+                    if (filteredGalleryPosts.isEmpty()) {
+                        item {
+                            EmptyTabContent(
+                                if (galleryPosts.isEmpty()) stringResource(R.string.profile_no_gallery)
+                                else stringResource(R.string.profile_gallery_empty_filter)
+                            )
+                        }
                     } else {
-                        items(items = galleryPosts.chunked(2), key = { row -> row.first().id }) { row ->
+                        items(items = filteredGalleryPosts.chunked(2), key = { row -> row.first().id }) { row ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
