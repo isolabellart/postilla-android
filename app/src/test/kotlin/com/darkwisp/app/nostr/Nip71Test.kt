@@ -82,9 +82,9 @@ class Nip71Test {
 
     @Test
     fun selectsLegacyDefaultFromVideoShapeButAllowsAllFourKinds() {
-        assertEquals(Nip71.KIND_VIDEO_HORIZONTAL, Nip71.defaultVideoKind(1920, 1080))
-        assertEquals(Nip71.KIND_VIDEO_VERTICAL, Nip71.defaultVideoKind(1080, 1920))
-        assertEquals(Nip71.KIND_VIDEO_HORIZONTAL, Nip71.defaultVideoKind(null, null))
+        assertEquals(Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.defaultVideoKind(1920, 1080))
+        assertEquals(Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL, Nip71.defaultVideoKind(1080, 1920))
+        assertEquals(Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.defaultVideoKind(null, null))
         assertEquals(listOf(21, 22, 34235, 34236), Nip71.VIDEO_KINDS)
     }
 
