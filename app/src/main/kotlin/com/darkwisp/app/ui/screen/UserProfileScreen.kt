@@ -204,14 +204,17 @@ fun UserProfileScreen(
     onRemoveEmojiSet: ((String, String) -> Unit)? = null,
     isEmojiSetAdded: ((String, String) -> Boolean)? = null,
     onOpenStorefront: (() -> Unit)? = null,
-    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null
+    onMarketplaceListingClick: ((NostrEvent) -> Unit)? = null,
+    onCurationClick: ((String, String, List<String>) -> Unit)? = null
 ) {
     val resolvedEmojisState = rememberUpdatedState(resolvedEmojis)
     val unicodeEmojisState = rememberUpdatedState(unicodeEmojis)
-    val invoiceNoteActions = remember(onPayInvoice, onGroupRoom, onLiveStreamClick, fetchGroupPreview, onAddEmojiSet, onOpenEmojiLibrary, onMarketplaceListingClick) {
-        if (onPayInvoice != null || onGroupRoom != null || fetchGroupPreview != null || onAddEmojiSet != null || onLiveStreamClick != null || onOpenEmojiLibrary != null || onMarketplaceListingClick != null) {
+    val invoiceNoteActions = remember(onPayInvoice, onGroupRoom, onLiveStreamClick, fetchGroupPreview, onAddEmojiSet, onOpenEmojiLibrary, onMarketplaceListingClick, onCurationClick) {
+        if (onPayInvoice != null || onGroupRoom != null || fetchGroupPreview != null || onAddEmojiSet != null || onLiveStreamClick != null || onOpenEmojiLibrary != null || onMarketplaceListingClick != null || onCurationClick != null) {
             com.darkwisp.app.ui.component.NoteActions(
             onMarketplaceListingClick = onMarketplaceListingClick,
+            onArticleClick = onArticleClick,
+            onCurationClick = onCurationClick,
             onPayInvoice = onPayInvoice,
             onGroupRoom = onGroupRoom,
             onLiveStreamClick = onLiveStreamClick,

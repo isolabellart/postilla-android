@@ -1072,6 +1072,8 @@
     <string name="curation_set_label">Raccolta curata</string>
     <string name="curation_set_items">%1$d elementi</string>
     <string name="curation_set_not_found">Raccolta non trovata sui relay disponibili.</string>
+    <string name="curation_set_loading">Caricamento della raccolta dai relay…</string>
+    <string name="curation_set_entry_unavailable">Contenuto non disponibile sui relay raggiungibili.</string>
     <string name="curation_set_empty">Questa raccolta non contiene elementi.</string>
     <string name="curation_set_entry_loading">Recupero del contenuto dai relay…</string>
     <string name="curation_set_retry">Riprova</string>

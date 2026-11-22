@@ -75,3 +75,6 @@
     public static int v(...);
     public static int d(...);
 }
+
+# RaTeX native JNI bridge and renderer API
+-keep class io.ratex.** { *; }

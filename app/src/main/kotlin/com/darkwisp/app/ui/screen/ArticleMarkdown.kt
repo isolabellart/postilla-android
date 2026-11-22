@@ -13,8 +13,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -29,7 +34,10 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.viewinterop.AndroidView
 import coil3.compose.AsyncImage
+import io.ratex.RaTeXView
 
 internal enum class ArticleMarkdownFormat {
     HEADING_1, HEADING_2, HEADING_3, HEADING_4, HEADING_5, HEADING_6,
@@ -180,6 +188,9 @@ private val inlineRegex = Regex("""(\*\*.+?\*\*|~~.+?~~|\u0060[^\u0060]+\u0060|\
 private val ruleRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})$""")
 private val tableSeparatorRegex = Regex("""^:?-{3,}:?$""")
 private val mathFence = "\$" + "\$"
+private val bracketMathOpen = "\\" + "["
+private val bracketMathClose = "\\" + "]"
+private val singleLineMathRegex = Regex("""^(?:\$\$(.+)\$\$|\\\[(.+)\\\]|\\\((.+)\\\))$""")
 private val codeFence = 96.toChar().toString().repeat(3)
 
 private fun tableCells(line: String): List<String> =
@@ -197,6 +208,8 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
 
     fun isBlockStart(line: String): Boolean =
         headingRegex.matches(line) || line.startsWith(">") || line.startsWith(codeFence) ||
+            line == mathFence || line == bracketMathOpen ||
+            singleLineMathRegex.matches(line) ||
             orderedListRegex.matches(line) || taskRegex.matches(line) || unorderedListRegex.matches(line) ||
             ruleRegex.matches(line) || imageRegex.matches(line) || nostrRegex.matches(line) ||
             footnoteDefinitionRegex.matches(line) ||
@@ -217,10 +230,17 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
                 if (index < lines.size) index++
                 blocks.add(ArticleMarkdownBlock.Code(codeLines.joinToString("\n"), language))
             }
-            line == mathFence -> {
+            singleLineMathRegex.matches(line) -> {
+                val match = singleLineMathRegex.matchEntire(line)!!
+                val formula = match.groupValues.drop(1).first { it.isNotEmpty() }
+                blocks.add(ArticleMarkdownBlock.Math(formula))
+                index++
+            }
+            line == mathFence || line == bracketMathOpen -> {
+                val closingFence = if (line == mathFence) mathFence else bracketMathClose
                 index++
                 val mathLines = mutableListOf<String>()
-                while (index < lines.size && lines[index].trim() != mathFence) {
+                while (index < lines.size && lines[index].trim() != closingFence) {
                     mathLines.add(lines[index])
                     index++
                 }
@@ -410,10 +430,52 @@ internal fun ArticleMarkdownPreview(markdown: String, modifier: Modifier = Modif
                     Text(buildAnnotatedString { withLink(LinkAnnotation.Url(link)) { append(block.address) } }, color = MaterialTheme.colorScheme.primary)
                 }
                 is ArticleMarkdownBlock.Footnote -> Text("[" + block.id + "] " + block.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                is ArticleMarkdownBlock.Math -> Text(block.text, modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(12.dp), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
+                is ArticleMarkdownBlock.Math -> ArticleMathFormula(block.text)
                 is ArticleMarkdownBlock.Code -> Text(block.text, modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(12.dp), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ArticleMarkdownBlock.Divider -> Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
             }
+        }
+    }
+}
+
+
+@Composable
+private fun ArticleMathFormula(formula: String) {
+    val formulaColor = MaterialTheme.colorScheme.onSurfaceVariant
+    var renderError by remember(formula) { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        if (renderError) {
+            Text(
+                text = formula,
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                color = formulaColor
+            )
+        } else {
+            AndroidView(
+                factory = { context ->
+                    RaTeXView(context).apply {
+                        fontSize = 20f
+                        displayMode = true
+                        color = formulaColor.toArgb()
+                        onError = { renderError = true }
+                        latex = formula
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(12.dp),
+                update = { view ->
+                    view.fontSize = 20f
+                    view.displayMode = true
+                    view.color = formulaColor.toArgb()
+                    view.onError = { renderError = true }
+                    view.latex = formula
+                }
+            )
         }
     }
 }

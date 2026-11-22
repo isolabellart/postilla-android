@@ -39,7 +39,7 @@
             android:excludeFromRecents="true"
             android:label="@string/text_translation_action"
             android:theme="@style/Theme.Wisp">
-            <intent-filter android:priority="1000">
+            <intent-filter android:priority="0" android:label="@string/text_translation_action">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />

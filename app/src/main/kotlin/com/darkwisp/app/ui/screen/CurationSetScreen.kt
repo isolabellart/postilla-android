@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +50,8 @@ import com.darkwisp.app.repo.EventRepository
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 
 private fun curationEntryKey(entry: CurationSetEntry): String =
     entry.eventId?.let { "e:$it" }
@@ -62,7 +65,8 @@ fun CurationSetScreen(
     dTag: String,
     onBack: () -> Unit,
     onOpenArticle: (kind: Int, author: String, dTag: String) -> Unit,
-    onOpenNote: (eventId: String) -> Unit
+    onOpenNote: (eventId: String) -> Unit,
+    relayHints: List<String> = emptyList()
 ) {
     val cachedSet = remember(author, dTag) {
         eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag)
@@ -71,40 +75,68 @@ fun CurationSetScreen(
         Nip51.KIND_CURATION_SET, author, dTag
     ).collectAsState(initial = cachedSet)
     var retryNonce by remember(author, dTag) { mutableLongStateOf(0L) }
+    var entriesRetryNonce by remember(author, dTag) { mutableLongStateOf(0L) }
+    var isLoadingSet by remember(author, dTag, relayHints) { mutableStateOf(cachedSet == null) }
     val curation = remember(setEvent) { setEvent?.let(Nip51::parseCurationSet) }
     val resolvedEntries = remember(author, dTag) { mutableStateMapOf<String, NostrEvent>() }
+    val entryLoading = remember(author, dTag) { mutableStateMapOf<String, Boolean>() }
 
-    LaunchedEffect(eventRepo, author, dTag, retryNonce) {
-        if (eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag) == null) {
-            eventRepo.requestAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag)
+    LaunchedEffect(eventRepo, author, dTag, relayHints, retryNonce) {
+        val cached = eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag)
+        if (cached != null) {
+            isLoadingSet = false
+            return@LaunchedEffect
         }
+        isLoadingSet = true
+        eventRepo.requestAddressableEvent(
+            Nip51.KIND_CURATION_SET, author, dTag, relayHints
+        )
+        val fetched = withTimeoutOrNull(15_000L) {
+            eventRepo.observeAddressableEvent(
+                Nip51.KIND_CURATION_SET, author, dTag
+            ).first { it != null }
+        }
+        isLoadingSet = fetched == null &&
+            eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag) == null
     }
 
-    LaunchedEffect(curation) {
+    LaunchedEffect(setEvent) {
+        if (setEvent != null) isLoadingSet = false
+    }
+
+    LaunchedEffect(curation, entriesRetryNonce) {
         resolvedEntries.clear()
+        entryLoading.clear()
         val current = curation ?: return@LaunchedEffect
         coroutineScope {
             current.entries.forEach { entry ->
                 launch {
                     val key = curationEntryKey(entry)
-                    val relayHints = entry.relayHint?.let(::listOf) ?: emptyList()
-                    if (entry.eventId != null) {
-                        eventRepo.requestQuotedEvent(entry.eventId, relayHints)
-                        eventRepo.observeEvent(entry.eventId).collect { event ->
-                            if (event != null) resolvedEntries[key] = event
+                    val hints = entry.relayHint?.let(::listOf) ?: emptyList()
+                    entryLoading[key] = true
+                    val event = if (entry.eventId != null) {
+                        eventRepo.requestQuotedEvent(entry.eventId, hints)
+                        withTimeoutOrNull(12_000L) {
+                            eventRepo.observeEvent(entry.eventId).first { it != null }
                         }
                     } else {
-                        val entryAuthor = entry.author ?: return@launch
-                        val entryDTag = entry.dTag ?: return@launch
-                        eventRepo.requestAddressableEvent(
-                            entry.kind, entryAuthor, entryDTag, relayHints
-                        )
-                        eventRepo.observeAddressableEvent(
-                            entry.kind, entryAuthor, entryDTag
-                        ).collect { event ->
-                            if (event != null) resolvedEntries[key] = event
+                        val entryAuthor = entry.author
+                        val entryDTag = entry.dTag
+                        if (entryAuthor.isNullOrBlank() || entryDTag.isNullOrBlank()) {
+                            null
+                        } else {
+                            eventRepo.requestAddressableEvent(
+                                entry.kind, entryAuthor, entryDTag, hints
+                            )
+                            withTimeoutOrNull(12_000L) {
+                                eventRepo.observeAddressableEvent(
+                                    entry.kind, entryAuthor, entryDTag
+                                ).first { it != null }
+                            }
                         }
                     }
+                    if (event != null) resolvedEntries[key] = event
+                    else entryLoading[key] = false
                 }
             }
         }
@@ -130,6 +162,20 @@ fun CurationSetScreen(
         }
     ) { padding ->
         when {
+            setEvent == null && isLoadingSet -> {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Text(
+                        stringResource(R.string.curation_set_loading),
+                        modifier = Modifier.padding(top = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             setEvent == null -> {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
@@ -196,6 +242,8 @@ fun CurationSetScreen(
                             CurationEntryCard(
                                 entry = entry,
                                 event = resolvedEntries[curationEntryKey(entry)],
+                                isLoading = entryLoading[curationEntryKey(entry)] ?: true,
+                                onRetry = { entriesRetryNonce++ },
                                 onOpenArticle = onOpenArticle,
                                 onOpenNote = onOpenNote
                             )
@@ -211,6 +259,8 @@ fun CurationSetScreen(
 private fun CurationEntryCard(
     entry: CurationSetEntry,
     event: NostrEvent?,
+    isLoading: Boolean,
+    onRetry: () -> Unit,
     onOpenArticle: (kind: Int, author: String, dTag: String) -> Unit,
     onOpenNote: (eventId: String) -> Unit
 ) {
@@ -270,12 +320,25 @@ private fun CurationEntryCard(
                     modifier = Modifier.padding(top = 6.dp)
                 )
             } else if (event == null) {
-                Text(
-                    stringResource(R.string.curation_set_entry_loading),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+                if (isLoading) {
+                    Text(
+                        stringResource(R.string.curation_set_entry_loading),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    Column(modifier = Modifier.padding(top = 6.dp)) {
+                        Text(
+                            stringResource(R.string.curation_set_entry_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(onClick = onRetry) {
+                            Text(stringResource(R.string.curation_set_retry))
+                        }
+                    }
+                }
             }
             event?.let {
                 Text(

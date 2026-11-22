@@ -26,8 +26,8 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 53
-        versionName = "1.0.53"
+        versionCode = 54
+        versionName = "1.0.54"
         resValue("string", "app_name", "Postilla")
 
         ndk {
@@ -107,6 +107,8 @@ android {
 }
 
 dependencies {
+    implementation("io.github.erweixin:ratex-android:0.1.16")
+
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation("junit:junit:4.13.2")
 

@@ -190,6 +190,7 @@ data class NoteActions(
     val resolvedEmojisProvider: () -> Map<String, String> = { emptyMap() },
     val unicodeEmojisProvider: () -> List<String> = { emptyList() },
     val onOpenEmojiLibrary: (() -> Unit)? = null,
+    val onCurationClick: ((String, String, List<String>) -> Unit)? = null,
 )
 
 internal sealed interface ContentSegment {
@@ -1086,7 +1087,7 @@ fun RichContent(
                                         author = segment.author,
                                         relayHints = segment.relays,
                                         eventRepo = eventRepo,
-                                        onCurationClick = noteActions?.onArticleClick
+                                        onCurationClick = noteActions?.onCurationClick
                                     )
                                 } else {
                                     UnsupportedKindBadge(kind = kind, style = style)
@@ -1725,7 +1726,7 @@ private fun CurationSetCard(
     author: String,
     relayHints: List<String>,
     eventRepo: EventRepository,
-    onCurationClick: ((Int, String, String) -> Unit)?
+    onCurationClick: ((String, String, List<String>) -> Unit)?
 ) {
     val cached = eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag)
     val event by eventRepo.observeAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag).collectAsState(initial = cached)
@@ -1744,7 +1745,7 @@ private fun CurationSetCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable {
-            if (onCurationClick != null) onCurationClick(Nip51.KIND_CURATION_SET, author, dTag)
+            if (onCurationClick != null) onCurationClick(author, dTag, relayHints)
             else uriHandler.openUri("https://njump.me/" + address)
         }
     ) {

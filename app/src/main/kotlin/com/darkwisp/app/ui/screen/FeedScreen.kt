@@ -238,6 +238,7 @@ fun FeedScreen(
     walletConfigured: Boolean = false,
     walletBalanceMsats: Long? = null,
     onWalletRefresh: () -> Unit = {},
+    onCurationClick: ((String, String, List<String>) -> Unit)? = null,
 ) {
     val feed by viewModel.feed.collectAsState()
     val feedType by viewModel.feedType.collectAsState()
@@ -508,7 +509,7 @@ fun FeedScreen(
     val noteActions = remember(
         viewModel, userPubkey, followList, onReply, onReact, onRepost, onQuote,
         onProfileClick, onQuotedNoteClick, onListingClick, onAddToList, onHashtagClick,
-        onArticleClick, onGroupRoom, onLiveStreamClick, fetchGroupPreview
+        onArticleClick, onCurationClick, onGroupRoom, onLiveStreamClick, fetchGroupPreview
     ) {
         NoteActions(
             onReply = onReply,
@@ -542,6 +543,7 @@ fun FeedScreen(
                 viewModel.setFeedType(FeedType.RELAY)
             },
             onArticleClick = onArticleClick,
+            onCurationClick = onCurationClick,
             onPayInvoice = { bolt11 -> viewModel.payInvoice(bolt11) },
             onGroupRoom = onGroupRoom,
             onLiveStreamClick = onLiveStreamClick,

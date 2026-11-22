@@ -198,13 +198,22 @@ object Routes {
     const val INTERFACE_SETTINGS = "interface_settings"
     const val RELAY_HEALTH = "relay_health"
     const val ARTICLE = "article/{kind}/{author}/{dTag}"
-    const val CURATION_SET = "curation/{author}/{dTag}"
+    const val CURATION_SET = "curation/{author}/{dTag}?relayHints={relayHints}"
     const val LIVE_STREAM = "live_stream/{hostPubkey}/{dTag}?relayHint={relayHint}"
+}
+
+private fun curationSetRoute(author: String, dTag: String, relayHints: List<String>): String {
+    val base = "curation/${android.net.Uri.encode(author)}/${android.net.Uri.encode(dTag)}"
+    val safeHints = relayHints.map { it.trim() }
+        .filter { it.startsWith("wss://") || it.startsWith("ws://") }
+        .distinct()
+    return if (safeHints.isEmpty()) base
+    else "$base?relayHints=${android.net.Uri.encode(safeHints.joinToString(","))}"
 }
 
 private fun addressableContentRoute(kind: Int, author: String, dTag: String): String =
     if (kind == Nip51.KIND_CURATION_SET) {
-        "curation/$author/${android.net.Uri.encode(dTag)}"
+        curationSetRoute(author, dTag, emptyList())
     } else {
         "article/$kind/$author/${java.net.URLEncoder.encode(dTag, "UTF-8")}"
     }
@@ -1088,6 +1097,9 @@ fun WispNavHost(
                 onArticleClick = { kind, author, dTag ->
                     navController.navigate(addressableContentRoute(kind, author, dTag))
                 },
+                onCurationClick = { author, dTag, relayHints ->
+                    navController.navigate(curationSetRoute(author, dTag, relayHints))
+                },
                 onGroupRoom = { relayUrl, groupId ->
                     val encoded = android.util.Base64.encodeToString(
                         relayUrl.toByteArray(Charsets.UTF_8),
@@ -1909,6 +1921,9 @@ fun WispNavHost(
                 onArticleClick = { kind, articleAuthor, articleDTag ->
                     navController.navigate(addressableContentRoute(kind, articleAuthor, articleDTag))
                 },
+                onCurationClick = { author, dTag, relayHints ->
+                    navController.navigate(curationSetRoute(author, dTag, relayHints))
+                },
                 onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                 resolvedEmojis = profileResolvedEmojis,
                 unicodeEmojis = profileUnicodeEmojis,
@@ -2211,6 +2226,9 @@ fun WispNavHost(
                         onArticleClick = { kind, author, dTag ->
                             navController.navigate(addressableContentRoute(kind, author, dTag))
                         },
+                        onCurationClick = { author, dTag, relayHints ->
+                            navController.navigate(curationSetRoute(author, dTag, relayHints))
+                        },
                         onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                             val route = buildString {
                                 append("live_stream/$hostPubkey/${android.net.Uri.encode(dTag)}")
@@ -2315,6 +2333,9 @@ fun WispNavHost(
                         },
                         onArticleClick = { kind, author, dTag ->
                             navController.navigate(addressableContentRoute(kind, author, dTag))
+                        },
+                        onCurationClick = { author, dTag, relayHints ->
+                            navController.navigate(curationSetRoute(author, dTag, relayHints))
                         },
                         onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                             val route = buildString {
@@ -2564,6 +2585,12 @@ fun WispNavHost(
                 noteActions = remember {
                     com.darkwisp.app.ui.component.NoteActions(
                         onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
+                        onArticleClick = { kind, author, dTag ->
+                            navController.navigate(addressableContentRoute(kind, author, dTag))
+                        },
+                        onCurationClick = { author, dTag, relayHints ->
+                            navController.navigate(curationSetRoute(author, dTag, relayHints))
+                        },
                         nip05Repo = feedViewModel.nip05Repo,
                         onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                         onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
@@ -2811,6 +2838,9 @@ fun WispNavHost(
                 onArticleClick = { kind, author, dTag ->
                     navController.navigate(addressableContentRoute(kind, author, dTag))
                 },
+                onCurationClick = { author, dTag, relayHints ->
+                    navController.navigate(curationSetRoute(author, dTag, relayHints))
+                },
                 translationRepo = feedViewModel.translationRepo,
                 resolvedEmojis = threadResolvedEmojis,
                 unicodeEmojis = threadUnicodeEmojis,
@@ -2966,6 +2996,9 @@ fun WispNavHost(
                     },
                     onArticleClick = { kind, author, dTag ->
                         navController.navigate(addressableContentRoute(kind, author, dTag))
+                    },
+                    onCurationClick = { author, dTag, relayHints ->
+                        navController.navigate(curationSetRoute(author, dTag, relayHints))
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
@@ -3133,6 +3166,9 @@ fun WispNavHost(
                     onArticleClick = { kind, author, dTag ->
                         navController.navigate(addressableContentRoute(kind, author, dTag))
                     },
+                    onCurationClick = { author, dTag, relayHints ->
+                        navController.navigate(curationSetRoute(author, dTag, relayHints))
+                    },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                     onGroupRoom = { relayUrl, groupId ->
@@ -3190,10 +3226,15 @@ fun WispNavHost(
             Routes.CURATION_SET,
             arguments = listOf(
                 navArgument("author") { type = NavType.StringType },
-                navArgument("dTag") { type = NavType.StringType }
+                navArgument("dTag") { type = NavType.StringType },
+                navArgument("relayHints") { type = NavType.StringType; defaultValue = "" }
             )
         ) { backStackEntry ->
             val author = backStackEntry.arguments?.getString("author") ?: return@composable
+            val relayHints = backStackEntry.arguments?.getString("relayHints")
+                ?.split(",")?.map { it.trim() }
+                ?.filter { it.startsWith("wss://") || it.startsWith("ws://") }
+                .orEmpty()
             val dTag = java.net.URLDecoder.decode(
                 backStackEntry.arguments?.getString("dTag") ?: return@composable, "UTF-8"
             )
@@ -3201,8 +3242,8 @@ fun WispNavHost(
                 eventRepo = feedViewModel.eventRepo,
                 author = author,
                 dTag = dTag,
-                onBack = { navController.popBackStack() },
-                onOpenArticle = { kind, itemAuthor, itemDTag ->
+                relayHints = relayHints,
+                onBack = { navController.popBackStack() },                onOpenArticle = { kind, itemAuthor, itemDTag ->
                     navController.navigate(addressableContentRoute(kind, itemAuthor, itemDTag))
                 },
                 onOpenNote = { eventId -> navController.navigate("thread/$eventId") }
@@ -3331,6 +3372,9 @@ fun WispNavHost(
                     },
                     onArticleClick = { k, a, d ->
                         navController.navigate(addressableContentRoute(k, a, d))
+                    },
+                    onCurationClick = { author, dTag, relayHints ->
+                        navController.navigate(curationSetRoute(author, dTag, relayHints))
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },

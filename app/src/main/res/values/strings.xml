@@ -1242,6 +1242,8 @@
     <string name="curation_set_label">Curated collection</string>
     <string name="curation_set_items">%1$d curated items</string>
     <string name="curation_set_not_found">Collection not found on the available relays.</string>
+    <string name="curation_set_loading">Loading collection from relays…</string>
+    <string name="curation_set_entry_unavailable">Content is unavailable from the available relays.</string>
     <string name="curation_set_empty">This collection has no entries.</string>
     <string name="curation_set_entry_loading">Retrieving content from relays…</string>
     <string name="curation_set_retry">Retry</string>

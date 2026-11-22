@@ -84,6 +84,28 @@ class ArticleMarkdownTest {
         assertEquals(ArticleMarkdownBlock.Footnote("note", "Extra context"), blocks[1])
     }
     @Test
+    fun bracketDelimitedDisplayMathIsParsedAsFormula() {
+        val open = "\\" + "["
+        val close = "\\" + "]"
+        assertEquals(
+            listOf(
+                ArticleMarkdownBlock.Paragraph("Lead-in text"),
+                ArticleMarkdownBlock.Math("\\frac{a}{b}")
+            ),
+            parseArticleMarkdown("Lead-in text\n" + open + "\n\\frac{a}{b}\n" + close)
+        )
+    }
+
+    @Test
+    fun singleLineDisplayMathIsParsedAsFormula() {
+        val delimiter = 36.toChar().toString().repeat(2)
+        assertEquals(
+            listOf(ArticleMarkdownBlock.Math("E=mc^2")),
+            parseArticleMarkdown(delimiter + "E=mc^2" + delimiter)
+        )
+    }
+
+    @Test
     fun mathBlockFormattingInsertsDollarFencedFormulaAndParsesIt() {
         val delimiter = 36.toChar().toString().repeat(2)
         val edit = formatArticleMarkdownSelection("before after", 7, 7, ArticleMarkdownFormat.MATH)
