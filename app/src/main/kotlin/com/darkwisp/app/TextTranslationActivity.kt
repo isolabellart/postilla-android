@@ -63,9 +63,9 @@ class TextTranslationActivity : Activity() {
                 val message = when (state.status) {
                     TranslationStatus.DONE -> buildString {
                         append(getString(R.string.text_translation_original))
-                        append(":\\n")
+                        append(":\n")
                         append(selectedText)
-                        append("\\n\\n")
+                        append("\n\n")
                         append(getString(R.string.text_translation_result))
                         append(":\\n")
                         append(state.translatedText)

@@ -502,7 +502,7 @@ fun ArticleScreen(
                         }
                     }
 
-                    val emojiPack = article?.takeIf { it.kind == 30030 }?.let(Nip30::parseEmojiSet)
+                    val emojiPack = article?.takeIf { it.kind == 30030 }?.let { Nip30.parseEmojiSet(it) }
                     if (emojiPack != null) {
                         item(key = "emoji-pack-content") {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -529,15 +529,15 @@ fun ArticleScreen(
                         }
                     }
 
-                    if (
-                        article != null &&
-                        article.kind !in setOf(30023, CustomNip.KIND, Nip51.KIND_CURATION_SET, 30030, 30311) &&
-                        article.content.isBlank()
-                    ) {
+                    val textlessAddressable = article?.takeIf { event ->
+                        event.kind !in setOf(30023, CustomNip.KIND, Nip51.KIND_CURATION_SET, 30030, 30311) &&
+                            event.content.isBlank()
+                    }
+                    if (textlessAddressable != null) {
                         item(key = "addressable-event-details") {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                                 Text(stringResource(R.string.addressable_event_details), style = MaterialTheme.typography.titleSmall)
-                                article.tags.filter { it.size >= 2 }.forEach { tag ->
+                                textlessAddressable.tags.filter { it.size >= 2 }.forEach { tag ->
                                     Text(
                                         tag[0] + ": " + tag.drop(1).joinToString(" · "),
                                         style = MaterialTheme.typography.bodySmall,
