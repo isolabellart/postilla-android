@@ -171,7 +171,7 @@ fun VideoEditorDialog(
                         Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Box(modifier = Modifier.size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-                                    Text("\${index + 1}", style = MaterialTheme.typography.titleMedium)
+                                    Text("${index + 1}", style = MaterialTheme.typography.titleMedium)
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(video.dim ?: video.mimeType ?: "Video", style = MaterialTheme.typography.titleSmall, maxLines = 1)
