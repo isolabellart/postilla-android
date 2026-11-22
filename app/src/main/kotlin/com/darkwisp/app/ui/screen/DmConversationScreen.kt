@@ -686,7 +686,8 @@ fun DmConversationScreen(
                     message,
                     isAnonymous,
                     rumorId = if (isLegacyDm) target.id else target.rumorId.ifEmpty { null },
-                    isPrivate = isPrivate
+                    isPrivate = isPrivate,
+                    eventCreatedAt = target.createdAt
                 )
             },
             onGoToWallet = {
@@ -694,6 +695,7 @@ fun DmConversationScreen(
                 onGoToWallet()
             },
             zapPrefsRepo = zapPrefs,
+            canPrivateZap = isLegacyDm && viewModel.canSendPrivateZap(relayPool),
             recipientPubkey = zapTargetMessage?.senderPubkey,
             recipientHasLud16 = zapTargetMessage?.senderPubkey
                 ?.let { pk -> eventRepo?.getProfileData(pk)?.let { !it.lud16.isNullOrBlank() } } ?: true,

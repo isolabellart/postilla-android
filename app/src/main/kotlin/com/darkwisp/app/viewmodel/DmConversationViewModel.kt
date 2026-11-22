@@ -122,6 +122,17 @@ class DmConversationViewModel(app: Application) : AndroidViewModel(app) {
         _replyingToMessage.value = null
     }
 
+    /**
+     * DIP-03 private zaps need a local key and NIP-51 DM relays on both sides.
+     * Never enable a private-only action when it could only fall back to public delivery.
+     */
+    fun canSendPrivateZap(relayPool: RelayPool): Boolean {
+        val hasLocalKey = keyRepo.getKeypair() != null
+        val ownDmRelays = relayPool.getDmRelayUrls()
+        val recipientDmRelays = relayListRepo?.getDmRelays(peerPubkey).orEmpty()
+        return hasLocalKey && ownDmRelays.isNotEmpty() && recipientDmRelays.isNotEmpty()
+    }
+
     fun selectMessage(id: String?) {
         _selectedMessageId.value = if (_selectedMessageId.value == id) null else id
     }
