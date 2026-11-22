@@ -1214,4 +1214,45 @@
     <string name="marketplace_watchlist_title">Lista de seguimiento del Marketplace</string>
     <string name="marketplace_watchlist_price_changed">Precio cambiado</string>
     <string name="marketplace_watchlist_open_listing">Abrir anuncio</string>
+
+
+    <!-- Localization audit: DM, articles and app updates -->
+    <string name="dm_delivery_unconfirmed">Ningún relay DM del destinatario ha confirmado la entrega. Comprueba la lista de relays DM NIP-17 del destinatario y tu conexión, y vuelve a intentarlo.</string>
+    <string name="dm_signer_unavailable">No hay ningún firmante Nostr activo. Vuelve a conectar tu cuenta e inténtalo de nuevo.</string>
+    <string name="postilla_appearance_title">Apariencia de Postilla</string>
+    <string name="postilla_appearance_body">Una identidad visual. Elige aquí el modo claro u oscuro.</string>
+    <string name="article_draft_label">Artículo</string>
+    <string name="article_compose_button">Escribir artículo</string>
+    <string name="article_compose_title">Nuevo artículo</string>
+    <string name="article_title_hint">Título del artículo</string>
+    <string name="article_summary_hint">Resumen (opcional)</string>
+    <string name="article_cover">Imagen de portada</string>
+    <string name="article_choose_cover">Elegir imagen de portada</string>
+    <string name="article_remove_cover">Eliminar imagen de portada</string>
+    <string name="article_body_hint">Escribe tu artículo en Markdown</string>
+    <string name="article_hashtags_hint">Hashtags separados por comas</string>
+    <string name="article_preview">Vista previa</string>
+    <string name="article_edit">Editar artículo</string>
+    <string name="article_save_draft">Guardar borrador</string>
+    <string name="article_publish">Publicar artículo</string>
+    <string name="article_publishing">Publicando…</string>
+    <string name="article_title_required">Añade un título antes de publicar.</string>
+    <string name="article_body_required">Añade el texto del artículo antes de publicar.</string>
+    <string name="article_uploading_cover">Subiendo portada…</string>
+    <string name="article_copy_address">Copiar dirección del artículo</string>
+    <string name="article_copy_link">Copiar enlace de Nostr</string>
+    <string name="article_share">Compartir</string>
+    <string name="article_copy_text">Copiar texto del artículo</string>
+    <string name="article_address_copied">Dirección del artículo copiada</string>
+    <string name="article_publish_unconfirmed">Ningún relay ha confirmado el artículo. El texto sigue aquí; inténtalo de nuevo.</string>
+    <string name="article_not_signed_in">Inicia sesión para publicar un artículo.</string>
+    <string name="postilla_update_available">Postilla %1$s está disponible</string>
+    <string name="postilla_update_description">Hay una nueva versión disponible. Puedes actualizar ahora o más tarde.</string>
+    <string name="postilla_update_now">Actualizar ahora</string>
+    <string name="postilla_update_later">Más tarde</string>
+    <string name="postilla_update_downloading">Descargando…</string>
+    <string name="postilla_update_allow_install">Permite que Postilla instale actualizaciones en los ajustes de Android y vuelve a tocar Actualizar ahora.</string>
+    <string name="postilla_update_failed">No se pudo descargar o verificar la actualización. Inténtalo de nuevo más tarde.</string>
+    <string name="postilla_update_preview_only">La vista previa del actualizador está activa. No se pueden instalar actualizaciones desde una versión Preview.</string>
+    <string name="text_translation_action">Traducir con DeepL</string>
 </resources>

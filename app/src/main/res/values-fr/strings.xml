@@ -1213,4 +1213,45 @@
     <string name="marketplace_watchlist_title">Liste de suivi du Marketplace</string>
     <string name="marketplace_watchlist_price_changed">Prix modifié</string>
     <string name="marketplace_watchlist_open_listing">Ouvrir l\'annonce</string>
+
+
+    <!-- Localization audit: DM, articles and app updates -->
+    <string name="dm_delivery_unconfirmed">Aucun relais MP du destinataire n\'a confirmé la livraison. Vérifiez la liste des relais MP NIP-17 du destinataire et votre connexion, puis réessayez.</string>
+    <string name="dm_signer_unavailable">Aucun signataire Nostr actif n\'est disponible. Reconnectez votre compte et réessayez.</string>
+    <string name="postilla_appearance_title">Apparence de Postilla</string>
+    <string name="postilla_appearance_body">Une seule identité visuelle. Choisissez ici le mode clair ou sombre.</string>
+    <string name="article_draft_label">Article</string>
+    <string name="article_compose_button">Écrire un article</string>
+    <string name="article_compose_title">Nouvel article</string>
+    <string name="article_title_hint">Titre de l\'article</string>
+    <string name="article_summary_hint">Résumé (facultatif)</string>
+    <string name="article_cover">Image de couverture</string>
+    <string name="article_choose_cover">Choisir une image de couverture</string>
+    <string name="article_remove_cover">Supprimer l\'image de couverture</string>
+    <string name="article_body_hint">Rédigez votre article en Markdown</string>
+    <string name="article_hashtags_hint">Hashtags séparés par des virgules</string>
+    <string name="article_preview">Aperçu</string>
+    <string name="article_edit">Modifier l\'article</string>
+    <string name="article_save_draft">Enregistrer le brouillon</string>
+    <string name="article_publish">Publier l\'article</string>
+    <string name="article_publishing">Publication…</string>
+    <string name="article_title_required">Ajoutez un titre avant de publier.</string>
+    <string name="article_body_required">Ajoutez le texte de l\'article avant de publier.</string>
+    <string name="article_uploading_cover">Envoi de l\'image de couverture…</string>
+    <string name="article_copy_address">Copier l\'adresse de l\'article</string>
+    <string name="article_copy_link">Copier le lien Nostr</string>
+    <string name="article_share">Partager</string>
+    <string name="article_copy_text">Copier le texte de l\'article</string>
+    <string name="article_address_copied">Adresse de l\'article copiée</string>
+    <string name="article_publish_unconfirmed">Aucun relais n\'a confirmé l\'article. Votre texte est toujours présent ; réessayez.</string>
+    <string name="article_not_signed_in">Connectez-vous pour publier un article.</string>
+    <string name="postilla_update_available">Postilla %1$s est disponible</string>
+    <string name="postilla_update_description">Une nouvelle version est prête. Vous pouvez effectuer la mise à jour maintenant ou plus tard.</string>
+    <string name="postilla_update_now">Mettre à jour maintenant</string>
+    <string name="postilla_update_later">Plus tard</string>
+    <string name="postilla_update_downloading">Téléchargement…</string>
+    <string name="postilla_update_allow_install">Autorisez Postilla à installer les mises à jour dans les paramètres Android, puis touchez à nouveau Mettre à jour maintenant.</string>
+    <string name="postilla_update_failed">La mise à jour n\'a pas pu être téléchargée ou vérifiée. Veuillez réessayer plus tard.</string>
+    <string name="postilla_update_preview_only">L\'aperçu du programme de mise à jour est actif. L\'installation d\'une mise à jour depuis une version Preview est désactivée.</string>
+    <string name="text_translation_action">Traduire avec DeepL</string>
 </resources>

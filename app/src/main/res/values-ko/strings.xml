@@ -1215,4 +1215,45 @@
     <string name="marketplace_watchlist_title">마켓플레이스 관심 목록</string>
     <string name="marketplace_watchlist_price_changed">가격 변경됨</string>
     <string name="marketplace_watchlist_open_listing">상품 열기</string>
+
+
+    <!-- Localization audit: DM, articles and app updates -->
+    <string name="dm_delivery_unconfirmed">수신자의 DM 릴레이에서 전달을 확인하지 못했습니다. 수신자의 NIP-17 DM 릴레이 목록과 연결을 확인한 후 다시 시도하세요.</string>
+    <string name="dm_signer_unavailable">활성 Nostr 서명자를 사용할 수 없습니다. 계정을 다시 연결한 후 시도하세요.</string>
+    <string name="postilla_appearance_title">Postilla 모양</string>
+    <string name="postilla_appearance_body">하나의 시각적 아이덴티티. 여기서 라이트 또는 다크 모드를 선택하세요.</string>
+    <string name="article_draft_label">아티클</string>
+    <string name="article_compose_button">아티클 작성</string>
+    <string name="article_compose_title">새 아티클</string>
+    <string name="article_title_hint">아티클 제목</string>
+    <string name="article_summary_hint">요약 (선택 사항)</string>
+    <string name="article_cover">표지 이미지</string>
+    <string name="article_choose_cover">표지 이미지 선택</string>
+    <string name="article_remove_cover">표지 이미지 제거</string>
+    <string name="article_body_hint">Markdown으로 아티클 작성</string>
+    <string name="article_hashtags_hint">해시태그 (쉼표로 구분)</string>
+    <string name="article_preview">미리보기</string>
+    <string name="article_edit">아티클 편집</string>
+    <string name="article_save_draft">초안 저장</string>
+    <string name="article_publish">아티클 게시</string>
+    <string name="article_publishing">게시 중…</string>
+    <string name="article_title_required">게시하기 전에 제목을 입력하세요.</string>
+    <string name="article_body_required">게시하기 전에 아티클 내용을 입력하세요.</string>
+    <string name="article_uploading_cover">표지 이미지 업로드 중…</string>
+    <string name="article_copy_address">아티클 주소 복사</string>
+    <string name="article_copy_link">Nostr 링크 복사</string>
+    <string name="article_share">공유</string>
+    <string name="article_copy_text">아티클 텍스트 복사</string>
+    <string name="article_address_copied">아티클 주소가 복사되었습니다</string>
+    <string name="article_publish_unconfirmed">릴레이에서 아티클을 확인하지 못했습니다. 작성한 텍스트는 그대로 있으니 다시 시도하세요.</string>
+    <string name="article_not_signed_in">아티클을 게시하려면 로그인하세요.</string>
+    <string name="postilla_update_available">Postilla %1$s을(를) 사용할 수 있습니다</string>
+    <string name="postilla_update_description">새 버전이 준비되었습니다. 지금 또는 나중에 업데이트할 수 있습니다.</string>
+    <string name="postilla_update_now">지금 업데이트</string>
+    <string name="postilla_update_later">나중에</string>
+    <string name="postilla_update_downloading">다운로드 중…</string>
+    <string name="postilla_update_allow_install">Android 설정에서 Postilla의 업데이트 설치를 허용한 다음 지금 업데이트를 다시 탭하세요.</string>
+    <string name="postilla_update_failed">업데이트를 다운로드하거나 확인하지 못했습니다. 나중에 다시 시도하세요.</string>
+    <string name="postilla_update_preview_only">업데이트 미리보기가 활성화되어 있습니다. Preview 빌드에서는 업데이트를 설치할 수 없습니다.</string>
+    <string name="text_translation_action">DeepL로 번역</string>
 </resources>

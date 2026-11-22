@@ -1212,4 +1212,45 @@
     <string name="marketplace_watchlist_title">Marketplace ウォッチリスト</string>
     <string name="marketplace_watchlist_price_changed">価格が変更されました</string>
     <string name="marketplace_watchlist_open_listing">出品を開く</string>
+
+
+    <!-- Localization audit: DM, articles and app updates -->
+    <string name="dm_delivery_unconfirmed">受信者の DM リレーから配信確認がありません。受信者の NIP-17 DM リレーリストと接続を確認し、再試行してください。</string>
+    <string name="dm_signer_unavailable">有効な Nostr 署名者がありません。アカウントを再接続して、もう一度お試しください。</string>
+    <string name="postilla_appearance_title">Postilla の外観</string>
+    <string name="postilla_appearance_body">ひとつのビジュアルアイデンティティ。ここでライトモードまたはダークモードを選択します。</string>
+    <string name="article_draft_label">記事</string>
+    <string name="article_compose_button">記事を書く</string>
+    <string name="article_compose_title">新しい記事</string>
+    <string name="article_title_hint">記事タイトル</string>
+    <string name="article_summary_hint">概要（任意）</string>
+    <string name="article_cover">カバー画像</string>
+    <string name="article_choose_cover">カバー画像を選択</string>
+    <string name="article_remove_cover">カバー画像を削除</string>
+    <string name="article_body_hint">Markdown で記事を作成</string>
+    <string name="article_hashtags_hint">ハッシュタグ（カンマ区切り）</string>
+    <string name="article_preview">プレビュー</string>
+    <string name="article_edit">記事を編集</string>
+    <string name="article_save_draft">下書きを保存</string>
+    <string name="article_publish">記事を公開</string>
+    <string name="article_publishing">公開中…</string>
+    <string name="article_title_required">公開する前にタイトルを入力してください。</string>
+    <string name="article_body_required">公開する前に記事本文を入力してください。</string>
+    <string name="article_uploading_cover">カバー画像をアップロード中…</string>
+    <string name="article_copy_address">記事アドレスをコピー</string>
+    <string name="article_copy_link">Nostr リンクをコピー</string>
+    <string name="article_share">共有</string>
+    <string name="article_copy_text">記事本文をコピー</string>
+    <string name="article_address_copied">記事アドレスをコピーしました</string>
+    <string name="article_publish_unconfirmed">どのリレーからも記事の確認がありません。本文は残っています。もう一度お試しください。</string>
+    <string name="article_not_signed_in">記事を公開するにはログインしてください。</string>
+    <string name="postilla_update_available">Postilla %1$s を利用できます</string>
+    <string name="postilla_update_description">新しいバージョンが利用できます。今すぐ、または後で更新できます。</string>
+    <string name="postilla_update_now">今すぐ更新</string>
+    <string name="postilla_update_later">後で</string>
+    <string name="postilla_update_downloading">ダウンロード中…</string>
+    <string name="postilla_update_allow_install">Android の設定で Postilla にアップデートのインストールを許可し、もう一度「今すぐ更新」をタップしてください。</string>
+    <string name="postilla_update_failed">アップデートをダウンロードまたは検証できませんでした。後でもう一度お試しください。</string>
+    <string name="postilla_update_preview_only">アップデーターのプレビューが有効です。Preview ビルドからのアップデートインストールは無効です。</string>
+    <string name="text_translation_action">DeepL で翻訳</string>
 </resources>
