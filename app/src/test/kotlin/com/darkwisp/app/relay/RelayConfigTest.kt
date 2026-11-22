@@ -1,6 +1,7 @@
 package com.darkwisp.app.relay
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RelayConfigTest {
@@ -34,5 +35,44 @@ class RelayConfigTest {
             merged.size
         )
         assertEquals(merged, RelayConfig.mergeDefaultSearchRelays(merged))
+    }
+
+    @Test
+    fun mergingRecommendedGeneralRelaysPreservesCustomSettingsAndOrder() {
+        val custom = RelayConfig("wss://custom.example", read = false, write = true, auth = false)
+        val existingRecommended = RelayConfig.RECOMMENDED_GENERAL_RELAYS.first().copy(
+            read = false,
+            write = false,
+            auth = false
+        )
+        val existing = listOf(custom, existingRecommended)
+
+        val merged = RelayConfig.mergeRecommendedGeneralRelays(existing)
+
+        assertEquals(custom, merged.first())
+        assertEquals(existingRecommended, merged[1])
+        assertEquals(
+            1,
+            merged.count { it.url == existingRecommended.url }
+        )
+        assertEquals(merged, RelayConfig.mergeRecommendedGeneralRelays(merged))
+        assertEquals(4, merged.size)
+    }
+
+    @Test
+    fun mergingRecommendedDmRelaysPreservesCustomEntriesAndNormalizesDuplicates() {
+        val custom = "wss://my-dm-relay.example"
+        val alreadyPresent = "wss://auth.nostr1.com/"
+        val existing = listOf(custom, alreadyPresent)
+
+        val merged = RelayConfig.mergeRecommendedDmRelays(existing)
+
+        assertEquals(custom, merged.first())
+        assertEquals(alreadyPresent, merged[1])
+        assertEquals(1, merged.count { it.trimEnd('/') == "wss://auth.nostr1.com" })
+        assertTrue("wss://inbox.azzamo.net" in merged)
+        assertTrue("wss://inbox.nostr.wine" !in merged)
+        assertTrue("wss://nostr.land" !in merged)
+        assertEquals(merged, RelayConfig.mergeRecommendedDmRelays(merged))
     }
 }
