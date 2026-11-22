@@ -201,6 +201,25 @@
     <string name="relay_read">read</string>
     <string name="relay_write">write</string>
     <string name="relay_auth">auth</string>
+    <string name="relay_recommended_general_title">Recommended General relays</string>
+    <string name="relay_recommended_general_description">A small set of public relays to complement your existing list. Add only the ones you want.</string>
+    <string name="relay_recommended_general_public">Public general-purpose relay, suggested as part of a balanced relay setup.</string>
+    <string name="relay_recommended_azzamo_general">Free general relay. Connections are rate-limited for accounts without Azzamo Premium.</string>
+    <string name="relay_recommended_general_add">Add missing recommendations</string>
+    <string name="relay_recommended_dm_title">Recommended DM inbox relays</string>
+    <string name="relay_recommended_dm_description">NIP-17 recommends keeping this list short (usually 1–3). These relays receive encrypted messages for you. Adding them here does not publish the list; use Broadcast when ready.</string>
+    <string name="relay_recommended_dm_free_section">Free options</string>
+    <string name="relay_recommended_auth_free">Free AUTH DM inbox relay.</string>
+    <string name="relay_recommended_azzamo_dm">Free inbox for DMs and groups. It is rate-limited without Premium, and free message storage is temporary.</string>
+    <string name="relay_recommended_dm_add_free">Add free recommendations</string>
+    <string name="relay_recommended_dm_paid_section">Optional paid alternatives</string>
+    <string name="relay_recommended_paid_description">Paid AUTH inbox option. Check the provider's current price and terms before adding it.</string>
+    <string name="relay_recommended_dm_free_badge">FREE</string>
+    <string name="relay_recommended_dm_paid_badge">PAID</string>
+    <string name="relay_recommended_add">Add</string>
+    <string name="relay_recommended_added">Added</string>
+    <string name="relay_recommended_added_count">Added %1$d relay(s)</string>
+    <string name="relay_recommended_already_present">These recommendations are already in your list.</string>
 
     <!-- Tabs / Filters -->
     <string name="tab_status">Status</string>
@@ -374,6 +393,14 @@
     <string name="blossom_broadcast">Broadcast Server List</string>
     <string name="blossom_broadcast_sent">Broadcast Sent</string>
     <string name="blossom_drag_reorder">Drag to reorder priority</string>
+    <string name="blossom_recommended_title">Recommended free Blossom servers</string>
+    <string name="blossom_recommended_description">Add one or both to your upload list. Your current servers and their order are preserved.</string>
+    <string name="blossom_band_free_details">Free uploads up to 20 MiB per file, with no upload-count limit or expiry stated by the provider.</string>
+    <string name="blossom_azzamo_free_details">Free Seed tier. The provider does not publish a specific Seed quota on its information page.</string>
+    <string name="blossom_add_recommended">Add server</string>
+    <string name="blossom_add_all_recommended">Add all free recommendations</string>
+    <string name="blossom_recommended_all_added">All recommended free servers are already in your list.</string>
+    <string name="blossom_recommended_broadcast_note">These changes are saved on this device. Tap Broadcast Server List when you want to publish your kind 10063 list.</string>
 
     <!-- PoW Screen -->
     <string name="pow_description">Proof of Work mines a hash prefix on your events, acting as a spam deterrent. Higher difficulty takes longer but signals more effort.</string>
