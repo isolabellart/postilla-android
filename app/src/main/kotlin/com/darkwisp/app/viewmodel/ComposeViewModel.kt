@@ -438,6 +438,56 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         }
     }
 
+    /**
+     * Replaces the current gallery video only after the replacement has been
+     * uploaded successfully, preserving existing media and metadata on failure.
+     */
+    fun replaceGalleryVideo(uri: Uri, contentResolver: ContentResolver, signer: NostrSigner? = null) {
+        if (!_galleryMode.value || !_galleryHasVideo.value) return
+        if (_uploadProgress.value != null) return
+
+        viewModelScope.launch {
+            try {
+                _uploadProgress.value = "Uploading replacement video..."
+                val (rawBytes, rawMime, rawExt) = readFileFromUri(contentResolver, uri)
+                require(rawMime.startsWith("video/") || rawMime == "image/gif") {
+                    "Choose a video file"
+                }
+                val (bytes, mime, ext) = if (rawMime == "image/gif") {
+                    GifToMp4Converter.convert(rawBytes, getApplication())
+                } else {
+                    Triple(rawBytes, rawMime, rawExt)
+                }
+                val dimensions = extractDimensionsFromBytes(bytes, mime)
+                val posterBytes = createVideoPosterBytes(bytes)
+                val posterUrl = posterBytes?.let { poster ->
+                    runCatching { blossomRepo.uploadMedia(poster, "image/jpeg", "jpg", signer) }.getOrNull()
+                }
+                val thumbhash = posterBytes?.let { createThumbhash(it) }
+                val uploadedUrl = blossomRepo.uploadMedia(bytes, mime, ext, signer)
+
+                _uploadedMediaMeta.keys.toList().forEach { oldUrl ->
+                    if (oldUrl in _uploadedUrls.value) _uploadedMediaMeta.remove(oldUrl)
+                }
+                _altTexts.value = emptyMap()
+                _uploadedUrls.value = listOf(uploadedUrl)
+                _uploadedMediaMeta[uploadedUrl] = UploadedMediaMeta(
+                    mimeType = mime,
+                    dimensions = dimensions,
+                    thumbhash = thumbhash,
+                    thumbnailUrl = posterUrl
+                )
+                _galleryHasVideo.value = true
+                updateGalleryVideoKind(Nip71.defaultVideoKind(dimensions?.first, dimensions?.second))
+                _error.value = null
+            } catch (failure: Exception) {
+                _error.value = "Replacement upload failed: \${failure.message}"
+            } finally {
+                _uploadProgress.value = null
+            }
+        }
+    }
+
     fun removeMediaUrl(url: String) {
         _uploadedUrls.value = _uploadedUrls.value - url
         _uploadedMediaMeta.remove(url)
@@ -448,7 +498,6 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             _galleryVideoTitle.value = ""
             _galleryVideoKind.value = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
             _galleryVideoTags.value = ""
-            _galleryVideoKind.value = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
             savedStateHandle.remove<Int>("gallery_video_kind")
             savedStateHandle.remove<String>("gallery_video_title")
             savedStateHandle.remove<String>("gallery_video_tags")
@@ -974,7 +1023,6 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             _galleryVideoTitle.value = ""
             _galleryVideoKind.value = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
             _galleryVideoTags.value = ""
-            _galleryVideoKind.value = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
             savedStateHandle.remove<Int>("gallery_video_kind")
             savedStateHandle.remove<String>("gallery_video_title")
             savedStateHandle.remove<String>("gallery_video_tags")
@@ -1022,7 +1070,6 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
             _galleryVideoTitle.value = ""
             _galleryVideoKind.value = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
             _galleryVideoTags.value = ""
-            _galleryVideoKind.value = Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL
             savedStateHandle.remove<Int>("gallery_video_kind")
             savedStateHandle.remove<String>("gallery_video_title")
             savedStateHandle.remove<String>("gallery_video_tags")
