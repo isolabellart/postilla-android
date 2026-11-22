@@ -1443,4 +1443,6 @@
     <string name="postilla_video_update_failed">Impossibile salvare le modifiche al video.</string>
 
     <string name="postilla_profile_sats_sent">Inviati %1$d sats</string>
+
+    <string name="postilla_notif_24h"> · 24 h</string>
 </resources>
