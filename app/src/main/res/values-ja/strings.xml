@@ -1442,4 +1442,6 @@
     <string name="postilla_video_update_failed">動画の変更を保存できませんでした。</string>
 
     <string name="postilla_profile_sats_sent">%1$d sats を送信しました</string>
+
+    <string name="postilla_notif_24h"> · 24 時間</string>
 </resources>
