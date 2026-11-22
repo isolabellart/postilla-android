@@ -14,12 +14,12 @@ object Nip71 {
         KIND_VIDEO_ADDRESSABLE_VERTICAL
     )
 
-    /** Choose a familiar default from the uploaded video's shape; users can change it. */
+    /** New videos use addressable kinds so their owner can publish later revisions. */
     fun defaultVideoKind(width: Int?, height: Int?): Int =
         if (width != null && height != null && width > 0 && height > width) {
-            KIND_VIDEO_VERTICAL
+            KIND_VIDEO_ADDRESSABLE_VERTICAL
         } else {
-            KIND_VIDEO_HORIZONTAL
+            KIND_VIDEO_ADDRESSABLE_HORIZONTAL
         }
 
     data class VideoMeta(
