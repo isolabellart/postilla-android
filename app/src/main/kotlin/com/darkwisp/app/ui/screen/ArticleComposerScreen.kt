@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -261,16 +262,32 @@ fun ArticleComposerScreen(
                 // Keep formatting actions below the editor so Android's selection popup
                 // does not cover the Markdown controls on the first line.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf(
+                        ArticleMarkdownFormat.HEADING_1 to "H1",
                         ArticleMarkdownFormat.HEADING_2 to "H2",
+                        ArticleMarkdownFormat.HEADING_3 to "H3",
+                        ArticleMarkdownFormat.HEADING_4 to "H4",
+                        ArticleMarkdownFormat.HEADING_5 to "H5",
+                        ArticleMarkdownFormat.HEADING_6 to "H6",
                         ArticleMarkdownFormat.BOLD to "B",
                         ArticleMarkdownFormat.ITALIC to "I",
+                        ArticleMarkdownFormat.STRIKE to "S",
+                        ArticleMarkdownFormat.INLINE_CODE to "</>",
+                        ArticleMarkdownFormat.FENCED_CODE to "Code",
                         ArticleMarkdownFormat.QUOTE to "Quote",
-                        ArticleMarkdownFormat.LIST to "List"
+                        ArticleMarkdownFormat.LIST to "List",
+                        ArticleMarkdownFormat.ORDERED_LIST to "1.",
+                        ArticleMarkdownFormat.TASK_LIST to "Task",
+                        ArticleMarkdownFormat.TABLE to "Table",
+                        ArticleMarkdownFormat.DIVIDER to "—",
+                        ArticleMarkdownFormat.LINK to "Link",
+                        ArticleMarkdownFormat.IMAGE to "Image",
+                        ArticleMarkdownFormat.FOOTNOTE to "Footnote",
+                        ArticleMarkdownFormat.MATH to "Math"
                     ).forEach { (format, label) ->
                         Surface(
                             shape = RoundedCornerShape(8.dp),

@@ -17,17 +17,24 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 
 internal enum class ArticleMarkdownFormat {
-    HEADING_2, BOLD, ITALIC, QUOTE, LIST
+    HEADING_1, HEADING_2, HEADING_3, HEADING_4, HEADING_5, HEADING_6,
+    BOLD, ITALIC, STRIKE, INLINE_CODE, FENCED_CODE,
+    QUOTE, LIST, ORDERED_LIST, TASK_LIST, TABLE, DIVIDER,
+    LINK, IMAGE, FOOTNOTE, MATH
 }
 
 internal data class ArticleMarkdownEdit(
@@ -36,7 +43,6 @@ internal data class ArticleMarkdownEdit(
     val selectionEnd: Int
 )
 
-/** Applies Markdown to the current selection or inserts an empty format at the cursor. */
 internal fun formatArticleMarkdownSelection(
     text: String,
     selectionStart: Int,
@@ -46,42 +52,98 @@ internal fun formatArticleMarkdownSelection(
     val start = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
     val end = maxOf(selectionStart, selectionEnd).coerceIn(0, text.length)
     val hasSelection = start < end
+    val selected = if (hasSelection) text.substring(start, end) else ""
 
     val inlineMarkers = when (format) {
         ArticleMarkdownFormat.BOLD -> "**" to "**"
         ArticleMarkdownFormat.ITALIC -> "*" to "*"
+        ArticleMarkdownFormat.STRIKE -> "~~" to "~~"
+        ArticleMarkdownFormat.INLINE_CODE -> 96.toChar().toString() to 96.toChar().toString()
+        ArticleMarkdownFormat.MATH -> "$" to "$"
         else -> null
     }
     if (inlineMarkers != null) {
         val (opening, closing) = inlineMarkers
         if (hasSelection) {
-            val replacement = opening + text.substring(start, end) + closing
+            val replacement = opening + selected + closing
             val updated = text.replaceRange(start, end, replacement)
-            return ArticleMarkdownEdit(updated, start + opening.length, start + opening.length + end - start)
+            return ArticleMarkdownEdit(updated, start + opening.length, start + opening.length + selected.length)
         }
         val updated = text.substring(0, start) + opening + closing + text.substring(start)
         val cursor = start + opening.length
         return ArticleMarkdownEdit(updated, cursor, cursor)
     }
 
-    val blockMarker = when (format) {
-        ArticleMarkdownFormat.HEADING_2 -> "## "
-        ArticleMarkdownFormat.QUOTE -> "> "
-        ArticleMarkdownFormat.LIST -> "- "
-        else -> error("Unsupported Markdown format: $format")
-    }
-    if (hasSelection) {
-        val selected = text.substring(start, end)
-        val replacement = selected.split("\n").joinToString("\n") { line ->
-            if (line.isEmpty()) blockMarker.trimEnd() else blockMarker + line
-        }
+    if (format == ArticleMarkdownFormat.FOOTNOTE) {
+        val body = if (hasSelection) selected else "id"
+        val replacement = "[^" + body + "]"
         val updated = text.replaceRange(start, end, replacement)
-        return ArticleMarkdownEdit(updated, start + blockMarker.length, start + replacement.length)
+        val cursor = start + 2
+        return ArticleMarkdownEdit(updated, cursor, cursor + body.length)
     }
 
+    if (format == ArticleMarkdownFormat.LINK || format == ArticleMarkdownFormat.IMAGE) {
+        val label = if (hasSelection) selected else if (format == ArticleMarkdownFormat.LINK) "link text" else "alt text"
+        val prefix = if (format == ArticleMarkdownFormat.IMAGE) "![" else "["
+        val replacement = prefix + label + "](https://)"
+        val updated = text.replaceRange(start, end, replacement)
+        val cursor = start + prefix.length + label.length + 3 + 8
+        return ArticleMarkdownEdit(updated, cursor, cursor)
+    }
+
+    if (format == ArticleMarkdownFormat.FENCED_CODE) {
+        val fence = 96.toChar().toString().repeat(3)
+        val replacement = fence + "\n" + selected + "\n" + fence
+        val updated = text.replaceRange(start, end, replacement)
+        val cursor = start + fence.length + 1
+        return ArticleMarkdownEdit(updated, cursor, if (hasSelection) cursor + selected.length else cursor)
+    }
+
+    if (format == ArticleMarkdownFormat.TABLE) {
+        val rows = if (hasSelection) selected.lines().filter { it.isNotBlank() } else emptyList()
+        val table = buildString {
+            append("| Header 1 | Header 2 |\n")
+            append("| --- | --- |\n")
+            if (rows.isEmpty()) append("| Cell 1 | Cell 2 |")
+            else rows.forEach { row -> append("| ").append(row.replace("|", "\\|")).append(" |  |").append('\n') }
+        }.trimEnd()
+        val updated = text.replaceRange(start, end, table)
+        val cursor = start + 2
+        return ArticleMarkdownEdit(updated, cursor, cursor)
+    }
+
+    if (format == ArticleMarkdownFormat.DIVIDER) {
+        val before = if (start > 0 && text[start - 1] != '\n') "\n" else ""
+        val after = if (end < text.length && text[end] != '\n') "\n" else ""
+        val replacement = before + "---" + after
+        val updated = text.replaceRange(start, end, replacement)
+        val cursor = start + replacement.length
+        return ArticleMarkdownEdit(updated, cursor, cursor)
+    }
+
+    val marker = when (format) {
+        ArticleMarkdownFormat.HEADING_1 -> "# "
+        ArticleMarkdownFormat.HEADING_2 -> "## "
+        ArticleMarkdownFormat.HEADING_3 -> "### "
+        ArticleMarkdownFormat.HEADING_4 -> "#### "
+        ArticleMarkdownFormat.HEADING_5 -> "##### "
+        ArticleMarkdownFormat.HEADING_6 -> "###### "
+        ArticleMarkdownFormat.QUOTE -> "> "
+        ArticleMarkdownFormat.LIST -> "- "
+        ArticleMarkdownFormat.ORDERED_LIST -> "1. "
+        ArticleMarkdownFormat.TASK_LIST -> "- [ ] "
+        else -> error("Unsupported Markdown format: " + format)
+    }
+    if (hasSelection) {
+        val replacement = selected.split("\n").joinToString("\n") { line ->
+            if (line.isEmpty()) marker.trimEnd() else marker + line
+        }
+        val updated = text.replaceRange(start, end, replacement)
+        return ArticleMarkdownEdit(updated, start + marker.length, start + replacement.length)
+    }
     val lineStart = text.lastIndexOf('\n', start - 1) + 1
-    val updated = text.substring(0, lineStart) + blockMarker + text.substring(lineStart)
-    val cursor = start + blockMarker.length
+    val updated = text.substring(0, lineStart) + marker + text.substring(lineStart)
+    val cursor = start + marker.length
     return ArticleMarkdownEdit(updated, cursor, cursor)
 }
 
@@ -90,15 +152,35 @@ internal sealed interface ArticleMarkdownBlock {
     data class Paragraph(val text: String) : ArticleMarkdownBlock
     data class Quote(val text: String) : ArticleMarkdownBlock
     data class ListItem(val ordered: Boolean, val number: Int?, val text: String) : ArticleMarkdownBlock
-    data class Code(val text: String) : ArticleMarkdownBlock
+    data class TaskItem(val checked: Boolean, val text: String) : ArticleMarkdownBlock
+    data class Code(val text: String, val language: String? = null) : ArticleMarkdownBlock
+    data class Image(val url: String, val alt: String?) : ArticleMarkdownBlock
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : ArticleMarkdownBlock
+    data class NostrEmbed(val address: String) : ArticleMarkdownBlock
+    data class Footnote(val id: String, val text: String) : ArticleMarkdownBlock
+    data class Math(val text: String) : ArticleMarkdownBlock
     data object Divider : ArticleMarkdownBlock
 }
 
-private val markdownHeadingRegex = Regex("""^(#{1,6})\s+(.+)$""")
-private val markdownOrderedListRegex = Regex("""^(\d+)[.)]\s+(.+)$""")
-private val markdownUnorderedListRegex = Regex("""^[-*+]\s+(.+)$""")
-private val markdownInlineRegex = Regex("""(\*\*.+?\*\*|~~.+?~~|`[^`]+`|(?<!\*)\*[^*\n]+\*)""")
-private val markdownRuleRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})$""")
+private val headingRegex = Regex("""^(#{1,6})\s+(.+)$""")
+private val orderedListRegex = Regex("""^(\d+)[.)]\s+(.+)$""")
+private val unorderedListRegex = Regex("""^[-*+]\s+(.+)$""")
+private val taskRegex = Regex("""^[-*+]\s+\[([ xX])]\s+(.+)$""")
+private val imageRegex = Regex("""^!\[([^\]]*)]\((https?://\S+?)(?:\s+"[^"]*")?\)\s*$""")
+private val nostrRegex = Regex("""^(?:nostr:)?(?:note1|nevent1|nprofile1|npub1|naddr1)[a-z0-9]+$""", RegexOption.IGNORE_CASE)
+private val footnoteDefinitionRegex = Regex("""^\[\^([^\]]+)]\s*:\s*(.+)$""")
+private val inlineRegex = Regex("""(\*\*.+?\*\*|~~.+?~~|\u0060[^\u0060]+\u0060|\[[^\]]+]\(https?://[^)]+\)|(?<!\*)\*[^*\n]+\*)""")
+private val ruleRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})$""")
+private val tableSeparatorRegex = Regex("""^:?-{3,}:?$""")
+private val mathFence = "$" + "$"
+
+private fun tableCells(line: String): List<String> =
+    line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim().replace("\\|", "|") }
+
+private fun isTableSeparator(line: String): Boolean {
+    val cells = tableCells(line)
+    return cells.size >= 2 && cells.all { tableSeparatorRegex.matches(it) }
+}
 
 internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> {
     val lines = markdown.lines()
@@ -106,71 +188,104 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
     var index = 0
 
     fun isBlockStart(line: String): Boolean =
-        line.startsWith("#") || line.startsWith(">") || line.startsWith("```") ||
-            markdownOrderedListRegex.matches(line) || markdownUnorderedListRegex.matches(line) ||
-            markdownRuleRegex.matches(line)
+        headingRegex.matches(line) || line.startsWith(">") || line.startsWith(96.toChar()) ||
+            orderedListRegex.matches(line) || taskRegex.matches(line) || unorderedListRegex.matches(line) ||
+            ruleRegex.matches(line) || imageRegex.matches(line) || nostrRegex.matches(line) ||
+            footnoteDefinitionRegex.matches(line) ||
+            (line.contains("|") && index + 1 < lines.size && isTableSeparator(lines[index + 1].trim()))
 
     while (index < lines.size) {
         val line = lines[index].trim()
         when {
             line.isEmpty() -> index++
-
-            line.startsWith("```") -> {
+            line.startsWith(96.toChar()) -> {
+                val language = line.drop(3).trim().ifEmpty { null }
                 index++
                 val codeLines = mutableListOf<String>()
-                while (index < lines.size && !lines[index].trim().startsWith("```")) {
-                    codeLines += lines[index]
+                while (index < lines.size && !lines[index].trim().startsWith(96.toChar())) {
+                    codeLines.add(lines[index])
                     index++
                 }
                 if (index < lines.size) index++
-                blocks += ArticleMarkdownBlock.Code(codeLines.joinToString("\n"))
+                blocks.add(ArticleMarkdownBlock.Code(codeLines.joinToString("\n"), language))
             }
-
-            markdownHeadingRegex.matches(line) -> {
-                val match = markdownHeadingRegex.matchEntire(line)!!
-                blocks += ArticleMarkdownBlock.Heading(match.groupValues[1].length, match.groupValues[2])
+            line == mathFence -> {
+                index++
+                val mathLines = mutableListOf<String>()
+                while (index < lines.size && lines[index].trim() != mathFence) {
+                    mathLines.add(lines[index])
+                    index++
+                }
+                if (index < lines.size) index++
+                blocks.add(ArticleMarkdownBlock.Math(mathLines.joinToString("\n")))
+            }
+            headingRegex.matches(line) -> {
+                val match = headingRegex.matchEntire(line)!!
+                blocks.add(ArticleMarkdownBlock.Heading(match.groupValues[1].length, match.groupValues[2]))
                 index++
             }
-
-            markdownRuleRegex.matches(line) -> {
-                blocks += ArticleMarkdownBlock.Divider
+            ruleRegex.matches(line) -> {
+                blocks.add(ArticleMarkdownBlock.Divider)
                 index++
             }
-
+            imageRegex.matches(line) -> {
+                val match = imageRegex.matchEntire(line)!!
+                blocks.add(ArticleMarkdownBlock.Image(match.groupValues[2], match.groupValues[1].ifEmpty { null }))
+                index++
+            }
+            nostrRegex.matches(line) -> {
+                val address = if (line.startsWith("nostr:", ignoreCase = true)) line else "nostr:" + line
+                blocks.add(ArticleMarkdownBlock.NostrEmbed(address))
+                index++
+            }
+            footnoteDefinitionRegex.matches(line) -> {
+                val match = footnoteDefinitionRegex.matchEntire(line)!!
+                blocks.add(ArticleMarkdownBlock.Footnote(match.groupValues[1], match.groupValues[2]))
+                index++
+            }
+            line.contains("|") && index + 1 < lines.size && isTableSeparator(lines[index + 1].trim()) -> {
+                val headers = tableCells(line)
+                index += 2
+                val rows = mutableListOf<List<String>>()
+                while (index < lines.size && lines[index].trim().contains("|") && lines[index].isNotBlank()) {
+                    rows.add(tableCells(lines[index].trim()))
+                    index++
+                }
+                blocks.add(ArticleMarkdownBlock.Table(headers, rows))
+            }
             line.startsWith(">") -> {
                 val quoteLines = mutableListOf<String>()
                 while (index < lines.size && lines[index].trim().startsWith(">")) {
-                    quoteLines += lines[index].trim().removePrefix(">").trimStart()
+                    quoteLines.add(lines[index].trim().removePrefix(">").trimStart())
                     index++
                 }
-                blocks += ArticleMarkdownBlock.Quote(quoteLines.joinToString(" "))
+                blocks.add(ArticleMarkdownBlock.Quote(quoteLines.joinToString(" ")))
             }
-
-            markdownOrderedListRegex.matches(line) -> {
-                val match = markdownOrderedListRegex.matchEntire(line)!!
-                blocks += ArticleMarkdownBlock.ListItem(true, match.groupValues[1].toIntOrNull(), match.groupValues[2])
+            taskRegex.matches(line) -> {
+                val match = taskRegex.matchEntire(line)!!
+                blocks.add(ArticleMarkdownBlock.TaskItem(match.groupValues[1].equals("x", true), match.groupValues[2]))
                 index++
             }
-
-            markdownUnorderedListRegex.matches(line) -> {
-                val match = markdownUnorderedListRegex.matchEntire(line)!!
-                blocks += ArticleMarkdownBlock.ListItem(false, null, match.groupValues[1])
+            orderedListRegex.matches(line) -> {
+                val match = orderedListRegex.matchEntire(line)!!
+                blocks.add(ArticleMarkdownBlock.ListItem(true, match.groupValues[1].toIntOrNull(), match.groupValues[2]))
                 index++
             }
-
+            unorderedListRegex.matches(line) -> {
+                val match = unorderedListRegex.matchEntire(line)!!
+                blocks.add(ArticleMarkdownBlock.ListItem(false, null, match.groupValues[1]))
+                index++
+            }
             else -> {
-                val paragraphLines = mutableListOf<String>()
+                val paragraph = mutableListOf<String>()
                 while (index < lines.size) {
                     val candidate = lines[index].trim()
                     if (candidate.isEmpty() || isBlockStart(candidate)) break
-                    paragraphLines += candidate
+                    paragraph.add(candidate)
                     index++
                 }
-                if (paragraphLines.isNotEmpty()) {
-                    blocks += ArticleMarkdownBlock.Paragraph(paragraphLines.joinToString(" "))
-                } else {
-                    index++
-                }
+                if (paragraph.isNotEmpty()) blocks.add(ArticleMarkdownBlock.Paragraph(paragraph.joinToString(" ")))
+                else index++
             }
         }
     }
@@ -178,28 +293,78 @@ internal fun parseArticleMarkdown(markdown: String): List<ArticleMarkdownBlock> 
 }
 
 @Composable
-private fun buildArticleInlineMarkdown(text: String) : androidx.compose.ui.text.AnnotatedString {
+internal fun buildArticleInlineMarkdown(text: String): androidx.compose.ui.text.AnnotatedString {
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    val linkColor = MaterialTheme.colorScheme.primary
     return buildAnnotatedString {
-    var cursor = 0
-    markdownInlineRegex.findAll(text).forEach { match ->
-        append(text.substring(cursor, match.range.first))
-        val token = match.value
-        when {
-            token.startsWith("**") && token.endsWith("**") ->
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(token.substring(2, token.length - 2)) }
-            token.startsWith("~~") && token.endsWith("~~") ->
-                withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(token.substring(2, token.length - 2)) }
-            token.startsWith("`") && token.endsWith("`") ->
-                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) {
-                    append(token.substring(1, token.length - 1))
+        var cursor = 0
+        inlineRegex.findAll(text).forEach { match ->
+            append(text.substring(cursor, match.range.first))
+            val token = match.value
+            when {
+                token.startsWith("**") && token.endsWith("**") ->
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(token.substring(2, token.length - 2)) }
+                token.startsWith("~~") && token.endsWith("~~") ->
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(token.substring(2, token.length - 2)) }
+                token.startsWith(96.toChar()) && token.endsWith(96.toChar()) ->
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(token.substring(1, token.length - 1)) }
+                token.startsWith("[") && token.contains("](") -> {
+                    val close = token.indexOf("](")
+                    val label = token.substring(1, close)
+                    val url = token.substring(close + 2).removeSuffix(")")
+                    withLink(LinkAnnotation.Url(url)) {
+                        withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) { append(label) }
+                    }
                 }
-            token.startsWith("*") && token.endsWith("*") ->
-                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(token.substring(1, token.length - 1)) }
+                token.startsWith("*") && token.endsWith("*") ->
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(token.substring(1, token.length - 1)) }
+            }
+            cursor = match.range.last + 1
         }
-        cursor = match.range.last + 1
+        append(text.substring(cursor))
     }
-    append(text.substring(cursor))
+}
+
+@Composable
+internal fun ArticleMarkdownListItem(block: ArticleMarkdownBlock.ListItem) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(
+            text = if (block.ordered) (block.number ?: 1).toString() + "." else "•",
+            modifier = Modifier.padding(end = 8.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(buildArticleInlineMarkdown(block.text), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+internal fun ArticleMarkdownTaskItem(block: ArticleMarkdownBlock.TaskItem) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(if (block.checked) "☑" else "☐", modifier = Modifier.padding(end = 8.dp), color = MaterialTheme.colorScheme.primary)
+        Text(buildArticleInlineMarkdown(block.text), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+internal fun ArticleMarkdownTable(block: ArticleMarkdownBlock.Table) {
+    Column(
+        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            block.headers.forEach { cell ->
+                Text(buildArticleInlineMarkdown(cell), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold))
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+        block.rows.forEach { row ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { cell ->
+                    Text(buildArticleInlineMarkdown(cell), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }
 
@@ -221,37 +386,23 @@ internal fun ArticleMarkdownPreview(markdown: String, modifier: Modifier = Modif
                     Text(buildArticleInlineMarkdown(block.text), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
                 is ArticleMarkdownBlock.Quote -> {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
-                        Box(
-                            modifier = Modifier.width(3.dp).heightIn(min = 24.dp)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), RoundedCornerShape(3.dp))
-                        )
+                        Box(modifier = Modifier.width(3.dp).heightIn(min = 24.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)))
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            buildArticleInlineMarkdown(block.text),
-                            style = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(buildArticleInlineMarkdown(block.text), style = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                is ArticleMarkdownBlock.ListItem -> {
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        Text(
-                            text = if (block.ordered) "${block.number ?: 1}." else "•",
-                            modifier = Modifier.padding(end = 8.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(buildArticleInlineMarkdown(block.text), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-                    }
+                is ArticleMarkdownBlock.ListItem -> ArticleMarkdownListItem(block)
+                is ArticleMarkdownBlock.TaskItem -> ArticleMarkdownTaskItem(block)
+                is ArticleMarkdownBlock.Table -> ArticleMarkdownTable(block)
+                is ArticleMarkdownBlock.Image -> AsyncImage(model = block.url, contentDescription = block.alt, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth())
+                is ArticleMarkdownBlock.NostrEmbed -> {
+                    val link = "https://njump.me/" + block.address.removePrefix("nostr:")
+                    Text(buildAnnotatedString { withLink(LinkAnnotation.Url(link)) { append(block.address) } }, color = MaterialTheme.colorScheme.primary)
                 }
-                is ArticleMarkdownBlock.Code -> Text(
-                    text = block.text,
-                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(12.dp),
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                ArticleMarkdownBlock.Divider ->
-                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                is ArticleMarkdownBlock.Footnote -> Text("[" + block.id + "] " + block.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                is ArticleMarkdownBlock.Math -> Text(block.text, modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(12.dp), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
+                is ArticleMarkdownBlock.Code -> Text(block.text, modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(12.dp), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ArticleMarkdownBlock.Divider -> Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
             }
         }
     }

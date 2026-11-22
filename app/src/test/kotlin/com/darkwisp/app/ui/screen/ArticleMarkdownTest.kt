@@ -50,4 +50,29 @@ class ArticleMarkdownTest {
             blocks
         )
     }
+    @Test
+    fun strikeCodeAndHeadingSixFormattingAreAvailable() {
+        val strike = formatArticleMarkdownSelection("before word after", 7, 11, ArticleMarkdownFormat.STRIKE)
+        val code = formatArticleMarkdownSelection("snippet", 0, 7, ArticleMarkdownFormat.INLINE_CODE)
+        val heading = formatArticleMarkdownSelection("Heading", 0, 7, ArticleMarkdownFormat.HEADING_6)
+        assertEquals("before ~~word~~ after", strike.text)
+        assertEquals(96.toChar() + "snippet" + 96.toChar(), code.text)
+        assertEquals("###### Heading", heading.text)
+    }
+
+    @Test
+    fun tableAndTaskListAreParsedForPreview() {
+        val blocks = parseArticleMarkdown("| Name | Value |\n| --- | --- |\n| A | B |\n- [x] done\n- [ ] next")
+        assertEquals(3, blocks.size)
+        assertEquals(ArticleMarkdownBlock.Table(listOf("Name", "Value"), listOf(listOf("A", "B"))), blocks[0])
+        assertEquals(ArticleMarkdownBlock.TaskItem(true, "done"), blocks[1])
+        assertEquals(ArticleMarkdownBlock.TaskItem(false, "next"), blocks[2])
+    }
+
+    @Test
+    fun markdownLinkAndFootnoteBlocksKeepTheirContent() {
+        val blocks = parseArticleMarkdown("[Postilla](https://example.com)\n\n[^note]: Extra context")
+        assertEquals(ArticleMarkdownBlock.Paragraph("[Postilla](https://example.com)"), blocks[0])
+        assertEquals(ArticleMarkdownBlock.Footnote("note", "Extra context"), blocks[1])
+    }
 }
