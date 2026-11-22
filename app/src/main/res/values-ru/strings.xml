@@ -1403,4 +1403,6 @@
     <string name="postilla_video_update_failed">Не удалось сохранить изменения видео.</string>
 
     <string name="postilla_profile_sats_sent">Отправлено sats: %1$d</string>
+
+    <string name="postilla_notif_24h"> · 24 ч</string>
 </resources>
