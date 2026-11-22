@@ -1445,4 +1445,6 @@
     <string name="postilla_profile_sats_sent">%1$d sats envoyés</string>
 
     <string name="postilla_notif_24h"> · 24 h</string>
+    <string name="postilla_not_available">Indisponible</string>
+    <string name="postilla_video_open_failed">Impossible d\'ouvrir la vidéo.</string>
 </resources>
