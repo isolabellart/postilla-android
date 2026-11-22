@@ -536,7 +536,7 @@ fun ArticleScreen(
                     if (textlessAddressable != null) {
                         item(key = "addressable-event-details") {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                Text(stringResource(R.string.addressable_event_details), style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.postilla_addressable_event_details), style = MaterialTheme.typography.titleSmall)
                                 textlessAddressable.tags.filter { it.size >= 2 }.forEach { tag ->
                                     Text(
                                         tag[0] + ": " + tag.drop(1).joinToString(" · "),

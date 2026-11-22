@@ -1249,6 +1249,6 @@
     <string name="text_translation_failed">Translation failed</string>
     <string name="text_translation_same_language">The selected text is already in the target language.</string>
     <string name="curation_empty_entries">This collection has no readable entries.</string>
-    <string name="addressable_event_details">Addressable event details</string>
+    <string name="postilla_addressable_event_details">Addressable event details</string>
     <string name="emoji_pack_items_count">%1$d emojis</string>
 </resources>
