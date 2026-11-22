@@ -1112,4 +1112,46 @@
     <string name="label_roles">Rôles (séparés par des virgules)</string>
     <string name="msg_assign_role">Définissez les rôles de %s. Laissez vide pour retirer les droits d\'administration.</string>
     <string name="cd_assign_role">Attribuer un rôle</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">La publication ne peut pas être vide</string>
+    <string name="error_not_logged_in">Vous n\'êtes pas connecté</string>
+    <string name="error_schedule_date_required">Choisissez une date et une heure pour la programmation</string>
+    <string name="error_schedule_future">L\'heure programmée doit être dans le futur</string>
+    <string name="error_publish_failed">Échec de la publication : %s</string>
+    <string name="error_poll_options">Le sondage nécessite au moins 2 options</string>
+    <string name="error_scheduler_relay">Impossible de se connecter au relais de planification</string>
+    <string name="error_no_relays_connected">Aucun relais connecté — la note n\'a pas été publiée</string>
+    <string name="error_publish_unconfirmed">Aucun relais n\'a confirmé votre note. Vérifiez la connexion et touchez à nouveau Publier.</string>
+    <string name="logout_warning">Assurez-vous d\'avoir sauvegardé votre clé privée avant de vous déconnecter. Vous la trouverez dans les paramètres des clés. Sans elle, vous ne pourrez pas récupérer votre compte.</string>
+    <string name="spark_setup_subtitle">Lightning en auto-garde, propulsé par Spark et Breez.</string>
+    <string name="retry">Réessayer</string>
+    <string name="cancel">Annuler</string>
+    <string name="done">Terminé</string>
+    <string name="error_invalid_invite_link">Lien d\'invitation invalide</string>
+    <string name="drawer_fiat_mode">Mode fiat</string>
+    <string name="fiat_settings_description">Affichez les montants des zaps et du portefeuille dans une devise fiduciaire plutôt qu\'en satoshis. Les taux sont récupérés une fois au démarrage de l\'application ; il s\'agit d\'une approximation, pas de prix en temps réel.</string>
+    <string name="fiat_settings_currency">Devise</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">Envoyer de l\'argent</string>
+    <string name="zap_x_amount">Envoyer %1$s</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">Un zap privé nécessite une clé de signature locale et une liste de relais MP NIP-17 (kind 10050) publiée par les deux participants. Postilla ne l\'enverra pas publiquement en solution de secours.</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">Description</string>
+    <string name="cd_view_image_description">Afficher la description de l\'image</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">Ajouter un texte alternatif</string>
+    <string name="cd_remove_image">Supprimer l\'image</string>
+    <string name="alt_editor_explainer">Une brève description rend votre photo accessible aux lecteurs d\'écran et donne du contexte si l\'image ne se charge pas.</string>
+    <string name="alt_editor_hint">Décrivez cette image…</string>
+    <string name="alt_editor_chars_remaining">%1$d restants</string>
+    <string name="alt_editor_clear">Effacer la description</string>
+    <string name="translation_deepl_key_missing">Ajoutez une clé API DeepL dans les paramètres de l\'interface pour utiliser DeepL.</string>
+    <string name="drawer_privacy_security">Confidentialité et sécurité</string>
+    <string name="dm_translation_cloud_title">Traduire ce message privé avec DeepL ?</string>
+    <string name="dm_translation_cloud_message">Le texte du message sera envoyé à DeepL pour traduction. Il quittera cet appareil et sera traité selon les conditions de confidentialité de DeepL. Continuez uniquement si vous acceptez de partager ce message avec le service.</string>
+    <string name="dm_translation_cloud_confirm">Envoyer à DeepL</string>
 </resources>

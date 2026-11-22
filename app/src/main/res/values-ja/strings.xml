@@ -1111,4 +1111,46 @@
     <string name="label_roles">ロール（カンマ区切り）</string>
     <string name="msg_assign_role">%s のロールを設定します。空欄にすると管理者権限を取り消します。</string>
     <string name="cd_assign_role">ロールを割り当て</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="error_post_empty">投稿を空にすることはできません</string>
+    <string name="error_not_logged_in">ログインしていません</string>
+    <string name="error_schedule_date_required">予約する日時を選択してください</string>
+    <string name="error_schedule_future">予約時刻は未来の日時にしてください</string>
+    <string name="error_publish_failed">公開に失敗しました：%s</string>
+    <string name="error_poll_options">投票には少なくとも 2 つの選択肢が必要です</string>
+    <string name="error_scheduler_relay">スケジューラーリレーに接続できませんでした</string>
+    <string name="error_no_relays_connected">リレーに接続されていないため、投稿は公開されませんでした</string>
+    <string name="error_publish_unconfirmed">どのリレーからも投稿の確認がありません。接続を確認し、「公開」をもう一度タップしてください。</string>
+    <string name="logout_warning">ログアウトする前に秘密鍵をバックアップしてください。秘密鍵は鍵の設定で確認できます。秘密鍵がないとアカウントを復元できません。</string>
+    <string name="spark_setup_subtitle">Spark と Breez による自己管理型 Lightning。</string>
+    <string name="retry">再試行</string>
+    <string name="cancel">キャンセル</string>
+    <string name="done">完了</string>
+    <string name="error_invalid_invite_link">招待リンクが無効です</string>
+    <string name="drawer_fiat_mode">法定通貨モード</string>
+    <string name="fiat_settings_description">Zap とウォレットの金額を satoshi ではなく法定通貨で表示します。為替レートはアプリ起動時に一度取得される概算で、リアルタイム価格ではありません。</string>
+    <string name="fiat_settings_currency">通貨</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">送金</string>
+    <string name="zap_x_amount">%1$s を送信</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="zap_private_not_available">プライベート Zap にはローカル署名キーと、双方が公開した NIP-17 DM リレーリスト（kind 10050）が必要です。Postilla は代替手段として公開送信することはありません。</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">説明</string>
+    <string name="cd_view_image_description">画像の説明を表示</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">代替テキストを追加</string>
+    <string name="cd_remove_image">画像を削除</string>
+    <string name="alt_editor_explainer">短い説明を付けるとスクリーンリーダー利用者にも写真が伝わり、画像が読み込まれない場合にも内容を把握できます。</string>
+    <string name="alt_editor_hint">この画像を説明…</string>
+    <string name="alt_editor_chars_remaining">残り %1$d 文字</string>
+    <string name="alt_editor_clear">説明を消去</string>
+    <string name="translation_deepl_key_missing">DeepL を使用するには、インターフェース設定で DeepL API キーを追加してください。</string>
+    <string name="drawer_privacy_security">プライバシーとセキュリティ</string>
+    <string name="dm_translation_cloud_title">このプライベートメッセージを DeepL で翻訳しますか？</string>
+    <string name="dm_translation_cloud_message">メッセージ本文は翻訳のため DeepL に送信されます。端末外に送信され、DeepL のプライバシー条件に従って処理されます。サービスとの共有に同意できる場合のみ続行してください。</string>
+    <string name="dm_translation_cloud_confirm">DeepL に送信</string>
 </resources>

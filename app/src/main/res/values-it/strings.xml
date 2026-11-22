@@ -1276,4 +1276,43 @@
     <string name="label_roles">Ruoli (separati da virgole)</string>
     <string name="msg_assign_role">Imposta i ruoli per %s. Lascia vuoto per revocare lo stato di amministratore.</string>
     <string name="cd_assign_role">Assegna ruolo</string>
+
+
+    <!-- Localization audit: errors, payments, media and translation -->
+    <string name="profile_sort_likes">Mi piace</string>
+    <string name="profile_sort_reposts">Repost</string>
+    <string name="profile_sort_replies">Risposte</string>
+    <string name="error_post_empty">Il post non può essere vuoto</string>
+    <string name="error_not_logged_in">Non hai effettuato l\'accesso</string>
+    <string name="error_schedule_date_required">Scegli data e ora per la programmazione</string>
+    <string name="error_schedule_future">L\'orario programmato deve essere nel futuro</string>
+    <string name="error_publish_failed">Pubblicazione non riuscita: %s</string>
+    <string name="error_poll_options">Il sondaggio richiede almeno 2 opzioni</string>
+    <string name="error_scheduler_relay">Impossibile connettersi al relay di pianificazione</string>
+    <string name="error_no_relays_connected">Nessun relay connesso — il post non è stato pubblicato</string>
+    <string name="error_publish_unconfirmed">Nessun relay ha confermato la nota. Controlla la connessione e tocca di nuovo Pubblica.</string>
+    <string name="logout_warning">Assicurati di aver eseguito il backup della chiave privata prima di uscire. La trovi nelle impostazioni delle chiavi. Senza di essa non potrai recuperare l\'account.</string>
+    <string name="spark_setup_subtitle">Lightning in custodia autonoma, con tecnologia Spark e Breez.</string>
+    <string name="retry">Riprova</string>
+    <string name="cancel">Annulla</string>
+    <string name="done">Fatto</string>
+    <string name="error_invalid_invite_link">Link di invito non valido</string>
+    <string name="drawer_fiat_mode">Modalità fiat</string>
+    <string name="fiat_settings_description">Mostra gli importi di zap e wallet in valuta fiat invece che in satoshi. I tassi vengono scaricati una volta all\'avvio dell\'app: sono approssimativi, non prezzi in tempo reale.</string>
+    <string name="fiat_settings_currency">Valuta</string>
+    <string name="fiat_settings_rate_line">1 BTC ≈ %1$s %2$,.2f</string>
+    <string name="zap_send_money">Invia denaro</string>
+    <string name="zap_x_amount">Invia %1$s</string>
+    <string name="amount_sats_format">%1$s sats</string>
+    <string name="alt_badge">ALT</string>
+    <string name="alt_description_title">Descrizione</string>
+    <string name="cd_view_image_description">Visualizza descrizione immagine</string>
+    <string name="alt_chip_add">+ALT</string>
+    <string name="alt_chip_saved">✓ALT</string>
+    <string name="cd_add_alt_text">Aggiungi testo alternativo</string>
+    <string name="cd_remove_image">Rimuovi immagine</string>
+    <string name="alt_editor_explainer">Una breve descrizione rende la foto accessibile agli screen reader e fornisce contesto se l\'immagine non viene caricata.</string>
+    <string name="alt_editor_hint">Descrivi questa immagine…</string>
+    <string name="alt_editor_chars_remaining">Restano %1$d</string>
+    <string name="alt_editor_clear">Cancella descrizione</string>
 </resources>
