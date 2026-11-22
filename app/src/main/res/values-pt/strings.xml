@@ -1064,4 +1064,53 @@
     <string name="default_search_relays_added">Foram adicionados %1$d relays de pesquisa predefinidos.</string>
     <string name="default_search_relays_already_present">Todos os relays de pesquisa predefinidos já estão presentes.</string>
     <string name="search_no_results_relay_hint">Alguns relays não suportam pesquisa de texto integral. Abra as definições de relays, escolha Pesquisa e adicione os relays predefinidos para melhorar a cobertura.</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="error_no_messages">Ainda não existem mensagens</string>
+    <string name="error_send_message_hint">Envie uma mensagem a partir do perfil de alguém</string>
+    <string name="profile_tab_gallery">Galeria</string>
+    <string name="profile_tab_groups">Salas de conversa</string>
+    <string name="profile_sort_popular">Popular</string>
+    <string name="profile_sort_hot">Em alta</string>
+    <string name="profile_sort_rising">A subir</string>
+    <string name="profile_no_gallery">Ainda não há publicações na galeria</string>
+    <string name="profile_no_groups">Não existem salas de conversa</string>
+    <string name="profile_pay">Pagar</string>
+    <string name="profile_pay_zap">Zap do perfil</string>
+    <string name="profile_pay_offer">Pagar oferta CLINK</string>
+    <string name="title_join_rejected">Não foi possível entrar na sala de conversa</string>
+    <string name="msg_join_rejected_body">O relay rejeitou o seu pedido. Esta sala pode ser apenas por convite; peça a um administrador um link de convite com código.</string>
+    <string name="action_discover_groups">Descobrir salas de conversa</string>
+    <string name="title_discover_groups">Descobrir salas de conversa</string>
+    <string name="label_notifications">Notificações</string>
+    <string name="label_notifications_on">Ligadas — as novas mensagens serão acompanhadas</string>
+    <string name="label_notifications_off">Desligadas — toque para ativar</string>
+    <string name="group_flag_private_label">Privada</string>
+    <string name="group_flag_private_desc">Só os membros podem ler mensagens</string>
+    <string name="group_flag_closed_label">Fechada</string>
+    <string name="group_flag_closed_desc">Só os convidados podem entrar</string>
+    <string name="group_flag_restricted_label">Restrita</string>
+    <string name="group_flag_restricted_desc">Só os membros podem publicar</string>
+    <string name="group_flag_hidden_label">Oculta</string>
+    <string name="group_flag_hidden_desc">As informações do grupo estão ocultas para não membros</string>
+    <string name="group_flag_public_label">Pública</string>
+    <string name="group_flag_public_desc">Qualquer pessoa pode ler mensagens</string>
+    <string name="group_flag_open_label">Aberta</string>
+    <string name="group_flag_open_desc">Qualquer pessoa pode entrar</string>
+    <string name="group_flag_unrestricted_label">Sem restrições</string>
+    <string name="group_flag_unrestricted_desc">Qualquer pessoa pode publicar</string>
+    <string name="group_flag_visible_label">Visível</string>
+    <string name="group_flag_visible_desc">As informações do grupo podem ser encontradas por qualquer pessoa</string>
+    <string name="section_room_access">Acesso e visibilidade</string>
+    <string name="section_invite_codes">Códigos de convite</string>
+    <string name="action_generate_invite">Gerar código de convite</string>
+    <string name="label_latest_invite_code">Código de convite mais recente</string>
+    <string name="action_copy">Copiar</string>
+    <string name="action_copy_code">Copiar código</string>
+    <string name="action_copy_invite_link">Copiar link de convite</string>
+    <string name="title_assign_role">Atribuir função</string>
+    <string name="label_roles">Funções (separadas por vírgulas)</string>
+    <string name="msg_assign_role">Defina as funções de %s. Deixe vazio para revogar o estatuto de administrador.</string>
+    <string name="cd_assign_role">Atribuir função</string>
 </resources>

@@ -1065,4 +1065,51 @@
     <string name="default_search_relays_added">已添加 %1$d 个默认搜索中继。</string>
     <string name="default_search_relays_already_present">所有默认搜索中继均已添加。</string>
     <string name="search_no_results_relay_hint">部分中继不支持全文搜索。打开中继设置，选择“搜索”，然后添加默认搜索中继以扩大搜索范围。</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="profile_tab_gallery">图库</string>
+    <string name="profile_tab_groups">聊天室</string>
+    <string name="profile_sort_popular">热门</string>
+    <string name="profile_sort_hot">热点</string>
+    <string name="profile_sort_rising">上升</string>
+    <string name="profile_no_gallery">暂无图库帖子</string>
+    <string name="profile_no_groups">暂无聊天室</string>
+    <string name="profile_pay">付款</string>
+    <string name="profile_pay_zap">个人资料 Zap</string>
+    <string name="profile_pay_offer">支付 CLINK 报价</string>
+    <string name="title_join_rejected">无法加入聊天室</string>
+    <string name="msg_join_rejected_body">中继拒绝了你的加入请求。此聊天室可能仅限邀请加入，请向管理员索取带代码的邀请码链接。</string>
+    <string name="action_discover_groups">发现聊天室</string>
+    <string name="title_discover_groups">发现聊天室</string>
+    <string name="label_notifications">通知</string>
+    <string name="label_notifications_on">开启 — 将跟踪新消息</string>
+    <string name="label_notifications_off">关闭 — 点按以启用</string>
+    <string name="group_flag_private_label">私密</string>
+    <string name="group_flag_private_desc">仅成员可阅读消息</string>
+    <string name="group_flag_closed_label">关闭</string>
+    <string name="group_flag_closed_desc">仅受邀用户可加入</string>
+    <string name="group_flag_restricted_label">受限</string>
+    <string name="group_flag_restricted_desc">仅成员可发布内容</string>
+    <string name="group_flag_hidden_label">隐藏</string>
+    <string name="group_flag_hidden_desc">群组信息对非成员隐藏</string>
+    <string name="group_flag_public_label">公开</string>
+    <string name="group_flag_public_desc">任何人都可以阅读消息</string>
+    <string name="group_flag_open_label">开放</string>
+    <string name="group_flag_open_desc">任何人都可以加入</string>
+    <string name="group_flag_unrestricted_label">不受限制</string>
+    <string name="group_flag_unrestricted_desc">任何人都可以发布内容</string>
+    <string name="group_flag_visible_label">可见</string>
+    <string name="group_flag_visible_desc">任何人都可以找到群组信息</string>
+    <string name="section_room_access">访问与可见性</string>
+    <string name="section_invite_codes">邀请码</string>
+    <string name="action_generate_invite">生成邀请码</string>
+    <string name="label_latest_invite_code">最新邀请码</string>
+    <string name="action_copy">复制</string>
+    <string name="action_copy_code">复制代码</string>
+    <string name="action_copy_invite_link">复制邀请链接</string>
+    <string name="title_assign_role">分配角色</string>
+    <string name="label_roles">角色（以逗号分隔）</string>
+    <string name="msg_assign_role">为 %s 设置角色。留空可撤销管理员身份。</string>
+    <string name="cd_assign_role">分配角色</string>
 </resources>

@@ -1064,4 +1064,51 @@
     <string name="default_search_relays_added">%1$d standaard zoekrelays toegevoegd.</string>
     <string name="default_search_relays_already_present">Alle standaard zoekrelays zijn al aanwezig.</string>
     <string name="search_no_results_relay_hint">Sommige relays ondersteunen geen volledige-tekstzoekfunctie. Open Relay-instellingen, kies Zoeken en voeg de standaard zoekrelays toe voor betere dekking.</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="profile_tab_gallery">Galerij</string>
+    <string name="profile_tab_groups">Chatruimtes</string>
+    <string name="profile_sort_popular">Populair</string>
+    <string name="profile_sort_hot">Trending</string>
+    <string name="profile_sort_rising">In opkomst</string>
+    <string name="profile_no_gallery">Nog geen galerijberichten</string>
+    <string name="profile_no_groups">Geen chatruimtes</string>
+    <string name="profile_pay">Betalen</string>
+    <string name="profile_pay_zap">Profiel-zap</string>
+    <string name="profile_pay_offer">CLINK-aanbod betalen</string>
+    <string name="title_join_rejected">Kon niet deelnemen aan de chatruimte</string>
+    <string name="msg_join_rejected_body">De relay heeft je verzoek afgewezen. Deze ruimte is mogelijk alleen op uitnodiging; vraag een beheerder om een uitnodigingslink met code.</string>
+    <string name="action_discover_groups">Chatruimtes ontdekken</string>
+    <string name="title_discover_groups">Chatruimtes ontdekken</string>
+    <string name="label_notifications">Meldingen</string>
+    <string name="label_notifications_on">Aan — nieuwe berichten worden bijgehouden</string>
+    <string name="label_notifications_off">Uit — tik om in te schakelen</string>
+    <string name="group_flag_private_label">Privé</string>
+    <string name="group_flag_private_desc">Alleen leden kunnen berichten lezen</string>
+    <string name="group_flag_closed_label">Gesloten</string>
+    <string name="group_flag_closed_desc">Alleen uitgenodigden kunnen deelnemen</string>
+    <string name="group_flag_restricted_label">Beperkt</string>
+    <string name="group_flag_restricted_desc">Alleen leden kunnen berichten plaatsen</string>
+    <string name="group_flag_hidden_label">Verborgen</string>
+    <string name="group_flag_hidden_desc">Groepsinformatie is verborgen voor niet-leden</string>
+    <string name="group_flag_public_label">Openbaar</string>
+    <string name="group_flag_public_desc">Iedereen kan berichten lezen</string>
+    <string name="group_flag_open_label">Open</string>
+    <string name="group_flag_open_desc">Iedereen kan deelnemen</string>
+    <string name="group_flag_unrestricted_label">Onbeperkt</string>
+    <string name="group_flag_unrestricted_desc">Iedereen kan berichten plaatsen</string>
+    <string name="group_flag_visible_label">Zichtbaar</string>
+    <string name="group_flag_visible_desc">Iedereen kan groepsinformatie vinden</string>
+    <string name="section_room_access">Toegang en zichtbaarheid</string>
+    <string name="section_invite_codes">Uitnodigingscodes</string>
+    <string name="action_generate_invite">Uitnodigingscode genereren</string>
+    <string name="label_latest_invite_code">Nieuwste uitnodigingscode</string>
+    <string name="action_copy">Kopiëren</string>
+    <string name="action_copy_code">Code kopiëren</string>
+    <string name="action_copy_invite_link">Uitnodigingslink kopiëren</string>
+    <string name="title_assign_role">Rol toewijzen</string>
+    <string name="label_roles">Rollen (gescheiden door komma\'s)</string>
+    <string name="msg_assign_role">Stel rollen in voor %s. Laat leeg om de beheerdersstatus in te trekken.</string>
+    <string name="cd_assign_role">Rol toewijzen</string>
 </resources>

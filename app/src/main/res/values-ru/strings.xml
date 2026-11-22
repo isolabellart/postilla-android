@@ -1025,4 +1025,51 @@
     <string name="default_search_relays_added">Добавлено ретрансляторов поиска: %1$d.</string>
     <string name="default_search_relays_already_present">Все стандартные ретрансляторы поиска уже добавлены.</string>
     <string name="search_no_results_relay_hint">Некоторые ретрансляторы не поддерживают полнотекстовый поиск. Откройте настройки ретрансляторов, выберите «Поиск» и добавьте стандартные ретрансляторы поиска, чтобы расширить охват.</string>
+
+
+    <!-- Localization audit: profiles and group rooms -->
+    <string name="profile_tab_gallery">Галерея</string>
+    <string name="profile_tab_groups">Чаты</string>
+    <string name="profile_sort_popular">Популярное</string>
+    <string name="profile_sort_hot">Актуальное</string>
+    <string name="profile_sort_rising">Растущее</string>
+    <string name="profile_no_gallery">Публикаций в галерее пока нет</string>
+    <string name="profile_no_groups">Нет чатов</string>
+    <string name="profile_pay">Оплатить</string>
+    <string name="profile_pay_zap">Zap профиля</string>
+    <string name="profile_pay_offer">Оплатить предложение CLINK</string>
+    <string name="title_join_rejected">Не удалось присоединиться к чату</string>
+    <string name="msg_join_rejected_body">Ретранслятор отклонил запрос на вступление. Возможно, эта комната доступна только по приглашению — попросите администратора прислать ссылку с кодом.</string>
+    <string name="action_discover_groups">Найти чаты</string>
+    <string name="title_discover_groups">Обнаружение чатов</string>
+    <string name="label_notifications">Уведомления</string>
+    <string name="label_notifications_on">Включены — новые сообщения будут отслеживаться</string>
+    <string name="label_notifications_off">Выключены — нажмите, чтобы включить</string>
+    <string name="group_flag_private_label">Приватная</string>
+    <string name="group_flag_private_desc">Только участники могут читать сообщения</string>
+    <string name="group_flag_closed_label">Закрытая</string>
+    <string name="group_flag_closed_desc">Вступать могут только приглашённые</string>
+    <string name="group_flag_restricted_label">Ограниченная</string>
+    <string name="group_flag_restricted_desc">Публиковать могут только участники</string>
+    <string name="group_flag_hidden_label">Скрытая</string>
+    <string name="group_flag_hidden_desc">Информация о группе скрыта от неучастников</string>
+    <string name="group_flag_public_label">Публичная</string>
+    <string name="group_flag_public_desc">Все могут читать сообщения</string>
+    <string name="group_flag_open_label">Открытая</string>
+    <string name="group_flag_open_desc">Присоединиться может любой</string>
+    <string name="group_flag_unrestricted_label">Без ограничений</string>
+    <string name="group_flag_unrestricted_desc">Публиковать может любой</string>
+    <string name="group_flag_visible_label">Видимая</string>
+    <string name="group_flag_visible_desc">Информацию о группе может найти любой</string>
+    <string name="section_room_access">Доступ и видимость</string>
+    <string name="section_invite_codes">Коды приглашений</string>
+    <string name="action_generate_invite">Создать код приглашения</string>
+    <string name="label_latest_invite_code">Последний код приглашения</string>
+    <string name="action_copy">Копировать</string>
+    <string name="action_copy_code">Копировать код</string>
+    <string name="action_copy_invite_link">Копировать ссылку-приглашение</string>
+    <string name="title_assign_role">Назначить роль</string>
+    <string name="label_roles">Роли (через запятую)</string>
+    <string name="msg_assign_role">Назначьте роли для %s. Оставьте поле пустым, чтобы отозвать права администратора.</string>
+    <string name="cd_assign_role">Назначить роль</string>
 </resources>
