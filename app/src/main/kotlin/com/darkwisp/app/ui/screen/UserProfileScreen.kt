@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.CurrencyBitcoin
 import androidx.compose.material.icons.outlined.Storefront
 import com.darkwisp.app.nostr.Nip30
@@ -100,12 +101,14 @@ import com.darkwisp.app.nostr.FollowSet
 import com.darkwisp.app.nostr.Nip02
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.NipA3
+import com.darkwisp.app.nostr.Nip71
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.nostr.toNpub
 import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.repo.ContactRepository
+import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.Nip05Repository
 import com.darkwisp.app.repo.Nip05Status
@@ -188,6 +191,7 @@ fun UserProfileScreen(
     onSendDm: (() -> Unit)? = null,
     onZapProfile: ((amountMsats: Long, message: String, isAnonymous: Boolean) -> Unit)? = null,
     signer: com.darkwisp.app.nostr.NostrSigner? = null,
+    blossomRepository: BlossomRepository? = null,
     translationRepo: TranslationRepository? = null,
     onArticleClick: ((Int, String, String) -> Unit)? = null,
     onPollVote: (String, List<String>) -> Unit = { _, _ -> },
@@ -449,6 +453,7 @@ fun UserProfileScreen(
     var blockedContentRevealed by remember { mutableStateOf(false) }
     var fullScreenMediaImageUrl by remember { mutableStateOf<String?>(null) }
     var fullScreenMediaVideoUrl by remember { mutableStateOf<String?>(null) }
+    var videoBeingEdited by remember { mutableStateOf<NostrEvent?>(null) }
     val tabTitles = listOf(
         stringResource(R.string.profile_tab_notes),
         stringResource(R.string.profile_tab_replies),
@@ -472,6 +477,28 @@ fun UserProfileScreen(
             videoUrl = fullScreenMediaVideoUrl!!,
             onDismiss = { fullScreenMediaVideoUrl = null }
         )
+    }
+
+    videoBeingEdited?.let { event ->
+        val activeSigner = signer
+        val activeEventRepository = eventRepo
+        val activeBlossomRepository = blossomRepository
+        if (activeSigner != null && activeEventRepository != null && activeBlossomRepository != null) {
+            VideoEditorDialog(
+                event = event,
+                signer = activeSigner,
+                relayPool = relayPool,
+                eventRepository = activeEventRepository,
+                blossomRepository = activeBlossomRepository,
+                onDismiss = { videoBeingEdited = null },
+                onSaved = { updated ->
+                    viewModel.updateAddressableVideo(updated)
+                    videoBeingEdited = null
+                }
+            )
+        } else {
+            LaunchedEffect(event.id) { videoBeingEdited = null }
+        }
     }
 
     // Keep list state at the destination level and restore the opened event
@@ -961,59 +988,107 @@ fun UserProfileScreen(
                             val rootUserZapPollVote = remember(pollVoteVersion, event.id) {
                                 if (event.kind == 6969) eventRepo?.getUserZapPollVote(event.id) else null
                             }
-                            PostCard(
-                                event = event,
-                                profile = if (repostPubkey != null) eventRepo?.getProfileData(event.pubkey) else profile,
-                                onReply = { onReply(event) },
-                                onNavigateToProfile = onNavigateToProfile,
-                                onNoteClick = { handleProfileNoteClick(event) },
-                                onQuotedNoteClick = onQuotedNoteClick,
-                                onReact = { emoji -> onReact(event, emoji) },
-                                onRepost = { handleProfileRepost(event) },
-                                onQuote = { onQuote(event) },
-                                userReactionEmojis = userEmojis,
-                                hasUserReposted = hasUserReposted,
-                                onZap = { zapTargetEvent = event },
-                                onZapLongPress = { onZapInstant?.invoke(event) ?: run { zapTargetEvent = event } },
-                                hasUserZapped = hasUserZapped,
-                                likeCount = likeCount,
-                                replyCount = replyCount,
-                                repostCount = repostCount,
-                                zapSats = zapSats,
-                                isZapAnimating = event.id in zapAnimatingIds,
-                                isZapInProgress = event.id in zapInProgressIds,
-                                eventRepo = eventRepo,
-                                repostPubkeys = profileRepostPubkeys,
-                                reactionDetails = reactionDetails,
-                                zapDetails = zapDetails,
-                                reactionEmojiUrls = eventReactionEmojiUrls,
-                                relayIcons = relayIcons,
-                                onNavigateToProfileFromDetails = onNavigateToProfile,
-                                onFollowAuthor = { onToggleFollow?.invoke(event.pubkey) },
-                                onBlockAuthor = { onBlockUser?.invoke() },
-                                isFollowingAuthor = contactRepo.isFollowing(event.pubkey),
-                                isOwnEvent = event.pubkey == userPubkey,
-                                nip05Repo = nip05Repo,
-                                onAddToList = { onAddNoteToList(event.id) },
-                                isInList = event.id in listedIds,
-                                onPin = { onTogglePin(event.id) },
-                                isPinned = event.id in pinnedIds,
-                                onDelete = { onDeleteEvent(event.id, event.kind) },
-                                translationState = rootTranslationState,
-                                onTranslate = { translationRepo?.translate(event.id, event.content) },
-                                pollVoteCounts = rootPollVoteCounts,
-                                pollTotalVotes = rootPollTotalVotes,
-                                userPollVotes = rootUserPollVotes,
-                                onPollVote = { optionIds -> onPollVote(event.id, optionIds) },
-                                zapPollSatsCounts = rootZapPollSatsCounts,
-                                zapPollTotalSats = rootZapPollTotalSats,
-                                userZapPollVote = rootUserZapPollVote,
-                                onZapPollVote = { idx -> onZapPollVote(event.id, idx) },
-                                resolvedEmojis = resolvedEmojis,
-                                unicodeEmojis = unicodeEmojis,
-                                onOpenEmojiLibrary = onOpenEmojiLibrary,
-                                noteActions = invoiceNoteActions
-                            )
+                            if (isGalleryEvent(event)) {
+                                GalleryCard(
+                                    event = event,
+                                    profile = if (repostPubkey != null) eventRepo?.getProfileData(event.pubkey) else profile,
+                                    onReply = { onReply(event) },
+                                    onProfileClick = { onNavigateToProfile?.invoke(event.pubkey) },
+                                    onNavigateToProfile = onNavigateToProfile,
+                                    onNoteClick = { handleProfileNoteClick(event) },
+                                    onReact = { emoji -> onReact(event, emoji) },
+                                    userReactionEmojis = userEmojis,
+                                    onRepost = { handleProfileRepost(event) },
+                                    onQuote = { onQuote(event) },
+                                    hasUserReposted = hasUserReposted,
+                                    repostCount = repostCount,
+                                    onZap = { zapTargetEvent = event },
+                                    hasUserZapped = hasUserZapped,
+                                    likeCount = likeCount,
+                                    replyCount = replyCount,
+                                    zapSats = zapSats,
+                                    isZapAnimating = event.id in zapAnimatingIds,
+                                    isZapInProgress = event.id in zapInProgressIds,
+                                    eventRepo = eventRepo,
+                                    relayIcons = relayIcons,
+                                    repostPubkeys = profileRepostPubkeys,
+                                    reactionDetails = reactionDetails,
+                                    zapDetails = zapDetails,
+                                    repostDetails = profileRepostPubkeys,
+                                    reactionEmojiUrls = eventReactionEmojiUrls,
+                                    onNavigateToProfileFromDetails = onNavigateToProfile,
+                                    onFollowAuthor = { onToggleFollow?.invoke(event.pubkey) },
+                                    onBlockAuthor = { onBlockUser?.invoke() },
+                                    isFollowingAuthor = contactRepo.isFollowing(event.pubkey),
+                                    isOwnEvent = event.pubkey == userPubkey,
+                                    nip05Repo = nip05Repo,
+                                    onQuotedNoteClick = onQuotedNoteClick,
+                                    noteActions = invoiceNoteActions,
+                                    onAddToList = { onAddNoteToList(event.id) },
+                                    isInList = event.id in listedIds,
+                                    onPin = { onTogglePin(event.id) },
+                                    isPinned = event.id in pinnedIds,
+                                    onDelete = { onDeleteEvent(event.id, event.kind) },
+                                    onEditVideo = { if (isOwnProfile && Nip71.isAddressableVideo(event)) videoBeingEdited = event },
+                                    resolvedEmojis = resolvedEmojis,
+                                    unicodeEmojis = unicodeEmojis,
+                                    onOpenEmojiLibrary = onOpenEmojiLibrary
+                                )
+                            } else {
+                                PostCard(
+                                    event = event,
+                                    profile = if (repostPubkey != null) eventRepo?.getProfileData(event.pubkey) else profile,
+                                    onReply = { onReply(event) },
+                                    onNavigateToProfile = onNavigateToProfile,
+                                    onNoteClick = { handleProfileNoteClick(event) },
+                                    onQuotedNoteClick = onQuotedNoteClick,
+                                    onReact = { emoji -> onReact(event, emoji) },
+                                    onRepost = { handleProfileRepost(event) },
+                                    onQuote = { onQuote(event) },
+                                    userReactionEmojis = userEmojis,
+                                    hasUserReposted = hasUserReposted,
+                                    onZap = { zapTargetEvent = event },
+                                    onZapLongPress = { onZapInstant?.invoke(event) ?: run { zapTargetEvent = event } },
+                                    hasUserZapped = hasUserZapped,
+                                    likeCount = likeCount,
+                                    replyCount = replyCount,
+                                    repostCount = repostCount,
+                                    zapSats = zapSats,
+                                    isZapAnimating = event.id in zapAnimatingIds,
+                                    isZapInProgress = event.id in zapInProgressIds,
+                                    eventRepo = eventRepo,
+                                    repostPubkeys = profileRepostPubkeys,
+                                    reactionDetails = reactionDetails,
+                                    zapDetails = zapDetails,
+                                    reactionEmojiUrls = eventReactionEmojiUrls,
+                                    relayIcons = relayIcons,
+                                    onNavigateToProfileFromDetails = onNavigateToProfile,
+                                    onFollowAuthor = { onToggleFollow?.invoke(event.pubkey) },
+                                    onBlockAuthor = { onBlockUser?.invoke() },
+                                    isFollowingAuthor = contactRepo.isFollowing(event.pubkey),
+                                    isOwnEvent = event.pubkey == userPubkey,
+                                    nip05Repo = nip05Repo,
+                                    onAddToList = { onAddNoteToList(event.id) },
+                                    isInList = event.id in listedIds,
+                                    onPin = { onTogglePin(event.id) },
+                                    isPinned = event.id in pinnedIds,
+                                    onDelete = { onDeleteEvent(event.id, event.kind) },
+                                    translationState = rootTranslationState,
+                                    onTranslate = { translationRepo?.translate(event.id, event.content) },
+                                    pollVoteCounts = rootPollVoteCounts,
+                                    pollTotalVotes = rootPollTotalVotes,
+                                    userPollVotes = rootUserPollVotes,
+                                    onPollVote = { optionIds -> onPollVote(event.id, optionIds) },
+                                    zapPollSatsCounts = rootZapPollSatsCounts,
+                                    zapPollTotalSats = rootZapPollTotalSats,
+                                    userZapPollVote = rootUserZapPollVote,
+                                    onZapPollVote = { idx -> onZapPollVote(event.id, idx) },
+                                    resolvedEmojis = resolvedEmojis,
+                                    unicodeEmojis = unicodeEmojis,
+                                    onOpenEmojiLibrary = onOpenEmojiLibrary,
+                                    noteActions = invoiceNoteActions
+                                )
+                            }
                         }
                         if (rootNotes.isNotEmpty() && notesSortMode == ProfileSortMode.RECENCY) {
                             item {
@@ -1078,6 +1153,15 @@ fun UserProfileScreen(
                                                     tint = Color.White,
                                                     modifier = Modifier.size(20.dp)
                                                 )
+                                            }
+                                        }
+                                        if (isOwnProfile && Nip71.isAddressableVideo(event)) {
+                                            IconButton(
+                                                onClick = { videoBeingEdited = event },
+                                                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                                                    .clip(CircleShape).background(Color.Black.copy(alpha = 0.65f)).size(34.dp)
+                                            ) {
+                                                Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.video_edit_action), tint = Color.White, modifier = Modifier.size(18.dp))
                                             }
                                         }
                                     }
