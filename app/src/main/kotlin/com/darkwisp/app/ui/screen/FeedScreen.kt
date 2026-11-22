@@ -268,6 +268,8 @@ fun FeedScreen(
     val connectedCount by viewModel.relayPool.connectedCount.collectAsState()
     val liveNowStreams by viewModel.liveNowStreams.collectAsState()
     val anonMode by viewModel.anonMode.collectAsState()
+    var autoHideFeedChrome by remember { mutableStateOf(interfacePrefs.isFeedChromeAutoHideEnabled()) }
+    var feedChromeVisible by rememberSaveable { mutableStateOf(true) }
     val listState = rememberLazyListState()
     val chromeDensity = LocalDensity.current
     val hideChromeThresholdPx = with(chromeDensity) { 112.dp.toPx() }
@@ -428,8 +430,6 @@ fun FeedScreen(
     val scope = rememberCoroutineScope()
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
     var reopenSettingsDrawerAfterResume by rememberSaveable { mutableStateOf(false) }
-    var autoHideFeedChrome by remember { mutableStateOf(interfacePrefs.isFeedChromeAutoHideEnabled()) }
-    var feedChromeVisible by rememberSaveable { mutableStateOf(true) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val closeSettingsDrawerForNavigation = {
         settingsExpanded = true
