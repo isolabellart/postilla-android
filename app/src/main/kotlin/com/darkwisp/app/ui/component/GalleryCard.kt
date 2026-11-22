@@ -151,6 +151,7 @@ fun GalleryCard(
     onPin: () -> Unit = {},
     isPinned: Boolean = false,
     onDelete: () -> Unit = {},
+    onEditVideo: (() -> Unit)? = null,
     quoteDepth: Int = 0,
     modifier: Modifier = Modifier,
     showDivider: Boolean = true
@@ -409,6 +410,15 @@ fun GalleryCard(
                         }
                     )
                     if (isOwnEvent) {
+                        if (Nip71.isAddressableVideo(event) && onEditVideo != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.video_edit_action)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onEditVideo()
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(if (isPinned) stringResource(R.string.btn_unpin_from_profile) else stringResource(R.string.btn_pin_to_profile)) },
                             onClick = {
