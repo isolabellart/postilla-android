@@ -174,17 +174,17 @@ fun VideoEditorDialog(
                                     Text("${index + 1}", style = MaterialTheme.typography.titleMedium)
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(video.dim ?: video.mimeType ?: "Video", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                    Text(video.dim ?: video.mimeType ?: stringResource(R.string.postilla_video), style = MaterialTheme.typography.titleSmall, maxLines = 1)
                                     Text(video.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 IconButton(onClick = {
                                     runCatching {
                                         context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(video.url), video.mimeType ?: "video/*"))
-                                    }.onFailure { error = it.localizedMessage ?: "Unable to open video" }
-                                }) { Icon(Icons.Filled.PlayArrow, contentDescription = "Preview video") }
+                                    }.onFailure { error = it.localizedMessage ?: context.getString(R.string.postilla_video_open_failed) }
+                                }) { Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.postilla_video_preview)) }
                                 if (videoFiles.size > 1) {
                                     IconButton(onClick = { videoFiles = videoFiles.filterIndexed { itemIndex, _ -> itemIndex != index } }) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Remove variant")
+                                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.postilla_video_remove_variant))
                                     }
                                 }
                             }
@@ -251,11 +251,11 @@ fun VideoEditorDialog(
                     Button(
                         onClick = {
                             if (!isOwner) {
-                                error = "Only the author can edit this video."
+                                error = context.getString(R.string.postilla_video_edit_unavailable)
                                 return@Button
                             }
                             if (language.isNotBlank() && !language.matches(Regex("[a-z]{2}"))) {
-                                error = "Enter a valid two-letter language code."
+                                error = context.getString(R.string.postilla_video_invalid_language)
                                 return@Button
                             }
                             scope.launch {
@@ -302,7 +302,7 @@ fun VideoEditorDialog(
                                     eventRepository.addEvent(revised)
                                     onSaved(revised)
                                 } catch (failure: Exception) {
-                                    error = failure.localizedMessage ?: failure.message ?: "Unable to save video changes"
+                                    error = failure.localizedMessage ?: failure.message ?: context.getString(R.string.postilla_video_update_failed)
                                     saving = false
                                 }
                             }
