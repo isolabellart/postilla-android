@@ -111,6 +111,7 @@ import com.darkwisp.app.nostr.Noffer
 import com.darkwisp.app.nostr.NofferData
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip30
+import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.toHex
 import com.darkwisp.app.nostr.NostrEvent
@@ -1077,6 +1078,19 @@ fun RichContent(
                                     )
                                 }
                             }
+                            kind == Nip51.KIND_CURATION_SET -> {
+                                if (eventRepo != null && segment.author != null) {
+                                    CurationSetCard(
+                                        dTag = segment.dTag,
+                                        author = segment.author,
+                                        relayHints = segment.relays,
+                                        eventRepo = eventRepo,
+                                        onCurationClick = noteActions?.onArticleClick
+                                    )
+                                } else {
+                                    UnsupportedKindBadge(kind = kind, style = style)
+                                }
+                            }
                             kind == 30023 || kind == com.darkwisp.app.nostr.CustomNip.KIND -> {
                                 if (eventRepo != null && segment.author != null) {
                                     ArticleCard(
@@ -1123,7 +1137,20 @@ fun RichContent(
                                     UnsupportedKindBadge(kind = kind, style = style)
                                 }
                             }
-                            else -> UnsupportedKindBadge(kind = kind, style = style)
+                            else -> {
+                                if (eventRepo != null && segment.author != null && kind != null) {
+                                    GenericAddressableCard(
+                                        kind = kind,
+                                        dTag = segment.dTag,
+                                        author = segment.author,
+                                        relayHints = segment.relays,
+                                        eventRepo = eventRepo,
+                                        onAddressClick = noteActions?.onArticleClick
+                                    )
+                                } else {
+                                    UnsupportedKindBadge(kind = kind, style = style)
+                                }
+                            }
                         }
                     }
                     is ContentSegment.LightningInvoiceSegment -> {
@@ -1683,6 +1710,134 @@ private fun MarketplaceListingCard(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun CurationSetCard(
+    dTag: String,
+    author: String,
+    relayHints: List<String>,
+    eventRepo: EventRepository,
+    onCurationClick: ((Int, String, String) -> Unit)?
+) {
+    val cached = eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag)
+    val event by eventRepo.observeAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag).collectAsState(initial = cached)
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(eventRepo, author, dTag, relayHints) {
+        if (eventRepo.findAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag) == null) {
+            eventRepo.requestAddressableEvent(Nip51.KIND_CURATION_SET, author, dTag, relayHints)
+        }
+    }
+    val curation = remember(event) { event?.let(Nip51::parseCurationSet) }
+    val address = remember(author, dTag, relayHints) {
+        Nip19.naddrEncode(dTag, author, Nip51.KIND_CURATION_SET, relayHints)
+    }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable {
+            if (onCurationClick != null) onCurationClick(Nip51.KIND_CURATION_SET, author, dTag)
+            else uriHandler.openUri("https://njump.me/" + address)
+        }
+    ) {
+        if (curation?.image != null) {
+            Column {
+                LoadingAsyncImage(
+                    model = curation.image,
+                    contentDescription = curation.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp)
+                )
+                CurationSetCardText(curation.title, curation.description, curation.entries.size)
+            }
+        } else if (curation != null) {
+            CurationSetCardText(curation.title, curation.description, curation.entries.size)
+        } else {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("NIP-51 CURATION SET", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(dTag, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Collection details are not available from the current relays.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Open on njump.me", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurationSetCardText(title: String, description: String, itemCount: Int) {
+    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Text("NIP-51 CURATION SET", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (description.isNotBlank()) {
+            Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        Text(itemCount.toString() + " curated items", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun GenericAddressableCard(
+    kind: Int,
+    dTag: String,
+    author: String,
+    relayHints: List<String>,
+    eventRepo: EventRepository,
+    onAddressClick: ((Int, String, String) -> Unit)?
+) {
+    val cached = eventRepo.findAddressableEvent(kind, author, dTag)
+    val event by eventRepo.observeAddressableEvent(kind, author, dTag).collectAsState(initial = cached)
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(eventRepo, kind, author, dTag, relayHints) {
+        if (eventRepo.findAddressableEvent(kind, author, dTag) == null) {
+            eventRepo.requestAddressableEvent(kind, author, dTag, relayHints)
+        }
+    }
+    val title = remember(event) {
+        event?.tags?.firstOrNull { it.size >= 2 && (it[0] == "title" || it[0] == "name") }?.get(1)?.takeIf { it.isNotBlank() }
+    }
+    val description = remember(event) {
+        event?.tags?.firstOrNull { it.size >= 2 && (it[0] == "summary" || it[0] == "description") }?.get(1)
+            ?.takeIf { it.isNotBlank() } ?: event?.content?.takeIf { it.isNotBlank() }
+    }
+    val image = remember(event) {
+        event?.tags?.firstOrNull { it.size >= 2 && (it[0] == "image" || it[0] == "thumb") }?.get(1)
+            ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+    }
+    val address = remember(kind, author, dTag, relayHints) {
+        Nip19.naddrEncode(dTag, author, kind, relayHints)
+    }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable {
+            if (onAddressClick != null) onAddressClick(kind, author, dTag)
+            else uriHandler.openUri("https://njump.me/" + address)
+        }
+    ) {
+        Column {
+            if (image != null) {
+                LoadingAsyncImage(
+                    model = image,
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
+                )
+            }
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("NOSTR ITEM · KIND " + kind, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(title ?: dTag, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (description != null) {
+                    Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                if (event == null) {
+                    Text("Not available from current relays · Open on njump.me", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,8 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.AssistChip
@@ -53,7 +50,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -63,7 +59,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.withLink
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -72,7 +67,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import android.widget.Toast
-import android.content.Intent
 import com.darkwisp.app.R
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.TranslationRepository
@@ -81,7 +75,6 @@ import com.darkwisp.app.repo.TranslationStatus
 import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.nostr.CustomNip
 import com.darkwisp.app.nostr.Nip30
-import com.darkwisp.app.nostr.Nip51
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.Nip19
 import com.darkwisp.app.nostr.Nip23
@@ -183,7 +176,6 @@ fun ArticleScreen(
     val blocks = remember(displayContent) { parseMarkdownBlocks(displayContent) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    var articleShareMenuExpanded by remember(article?.id) { mutableStateOf(false) }
 
     val articleEmojiMap = remember(article) {
         article?.let { Nip30.parseEmojiTags(it) } ?: emptyMap()
@@ -215,56 +207,16 @@ fun ArticleScreen(
                         }
                     }
                     article?.takeIf { it.kind == Nip23.KIND_LONG_FORM }?.let { shareableArticle ->
-                        Box {
-                            IconButton(onClick = { articleShareMenuExpanded = true }) {
-                                Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.article_share))
-                            }
-                            DropdownMenu(expanded = articleShareMenuExpanded, onDismissRequest = { articleShareMenuExpanded = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.article_copy_link)) },
-                                    onClick = {
-                                        articleShareMenuExpanded = false
-                                        val address = Nip19.naddrEncode(
-                                            dTag = Nip23.dTag(shareableArticle),
-                                            authorHex = shareableArticle.pubkey,
-                                            kind = shareableArticle.kind
-                                        )
-                                        clipboardManager.setText(AnnotatedString("nostr:" + address))
-                                        Toast.makeText(context, context.getString(R.string.article_address_copied), Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.article_share)) },
-                                    onClick = {
-                                        articleShareMenuExpanded = false
-                                        val address = Nip19.naddrEncode(
-                                            dTag = Nip23.dTag(shareableArticle),
-                                            authorHex = shareableArticle.pubkey,
-                                            kind = shareableArticle.kind
-                                        )
-                                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_TEXT, "https://njump.me/" + address)
-                                        }
-                                        context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.article_share)))
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.article_copy_text)) },
-                                    onClick = {
-                                        articleShareMenuExpanded = false
-                                        val rawTitle = shareableArticle.tags.firstOrNull { it.size >= 2 && it[0] == "title" }?.get(1).orEmpty()
-                                        val rawDescription = shareableArticle.tags.firstOrNull { it.size >= 2 && (it[0] == "summary" || it[0] == "description") }?.get(1).orEmpty()
-                                        val fullText = buildString {
-                                            if (rawTitle.isNotBlank()) append(rawTitle).append("\n\n")
-                                            if (rawDescription.isNotBlank()) append(rawDescription).append("\n\n")
-                                            append(shareableArticle.content)
-                                        }.trim()
-                                        clipboardManager.setText(AnnotatedString(fullText))
-                                        Toast.makeText(context, context.getString(R.string.article_copy_text), Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
+                        IconButton(onClick = {
+                            val address = Nip19.naddrEncode(
+                                dTag = Nip23.dTag(shareableArticle),
+                                authorHex = shareableArticle.pubkey,
+                                kind = shareableArticle.kind
+                            )
+                            clipboardManager.setText(AnnotatedString("nostr:$address"))
+                            Toast.makeText(context, context.getString(R.string.article_address_copied), Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.article_copy_address))
                         }
                     }
                 },
@@ -296,12 +248,11 @@ fun ArticleScreen(
                 }
             }
             else -> {
-                SelectionContainer {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                    ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                ) {
                     // Header
                     item(key = "header") {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -447,42 +398,6 @@ fun ArticleScreen(
                         }
                     }
 
-                    if (article?.kind == Nip51.KIND_CURATION_SET) {
-                        val curation = article?.let(Nip51::parseCurationSet)
-                        if (curation != null) {
-                            item(key = "curation-set-summary") {
-                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    curation.image?.let { image ->
-                                        AsyncImage(
-                                            model = image,
-                                            contentDescription = curation.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp))
-                                        )
-                                    }
-                                    Text(curation.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                                    if (curation.description.isNotBlank()) {
-                                        Text(curation.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
-                            items(curation.entries, key = { entry -> entry.kind.toString() + ":" + entry.author + ":" + entry.dTag }) { entry ->
-                                val address = Nip19.naddrEncode(
-                                    dTag = entry.dTag,
-                                    authorHex = entry.author,
-                                    kind = entry.kind,
-                                    relays = listOfNotNull(entry.relayHint)
-                                )
-                                RichContent(
-                                    content = "nostr:" + address,
-                                    eventRepo = eventRepo,
-                                    noteActions = noteActions,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
                     // Markdown blocks
                     items(blocks.size, key = { "block-$it" }) { index ->
                         val block = blocks[index]
@@ -498,11 +413,6 @@ fun ArticleScreen(
                                 noteActions = noteActions,
                                 onProfileClick = onProfileClick
                             )
-                            is MdBlock.ListItem -> ArticleMarkdownListItem(ArticleMarkdownBlock.ListItem(block.ordered, block.number, block.text))
-                            is MdBlock.TaskItem -> ArticleMarkdownTaskItem(ArticleMarkdownBlock.TaskItem(block.checked, block.text))
-                            is MdBlock.Table -> ArticleMarkdownTable(ArticleMarkdownBlock.Table(block.headers, block.rows))
-                            is MdBlock.Footnote -> ArticleMarkdownPreview(markdown = "[^" + block.id + "]: " + block.text, modifier = Modifier.padding(horizontal = 16.dp))
-                            is MdBlock.Math -> ArticleMarkdownPreview(markdown = "$\n" + block.text + "\n$", modifier = Modifier.padding(horizontal = 16.dp))
                             is MdBlock.HorizontalRule -> HorizontalDivider(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                             )
@@ -659,7 +569,6 @@ fun ArticleScreen(
                     }
 
                     item(key = "footer") { Spacer(Modifier.height(32.dp)) }
-                    }
                 }
             }
         }
@@ -856,11 +765,8 @@ private fun formatInlineWithEmoji(
                                         val closeParen = text.indexOf(')', openParen)
                                         if (closeParen > openParen) {
                                             val linkText = text.substring(i + 1, closeBracket)
-                                            val linkUrl = text.substring(openParen + 1, closeParen)
-                                            withLink(LinkAnnotation.Url(linkUrl)) {
-                                                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                                                    append(linkText)
-                                                }
+                                            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+                                                append(linkText)
                                             }
                                             i = closeParen + 1
                                         } else {
@@ -993,11 +899,6 @@ private sealed interface MdBlock {
     data class Image(val url: String, val alt: String?) : MdBlock
     data class CodeBlock(val code: String, val language: String?) : MdBlock
     data class BlockQuote(val text: String) : MdBlock
-    data class ListItem(val ordered: Boolean, val number: Int?, val text: String) : MdBlock
-    data class TaskItem(val checked: Boolean, val text: String) : MdBlock
-    data class Table(val headers: List<String>, val rows: List<List<String>>) : MdBlock
-    data class Footnote(val id: String, val text: String) : MdBlock
-    data class Math(val text: String) : MdBlock
     data object HorizontalRule : MdBlock
     data class NostrEmbed(val content: String) : MdBlock
 }
@@ -1016,23 +917,102 @@ private fun shortenNostrEntity(entity: String): String {
     }
 }
 
-private fun parseMarkdownBlocks(content: String): List<MdBlock> =
-    parseArticleMarkdown(content).map { block ->
-        when (block) {
-            is ArticleMarkdownBlock.Heading -> MdBlock.Heading(block.level, block.text)
-            is ArticleMarkdownBlock.Paragraph -> MdBlock.Paragraph(block.text)
-            is ArticleMarkdownBlock.Image -> MdBlock.Image(block.url, block.alt)
-            is ArticleMarkdownBlock.Code -> MdBlock.CodeBlock(block.text, block.language)
-            is ArticleMarkdownBlock.Quote -> MdBlock.BlockQuote(block.text)
-            is ArticleMarkdownBlock.ListItem -> MdBlock.ListItem(block.ordered, block.number, block.text)
-            is ArticleMarkdownBlock.TaskItem -> MdBlock.TaskItem(block.checked, block.text)
-            is ArticleMarkdownBlock.Table -> MdBlock.Table(block.headers, block.rows)
-            is ArticleMarkdownBlock.NostrEmbed -> MdBlock.NostrEmbed(block.address)
-            is ArticleMarkdownBlock.Footnote -> MdBlock.Footnote(block.id, block.text)
-            is ArticleMarkdownBlock.Math -> MdBlock.Math(block.text)
-            ArticleMarkdownBlock.Divider -> MdBlock.HorizontalRule
+private fun parseMarkdownBlocks(content: String): List<MdBlock> {
+    val blocks = mutableListOf<MdBlock>()
+    val lines = content.lines()
+    var i = 0
+
+    while (i < lines.size) {
+        val line = lines[i]
+        val trimmed = line.trim()
+
+        when {
+            // Empty line — skip
+            trimmed.isEmpty() -> i++
+
+            // Fenced code block
+            trimmed.startsWith("```") -> {
+                val language = trimmed.removePrefix("```").trim().ifEmpty { null }
+                val codeLines = mutableListOf<String>()
+                i++
+                while (i < lines.size && !lines[i].trim().startsWith("```")) {
+                    codeLines.add(lines[i])
+                    i++
+                }
+                if (i < lines.size) i++ // skip closing ```
+                blocks.add(MdBlock.CodeBlock(codeLines.joinToString("\n"), language))
+            }
+
+            // Heading
+            trimmed.startsWith("#") -> {
+                val level = trimmed.takeWhile { it == '#' }.length.coerceAtMost(6)
+                val text = trimmed.drop(level).trimStart()
+                blocks.add(MdBlock.Heading(level, text))
+                i++
+            }
+
+            // Horizontal rule
+            trimmed.matches(Regex("""^[-*_]{3,}\s*$""")) -> {
+                blocks.add(MdBlock.HorizontalRule)
+                i++
+            }
+
+            // Standalone image
+            imageLineRegex.matches(trimmed) -> {
+                val match = imageLineRegex.matchEntire(trimmed)!!
+                blocks.add(MdBlock.Image(url = match.groupValues[2], alt = match.groupValues[1].ifEmpty { null }))
+                i++
+            }
+
+            // Standalone nostr entity (nevent, nprofile, naddr, note, npub)
+            nostrEntityLineRegex.matches(trimmed) -> {
+                val entity = trimmed
+                val normalized = if (!entity.startsWith("nostr:", ignoreCase = true)) "nostr:$entity" else entity
+                blocks.add(MdBlock.NostrEmbed(normalized))
+                i++
+            }
+
+            // Block quote
+            trimmed.startsWith(">") -> {
+                val quoteLines = mutableListOf<String>()
+                while (i < lines.size && lines[i].trim().let { it.startsWith(">") || (it.isNotEmpty() && quoteLines.isNotEmpty()) }) {
+                    quoteLines.add(lines[i].trim().removePrefix(">").trimStart())
+                    i++
+                }
+                blocks.add(MdBlock.BlockQuote(quoteLines.joinToString(" ")))
+            }
+
+            // Paragraph (collect consecutive non-empty lines)
+            else -> {
+                val paraLines = mutableListOf<String>()
+                while (i < lines.size) {
+                    val l = lines[i].trim()
+                    if (l.isEmpty() || l.startsWith("#") || l.startsWith("```") ||
+                        l.startsWith(">") || l.matches(Regex("""^[-*_]{3,}\s*$"""))
+                    ) break
+                    // If this line is a standalone image or nostr entity, break so it's handled as its own block
+                    if (imageLineRegex.matches(l)) break
+                    if (nostrEntityLineRegex.matches(l)) break
+                    paraLines.add(l)
+                    i++
+                }
+                if (paraLines.isNotEmpty()) {
+                    val text = paraLines.joinToString(" ")
+                    // Extract any inline images from the paragraph text
+                    val inlineImages = Regex("""!\[([^\]]*)]\((\S+?)(?:\s+"[^"]*")?\)""").findAll(text)
+                    val cleanedText = text.replace(Regex("""!\[([^\]]*)]\((\S+?)(?:\s+"[^"]*")?\)"""), "").trim()
+                    if (cleanedText.isNotEmpty()) {
+                        blocks.add(MdBlock.Paragraph(cleanedText))
+                    }
+                    for (img in inlineImages) {
+                        blocks.add(MdBlock.Image(url = img.groupValues[2], alt = img.groupValues[1].ifEmpty { null }))
+                    }
+                }
+            }
         }
     }
+    return blocks
+}
 
 private fun formatArticleDate(epoch: Long): String {
     return java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US)
