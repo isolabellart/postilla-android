@@ -1264,12 +1264,14 @@
     <string name="compose_gallery_video_title">Video title</string>
     <string name="compose_gallery_video_title_hint">Required for NIP-71 videos.</string>
     <string name="compose_gallery_video_title_required">Enter a title for this video before publishing.</string>
-    <string name="compose_video_publication_title">Choose how to publish</string>
-    <string name="compose_video_publication_classic">Classic</string>
-    <string name="compose_video_publication_classic_hint">The post cannot be changed after publishing.</string>
-    <string name="compose_video_publication_updatable">Editable</string>
-    <string name="compose_video_publication_updatable_hint">You can correct video details after publishing.</string>
-    <string name="compose_video_type_standard">Standard video</string>
-    <string name="compose_video_type_short">Short video</string>
-    <string name="compose_video_publication_help">Only one post is published. The video can be horizontal or vertical with either choice.</string>
+    <string name="compose_video_publication_title">Video format</string>
+    <string name="compose_video_type_standard">Horizontal</string>
+    <string name="compose_video_type_short">Vertical</string>
+    <string name="compose_video_publication_help">Videos can be edited later from your profile. Choose the format that best matches the video.</string>
+    <string name="compose_gallery_video_tags">Tags</string>
+    <string name="compose_gallery_video_tags_hint">Separate tags with commas, for example: sea, travel, nature</string>
+    <string name="compose_gallery_video_count">1 video</string>
+    <string name="compose_gallery_video_change">Change video</string>
+    <string name="compose_gallery_image_count">%1$d images</string>
+    <string name="compose_gallery_image_add">Add images</string>
 </resources>
