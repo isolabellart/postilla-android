@@ -34,10 +34,8 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.viewinterop.AndroidView
+import com.darkwisp.app.ui.component.LaTeXFormula
 import coil3.compose.AsyncImage
-import io.ratex.RaTeXView
 
 internal enum class ArticleMarkdownFormat {
     HEADING_1, HEADING_2, HEADING_3, HEADING_4, HEADING_5, HEADING_6,
@@ -485,41 +483,14 @@ internal fun ArticleMarkdownPreview(markdown: String, modifier: Modifier = Modif
 
 @Composable
 private fun ArticleMathFormula(formula: String) {
-    val formulaColor = MaterialTheme.colorScheme.onSurfaceVariant
-    var renderError by remember(formula) { mutableStateOf(false) }
-
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceVariant
     ) {
-        if (renderError) {
-            Text(
-                text = formula,
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                color = formulaColor
-            )
-        } else {
-            AndroidView(
-                factory = { context ->
-                    RaTeXView(context).apply {
-                        fontSize = 20f
-                        displayMode = true
-                        color = formulaColor.toArgb()
-                        onError = { renderError = true }
-                        latex = formula
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(12.dp),
-                update = { view ->
-                    view.fontSize = 20f
-                    view.displayMode = true
-                    view.color = formulaColor.toArgb()
-                    view.onError = { renderError = true }
-                    view.latex = formula
-                }
-            )
-        }
+        LaTeXFormula(
+            formula = formula, displayMode = true, fontSize = 20.sp,
+            formulaColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(12.dp)
+        )
     }
 }

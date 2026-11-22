@@ -589,7 +589,8 @@ fun GalleryCard(
                     mime = video.mimeType,
                     dimension = video.dim,
                     thumbhash = video.thumbhash,
-                    blurhash = video.blurhash
+                    blurhash = video.blurhash,
+                    image = video.thumbnailUrl
                 ),
                 onFullScreen = { positionMs ->
                     FullScreenVideoState.enter(video.url, positionMs)

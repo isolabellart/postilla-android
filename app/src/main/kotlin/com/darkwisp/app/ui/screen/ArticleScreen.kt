@@ -96,6 +96,8 @@ import com.darkwisp.app.ui.component.ActionBar
 import com.darkwisp.app.ui.component.NoteActions
 import com.darkwisp.app.ui.component.PostCard
 import com.darkwisp.app.ui.component.RichContent
+import com.darkwisp.app.ui.component.LaTeXFormula
+import com.darkwisp.app.ui.component.LaTeXFormula
 import com.darkwisp.app.ui.component.InlineVideoPlayerWithFullscreen
 import com.darkwisp.app.ui.component.FullScreenVideoState
 import com.darkwisp.app.ui.component.MediaMeta
@@ -568,7 +570,8 @@ fun ArticleScreen(
                                         mime = video.mimeType,
                                         dimension = video.dim,
                                         thumbhash = video.thumbhash,
-                                        blurhash = video.blurhash
+                                        blurhash = video.blurhash,
+                                        image = video.thumbnailUrl
                                     ),
                                     onFullScreen = { positionMs ->
                                         FullScreenVideoState.enter(video.url, positionMs)
@@ -1077,37 +1080,10 @@ private fun formatInlineWithEmoji(
 
 @Composable
 private fun ArticleInlineMathFormula(formula: String) {
-    val formulaColor = MaterialTheme.colorScheme.onSurface
-    var renderError by remember(formula) { mutableStateOf(false) }
-
-    if (renderError) {
-        Text(
-            text = formula,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = formulaColor,
-            modifier = Modifier.fillMaxSize()
-        )
-    } else {
-        AndroidView(
-            factory = { context ->
-                RaTeXView(context).apply {
-                    fontSize = 16f
-                    displayMode = false
-                    color = formulaColor.toArgb()
-                    onError = { renderError = true }
-                    latex = formula
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-            update = { view ->
-                view.fontSize = 16f
-                view.displayMode = false
-                view.color = formulaColor.toArgb()
-                view.onError = { renderError = true }
-                view.latex = formula
-            }
-        )
-    }
+    LaTeXFormula(
+        formula = formula, displayMode = false, fontSize = 16.sp,
+        formulaColor = MaterialTheme.colorScheme.onSurface, modifier = Modifier.fillMaxSize()
+    )
 }
 
 private sealed interface InlineSegment {

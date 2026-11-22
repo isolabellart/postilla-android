@@ -48,15 +48,19 @@ object Nip22 {
             it.size >= 2 && it[0] in setOf("A", "a") && it[1] == addressTag
         }
 
+    /** Root coordinate carried by an addressable NIP-22 comment. */
+    fun addressableRootCoordinate(event: NostrEvent): String? =
+        event.tags.firstOrNull { it.size >= 2 && it[0] == "A" && it[1].count { ch -> ch == ':' } >= 2 }?.get(1)
+            ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "a" && it[1].count { ch -> ch == ':' } >= 2 }?.get(1)
+
     /** Root coordinate for a comment on an addressable long-form article. */
     fun longFormRootCoordinate(event: NostrEvent): String? =
-        event.tags.firstOrNull { it.size >= 2 && it[0] == "A" && it[1].startsWith("${Nip23.KIND_LONG_FORM}:") }?.get(1)
-            ?: event.tags.firstOrNull { it.size >= 2 && it[0] == "a" && it[1].startsWith("${Nip23.KIND_LONG_FORM}:") }?.get(1)
+        addressableRootCoordinate(event)?.takeIf { it.startsWith("${Nip23.KIND_LONG_FORM}:") }
 
     /** Build a kind-1111 reply while retaining the NIP-23 article scope. */
     fun buildAddressableCommentReplyTags(parentComment: NostrEvent): List<List<String>> {
-        val coordinate = longFormRootCoordinate(parentComment)
-            ?: throw IllegalArgumentException("Parent comment is not scoped to a NIP-23 article")
+        val coordinate = addressableRootCoordinate(parentComment)
+            ?: throw IllegalArgumentException("Parent comment is not scoped to an addressable NIP-22 root")
         val parts = coordinate.split(":", limit = 3)
         require(parts.size == 3) { "Invalid article coordinate" }
         val rootPubkey = parentComment.tags.firstOrNull { it.size >= 2 && it[0] == "P" }?.get(1)
@@ -100,12 +104,12 @@ object Nip22 {
      * only pointer to the thread root.
      */
     fun getRootScopeId(event: NostrEvent): String? =
-        event.tags.firstOrNull { it.size >= 2 && it[0] == "E" }?.get(1)
+        event.tags.firstOrNull { it.size >= 2 && it[0] in setOf("A", "E", "I") }?.get(1)
 
     /**
      * True if the event belongs to the thread rooted at [rootId], either as a
      * direct reply (lowercase `e`) or via NIP-22 root scope (uppercase `E`).
      */
     fun referencesRoot(event: NostrEvent, rootId: String): Boolean =
-        event.tags.any { it.size >= 2 && (it[0] == "e" || it[0] == "E") && it[1] == rootId }
+        event.tags.any { it.size >= 2 && it[0] in setOf("e", "E", "a", "A", "i", "I") && it[1] == rootId }
 }

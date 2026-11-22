@@ -4,6 +4,7 @@ import android.util.Log
 import android.util.LruCache
 import com.darkwisp.app.nostr.Nip09
 import com.darkwisp.app.nostr.Nip10
+import com.darkwisp.app.nostr.Nip71
 import com.darkwisp.app.nostr.Nip22
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip51
@@ -660,11 +661,14 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             val isNew = event.id !in seenEventIds
             Log.d("POLL", "[EventRepo] addEvent kind=1018 id=${event.id.take(12)} isNew=$isNew pubkey=${event.pubkey.take(8)}")
         }
-        if (event.kind in intArrayOf(20, 21, 22)) {
+        if (event.kind in intArrayOf(20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL)) {
             Log.d("GALLERY", "[EventRepo] addEvent kind=${event.kind} id=${event.id.take(12)} pubkey=${event.pubkey.take(8)} alreadySeen=${event.id in seenEventIds}")
         }
         if (!seenEventIds.add(event.id)) {
             insertReplyFeedEvent(event)
+            if (Nip71.isAddressableVideoKind(event.kind)) {
+                syncLatestNip71VideoRevisionInFeed(event, countAsNewIfFirstRevision = false)
+            }
             // A Marketplace revision can be hydrated through a cache/detail path
             // before the relay feed delivers it. Still enforce a newer Hidden revision
             // against older public copies already displayed in the feed.
@@ -680,7 +684,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
         if (event.created_at > System.currentTimeMillis() / 1000 + 30) return  // reject future-dated notes (30s grace for clock skew)
         if (muteRepo?.isBlocked(event.pubkey) == true) return
-        if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || Nip99.isMarketplaceKind(event.kind) || event.kind == 20 || event.kind == 21 || event.kind == 22 || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
+        if ((event.kind == 1 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || Nip99.isMarketplaceKind(event.kind) || event.kind == 20 || event.kind == 21 || event.kind == 22 || Nip71.isAddressableVideoKind(event.kind) || event.kind == Nip69.KIND_ZAP_POLL) && muteRepo?.isEventMuted(event) == true) return
         if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
             // NIP-22 replies-to-comments reference the thread root only via
             // uppercase E scope — prefer it over the lowercase-e parent.
@@ -691,7 +695,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (isWotFiltered(event.pubkey, event.kind)) return
         // Track liveness: only count followed authors with recent active-content kinds,
         // so historical fetches, profile metadata, and strangers don't inflate the online count.
-        if (event.kind == 1 || event.kind == 6 || event.kind == 7 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22) {
+        if (event.kind == 1 || event.kind == 6 || event.kind == 7 || event.kind == Nip22.KIND_COMMENT || event.kind == 30023 || event.kind == 20 || event.kind == 21 || event.kind == 22 || Nip71.isAddressableVideoKind(event.kind)) {
             val eventTimeMs = event.created_at * 1000L
             val cutoff = System.currentTimeMillis() - 10 * 60 * 1000L
             if (eventTimeMs >= cutoff && (contactRepo?.isFollowing(event.pubkey) == true || event.pubkey == currentUserPubkey)) {
@@ -752,6 +756,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 Log.d("GALLERY", "[EventRepo] routing kind ${event.kind} to binaryInsert id=${event.id.take(12)}")
                 binaryInsert(event, fromFeed = true)
             }
+            Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL ->
+                syncLatestNip71VideoRevisionInFeed(event, countAsNewIfFirstRevision = true)
             6 -> {
                 // Repost: reconcile metadata, then insert its embedded event into the feed.
                 val inner = recordRepostIfEligible(event) ?: return
@@ -1236,6 +1242,37 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
      * Old event objects remain in cache/persistence; only duplicate feed cards are
      * replaced. This also handles out-of-order relay delivery and cache-first paths.
      */
+    private fun removeNip71VideoAddressFromFeed(kind: Int, author: String, dTag: String): Boolean {
+        if (!Nip71.isAddressableVideoKind(kind) || author.isBlank() || dTag.isBlank()) return false
+        val removedIds = mutableSetOf<String>()
+        synchronized(feedList) {
+            val iterator = feedList.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (candidate.kind == kind && candidate.pubkey == author && Nip71.getDTag(candidate) == dTag) {
+                    removedIds.add(candidate.id)
+                    iterator.remove()
+                }
+            }
+            if (removedIds.isNotEmpty()) {
+                feedIds.removeAll(removedIds)
+                filteredFeed.removeAll { it.id in removedIds }
+                filteredFeedIds.removeAll(removedIds)
+            }
+        }
+        if (removedIds.isNotEmpty()) feedInserted.trySend(Unit)
+        return removedIds.isNotEmpty()
+    }
+
+    private fun syncLatestNip71VideoRevisionInFeed(event: NostrEvent, countAsNewIfFirstRevision: Boolean) {
+        if (!Nip71.isAddressableVideo(event)) return
+        val dTag = Nip71.getDTag(event)?.takeIf(String::isNotBlank) ?: return
+        val latest = addressSnapshot(addressKey(event.kind, event.pubkey, dTag)) ?: return
+        if (latest.id != event.id) return
+        val replacedPreviousRevision = removeNip71VideoAddressFromFeed(event.kind, event.pubkey, dTag)
+        binaryInsert(latest, fromFeed = countAsNewIfFirstRevision && !replacedPreviousRevision)
+    }
+
     private fun syncLatestArticleRevisionInFeed(event: NostrEvent, countAsNewIfFirstRevision: Boolean) {
         if (event.kind != Nip23.KIND_LONG_FORM) return
         val dTag = Nip23.dTag(event)
@@ -1258,7 +1295,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         var filteredChanged = false
         synchronized(feedList) {
             if (!feedIds.add(event.id)) {
-                if (event.kind in intArrayOf(20, 21, 22)) {
+                if (event.kind in intArrayOf(20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL)) {
                     Log.d("GALLERY", "[EventRepo] binaryInsert DEDUP kind=${event.kind} id=${event.id.take(12)} — already in feedIds")
                 }
                 return  // already in feed
@@ -1271,7 +1308,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             }
             feedList.add(low, event)
             if (passesFilter(event)) filteredChanged = filteredInsert(event, sortTime)
-            if (event.kind in intArrayOf(20, 21, 22)) {
+            if (event.kind in intArrayOf(20, 21, 22, Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL)) {
                 Log.d("GALLERY", "[EventRepo] binaryInsert SUCCESS kind=${event.kind} id=${event.id.take(12)} at pos=$low feedSize=${feedList.size}")
             }
         }
@@ -1567,7 +1604,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
      */
     fun seedFromObjectBox(events: List<NostrEvent>) {
         for (event in events) {
-            if (event.kind != 0 && event.kind != 1 && event.kind != Nip22.KIND_COMMENT && event.kind != 20 && event.kind != 21 && event.kind != 22 && event.kind != 1068 && event.kind != 6969 && event.kind != 30023) continue
+            if (event.kind != 0 && event.kind != 1 && event.kind != Nip22.KIND_COMMENT && event.kind != 20 && event.kind != 21 && event.kind != 22 &&
+                !Nip71.isAddressableVideoKind(event.kind) && event.kind != 1068 && event.kind != 6969 && event.kind != 30023) continue
             if (muteRepo?.isBlocked(event.pubkey) == true) continue
             if (!seenEventIds.add(event.id)) continue
             eventCache[event.id] = event
@@ -2291,11 +2329,20 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
             .filter { it.kind == Nip23.KIND_LONG_FORM && Nip23.dTag(it).isNotBlank() }
             .groupBy { it.pubkey to Nip23.dTag(it) }
             .mapValues { (_, revisions) -> Nip01EventOrder.newest(revisions)?.id }
+        val latestNip71VideoIds = snapshot.values
+            .asSequence()
+            .filter { Nip71.isAddressableVideoKind(it.kind) && !Nip71.getDTag(it).isNullOrBlank() }
+            .groupBy { Triple(it.kind, it.pubkey, Nip71.getDTag(it).orEmpty()) }
+            .mapValues { (_, revisions) -> Nip01EventOrder.newest(revisions)?.id }
         var inserted = 0
         for ((_, event) in snapshot) {
-            if (event.kind != 1 && event.kind != 20 && event.kind != 21 && event.kind != 22 && event.kind != 1068 && event.kind != 6969 && event.kind != Nip23.KIND_LONG_FORM) continue
+            if (event.kind != 1 && event.kind != 20 && event.kind != 21 && event.kind != 22 &&
+                !Nip71.isAddressableVideoKind(event.kind) && event.kind != 1068 && event.kind != 6969 && event.kind != Nip23.KIND_LONG_FORM) continue
             if (event.kind == Nip23.KIND_LONG_FORM &&
                 latestArticleIds[event.pubkey to Nip23.dTag(event)] != event.id
+            ) continue
+            if (Nip71.isAddressableVideoKind(event.kind) &&
+                latestNip71VideoIds[Triple(event.kind, event.pubkey, Nip71.getDTag(event).orEmpty())] != event.id
             ) continue
             if (event.created_at < sinceTimestamp) continue
             if (event.created_at > System.currentTimeMillis() / 1000 + 30) continue  // skip future-dated (scheduled) notes
@@ -2394,7 +2441,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 relayHintStore?.extractHintsFromTags(event)
                 relayFeedBinaryInsert(event)
             }
-            20, 21, 22 -> {
+            20, 21, 22,
+            Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL -> {
                 eventCache[event.id] = event
                 relayHintStore?.extractHintsFromTags(event)
                 relayFeedBinaryInsert(event)
@@ -2446,7 +2494,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 relayHintStore?.extractHintsFromTags(event)
                 trendingFeedAppend(event)
             }
-            20, 21, 22 -> {
+            20, 21, 22,
+            Nip71.KIND_VIDEO_ADDRESSABLE_HORIZONTAL, Nip71.KIND_VIDEO_ADDRESSABLE_VERTICAL -> {
                 eventCache[event.id] = event
                 relayHintStore?.extractHintsFromTags(event)
                 trendingFeedAppend(event)

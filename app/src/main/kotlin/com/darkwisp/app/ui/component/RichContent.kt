@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -921,11 +922,12 @@ fun RichContent(
                                             placeholderVerticalAlign = PlaceholderVerticalAlign.Center
                                         )
                                     ) {
-                                        MathFormulaView(
+                                        LaTeXFormula(
                                             formula = seg.formula,
                                             displayMode = false,
-                                            fontSizeSp = style.fontSize.value,
-                                            formulaColor = color
+                                            fontSize = style.fontSize,
+                                            formulaColor = color,
+                                            modifier = Modifier.fillMaxSize()
                                         )
                                     })
                                 }
@@ -1026,10 +1028,19 @@ fun RichContent(
                 val segment = group as ContentSegment
                 when (segment) {
                     is ContentSegment.DisplayMathSegment -> {
-                        DisplayMathBlock(
-                            formula = segment.formula,
-                            fontSizeSp = style.fontSize.value
-                        )
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            LaTeXFormula(
+                                formula = segment.formula, displayMode = true,
+                                fontSize = maxOf(20.sp, style.fontSize),
+                                formulaColor = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            )
+                        }
                     }
                     is ContentSegment.ImageSegment -> {
                         ImageWithContextMenu(
@@ -1239,70 +1250,6 @@ fun RichContent(
 
 private fun mathInlineContentKey(index: Int, formula: String): String =
     "postilla_math_${index}_${formula.hashCode()}"
-
-@Composable
-private fun MathFormulaView(
-    formula: String,
-    displayMode: Boolean,
-    fontSizeSp: Float,
-    formulaColor: Color
-) {
-    var renderError by remember(formula) { mutableStateOf(false) }
-    if (renderError) {
-        Text(
-            text = formula,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-            ),
-            color = formulaColor
-        )
-    } else {
-        AndroidView(
-            factory = { context ->
-                RaTeXView(context).apply {
-                    fontSize = fontSizeSp.coerceAtLeast(12f)
-                    this.displayMode = displayMode
-                    color = formulaColor.toArgb()
-                    onError = { renderError = true }
-                    latex = formula
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-            update = { view ->
-                view.fontSize = fontSizeSp.coerceAtLeast(12f)
-                view.displayMode = displayMode
-                view.color = formulaColor.toArgb()
-                view.onError = { renderError = true }
-                view.latex = formula
-            }
-        )
-    }
-}
-
-@Composable
-private fun DisplayMathBlock(formula: String, fontSizeSp: Float) {
-    val mathColor = MaterialTheme.colorScheme.onSurface
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            MathFormulaView(
-                formula = formula,
-                displayMode = true,
-                fontSizeSp = maxOf(20f, fontSizeSp),
-                formulaColor = mathColor
-            )
-        }
-    }
-}
 
 @Composable
 fun QuotedNote(
@@ -2778,40 +2725,39 @@ internal fun InlineVideoPlayerWithFullscreen(meta: MediaMeta, onFullScreen: (pos
     var loaded by remember { mutableStateOf(mediaSettings.autoLoadMedia) }
 
     if (!loaded) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { loaded = true },
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            val blurPainter = rememberMediaPlaceholderPainter(meta.thumbhash, meta.blurhash, meta.dimension)
-            if (blurPainter != null) {
-                Image(
-                    painter = blurPainter,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+        val parts = meta.dimension?.split("x")
+        val w = parts?.getOrNull(0)?.toFloatOrNull()
+        val h = parts?.getOrNull(1)?.toFloatOrNull()
+        val ratio = if (w != null && h != null && w > 0f && h > 0f) w / h else 16f / 9f
+        BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val height = if (ratio >= 1f) (maxWidth / ratio).coerceAtMost(500.dp) else 500.dp
+            val width = (height * ratio).coerceAtMost(maxWidth)
+            Surface(
+                modifier = Modifier.width(width).height(width / ratio)
+                    .clip(RoundedCornerShape(12.dp)).clickable { loaded = true },
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Load video",
-                    modifier = Modifier.size(48.dp),
-                    tint = if (blurPainter != null) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Tap to load",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (blurPainter != null) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Box(Modifier.fillMaxSize()) {
+                    val blurPainter = rememberMediaPlaceholderPainter(meta.thumbhash, meta.blurhash, meta.dimension)
+                    val poster = meta.image?.takeIf(String::isNotBlank)
+                    if (poster != null) AsyncImage(
+                        model = poster, contentDescription = "Video preview",
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                    ) else if (blurPainter != null) Image(
+                        painter = blurPainter, contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                    )
+                    Column(
+                        Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Load video",
+                            modifier = Modifier.size(52.dp), tint = Color.White)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Tap to load", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                    }
+                }
             }
         }
         return

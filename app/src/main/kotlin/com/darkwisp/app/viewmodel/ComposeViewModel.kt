@@ -180,7 +180,8 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
     private data class UploadedMediaMeta(
         val mimeType: String,
         val dimensions: Pair<Int, Int>? = null,
-        val thumbhash: String? = null
+        val thumbhash: String? = null,
+        val thumbnailUrl: String? = null
     )
 
     /** Image description (NIP-92 imeta `alt`) per uploaded image URL.
@@ -365,13 +366,24 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                     }
                     // Re-extract dimensions from post-pipeline bytes so dim tags match what's uploaded.
                     val dims = extractDimensionsFromBytes(bytes, mime)
-                    val thumbhash = if (mime.startsWith("image/")) createThumbhash(bytes) else null
+                    val videoPosterBytes = if (_galleryMode.value && mime.startsWith("video/")) createVideoPosterBytes(bytes) else null
+                    val videoPosterUrl = videoPosterBytes?.let { poster ->
+                        runCatching { blossomRepo.uploadMedia(poster, "image/jpeg", "jpg", signer) }
+                            .onFailure { android.util.Log.w("PostillaGallery", "Video poster upload failed", it) }
+                            .getOrNull()
+                    }
+                    val thumbhash = when {
+                        mime.startsWith("image/") -> createThumbhash(bytes)
+                        videoPosterBytes != null -> createThumbhash(videoPosterBytes)
+                        else -> null
+                    }
                     val url = blossomRepo.uploadMedia(bytes, mime, ext, signer)
                     _uploadedUrls.value = _uploadedUrls.value + url
                     _uploadedMediaMeta[url] = UploadedMediaMeta(
                         mimeType = mime,
                         dimensions = dims,
-                        thumbhash = thumbhash
+                        thumbhash = thumbhash,
+                        thumbnailUrl = videoPosterUrl
                     )
                     if (_galleryMode.value && mime.startsWith("video/")) {
                         _galleryHasVideo.value = true
@@ -698,13 +710,15 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         if (_explicit.value) {
             tags.add(listOf("content-warning", ""))
         }
-        val isLongFormArticleReply = replyTo != null &&
-            (replyTo.kind == Nip23.KIND_LONG_FORM || Nip22.longFormRootCoordinate(replyTo) != null)
+        val isAddressableContentReply = replyTo != null &&
+            (replyTo.kind == Nip23.KIND_LONG_FORM ||
+                Nip71.isAddressableVideoKind(replyTo.kind) ||
+                Nip22.addressableRootCoordinate(replyTo) != null)
         if (replyTo != null) {
             when {
-                replyTo.kind == Nip23.KIND_LONG_FORM ->
+                replyTo.kind == Nip23.KIND_LONG_FORM || Nip71.isAddressableVideoKind(replyTo.kind) ->
                     tags.addAll(Nip22.buildAddressableRootCommentTags(replyTo))
-                isLongFormArticleReply ->
+                isAddressableContentReply ->
                     tags.addAll(Nip22.buildAddressableCommentReplyTags(replyTo))
                 else -> {
                     val hint = outboxRouter?.getRelayHint(replyTo.pubkey) ?: ""
@@ -737,7 +751,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
         // publicly. The compose UI hides the toggle in gallery/poll/schedule/quote modes, so we
         // branch before those tag-building paths and emit just the reply + mentions + hashtags
         // + emojis inside the encrypted rumor.
-        if (replyTo != null && _privateReply.value && !isLongFormArticleReply) {
+        if (replyTo != null && _privateReply.value && !isAddressableContentReply) {
             for (hashtag in _hashtags.value) tags.add(listOf("t", hashtag))
             tags.addAll(Nip30.buildEmojiTagsForContent(content, resolvedEmojis))
             val privateReplyTags = NostrClientTag.apply(tags, interfacePrefs.isClientTagEnabled())
@@ -788,7 +802,13 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 val dims = meta?.dimensions
                 val dimStr = dims?.let { "${it.first}x${it.second}" }
                 val isVertical = dims != null && dims.second > dims.first
-                val videoMeta = listOf(Nip71.VideoMeta(url = videoUrl, mimeType = meta?.mimeType, dim = dimStr))
+                val videoMeta = listOf(Nip71.VideoMeta(
+                    url = videoUrl,
+                    mimeType = meta?.mimeType,
+                    dim = dimStr,
+                    thumbnailUrl = meta?.thumbnailUrl,
+                    thumbhash = meta?.thumbhash
+                ))
                 val publishedAt = if (_scheduleEnabled.value) {
                     _scheduleTimestamp.value ?: (System.currentTimeMillis() / 1000)
                 } else {
@@ -852,7 +872,7 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 eventKind = Nip88.KIND_POLL
             }
         } else {
-            eventKind = if (isLongFormArticleReply) Nip22.KIND_COMMENT else 1
+            eventKind = if (isAddressableContentReply) Nip22.KIND_COMMENT else 1
         }
 
         if (!_galleryMode.value) {
@@ -1154,7 +1174,10 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                         retriever.setDataSource(tmp.absolutePath)
                         val w = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
                         val h = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
-                        if (w != null && h != null && w > 0 && h > 0) w to h else null
+                        val rotation = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                        if (w != null && h != null && w > 0 && h > 0) {
+                            if (rotation % 180 != 0) h to w else w to h
+                        } else null
                     } finally {
                         retriever.release()
                     }
@@ -1167,6 +1190,39 @@ class ComposeViewModel(app: Application, private val savedStateHandle: SavedStat
                 if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth to opts.outHeight else null
             } else null
         } catch (_: Exception) { null }
+    }
+
+    private fun createVideoPosterBytes(bytes: ByteArray): ByteArray? {
+        val tempFile = runCatching {
+            java.io.File.createTempFile("postilla_video_poster_", ".video", getApplication<Application>().cacheDir)
+        }.getOrNull() ?: return null
+        val retriever = android.media.MediaMetadataRetriever()
+        var extractedFrame: Bitmap? = null
+        var scaledFrame: Bitmap? = null
+        return try {
+            tempFile.writeBytes(bytes)
+            retriever.setDataSource(tempFile.absolutePath)
+            val frame = retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: return null
+            extractedFrame = frame
+            val scale = minOf(1f, 640f / maxOf(frame.width, frame.height))
+            val bitmap = if (scale < 1f) Bitmap.createScaledBitmap(
+                frame, (frame.width * scale).toInt().coerceAtLeast(1),
+                (frame.height * scale).toInt().coerceAtLeast(1), true
+            ) else frame
+            scaledFrame = bitmap
+            val output = java.io.ByteArrayOutputStream()
+            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)) output.toByteArray() else null
+        } catch (error: Exception) {
+            android.util.Log.w("PostillaGallery", "Unable to extract video poster", error)
+            null
+        } finally {
+            if (scaledFrame != null && scaledFrame !== extractedFrame) scaledFrame?.recycle()
+            extractedFrame?.recycle()
+            runCatching { retriever.release() }
+            tempFile.delete()
+        }
     }
 
     private fun createThumbhash(bytes: ByteArray): String? {

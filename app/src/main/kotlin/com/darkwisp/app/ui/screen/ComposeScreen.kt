@@ -366,6 +366,24 @@ fun ComposeScreen(
 
                     Spacer(Modifier.height(12.dp))
 
+                    // Mention autocomplete is also available in the gallery caption.
+                    AnimatedVisibility(
+                        visible = mentionQuery != null && mentionCandidates.isNotEmpty(),
+                        enter = fadeIn() + slideInVertically(),
+                        exit = fadeOut() + slideOutVertically()
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp), tonalElevation = 3.dp, shadowElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).padding(bottom = 4.dp)
+                        ) {
+                            LazyColumn {
+                                items(mentionCandidates, key = { it.profile.pubkey }) { candidate ->
+                                    MentionCandidateRow(candidate, onClick = { viewModel.selectMention(candidate) })
+                                }
+                            }
+                        }
+                    }
+
                     // Emoji shortcode autocomplete for gallery caption
                     val galleryEmojiState = remember(content) { detectEmojiAutocomplete(content) }
                     if (galleryEmojiState != null) {
@@ -883,7 +901,7 @@ fun ComposeScreen(
                         // Private reply toggle: only meaningful for replies in plain text mode
                         // (private replies don't carry gallery/poll/schedule/quote payloads in v1).
                         if (replyTo != null && replyTo.kind != 30023 &&
-                            com.darkwisp.app.nostr.Nip22.longFormRootCoordinate(replyTo) == null &&
+                            com.darkwisp.app.nostr.Nip22.addressableRootCoordinate(replyTo) == null &&
                             quoteTo == null && !galleryMode && !pollEnabled && !scheduleEnabled) {
                             IconButton(onClick = {
                                 // Locked toggles short-circuit in the VM, so the state stays ON.

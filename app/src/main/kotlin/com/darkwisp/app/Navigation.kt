@@ -3267,7 +3267,13 @@ fun WispNavHost(
             val articleViewModel: ArticleViewModel = viewModel()
             LaunchedEffect(kind, author, dTag) {
                 articleViewModel.loadArticle(kind, author, dTag, feedViewModel.eventRepo)
-                val articleEvent = feedViewModel.eventRepo.findAddressableEvent(kind, author, dTag)
+                var articleEvent = feedViewModel.eventRepo.findAddressableEvent(kind, author, dTag)
+                var waitedMs = 0
+                while (articleEvent == null && waitedMs < 8_500) {
+                    kotlinx.coroutines.delay(200)
+                    waitedMs += 200
+                    articleEvent = feedViewModel.eventRepo.findAddressableEvent(kind, author, dTag)
+                }
                 articleViewModel.loadComments(
                     kind = kind,
                     author = author,
