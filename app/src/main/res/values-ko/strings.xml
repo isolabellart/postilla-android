@@ -1423,4 +1423,6 @@
     <string name="postilla_compose_remove_image">이미지 제거</string>
     <string name="postilla_compose_next">다음</string>
     <string name="postilla_compose_preview">미리보기</string>
+
+    <string name="postilla_profile_sats_sent">sats %1$d개 전송됨</string>
 </resources>
