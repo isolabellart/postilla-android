@@ -1137,7 +1137,7 @@ fun UserProfileScreen(
                                             val video = Nip71.parseVideoMeta(event).firstOrNull()
                                             Triple(video?.thumbnailUrl?.takeIf { it.isNotBlank() }, video != null, event)
                                         } else {
-                                            val image = Nip68.parseImetaEntries(event).firstOrNull()
+                                            val image = com.darkwisp.app.nostr.Nip68.parseImetaEntries(event).firstOrNull()
                                             Triple(image?.url?.takeIf { it.isNotBlank() }, false, event)
                                         }
                                     }
