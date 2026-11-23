@@ -1454,4 +1454,12 @@
     <string name="crash_report_copied">Crashrapport gekopieerd</string>
     <string name="crash_report_sending">Verzenden…</string>
     <string name="crash_report_send_failed">Geen relay heeft de ontvangst bevestigd. Het rapport staat nog op dit apparaat. Kopieer het of probeer het opnieuw.</string>
+    <string name="settings_app_updates">App-updates</string>
+    <string name="settings_app_updates_description">Controleer op GitHub wat de nieuwste stabiele versie van Postilla is.</string>
+    <string name="settings_check_for_updates">Controleren op updates</string>
+    <string name="settings_update_checking">Controleren…</string>
+    <string name="settings_update_check_up_to_date">Postilla is bijgewerkt.</string>
+    <string name="settings_update_check_available">Postilla %1$s is beschikbaar. De updatemelding verschijnt bovenaan de app.</string>
+    <string name="settings_update_check_preview">Preview-build: testaanbod %1$s is actief; stabiele updates zijn uitgeschakeld in Preview.</string>
+    <string name="settings_update_check_failed">Updates konden niet worden gecontroleerd. Controleer je internetverbinding en probeer het opnieuw.</string>
 </resources>

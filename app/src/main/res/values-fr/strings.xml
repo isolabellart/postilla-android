@@ -1508,4 +1508,12 @@
     <string name="crash_report_copied">Rapport de plantage copié</string>
     <string name="crash_report_sending">Envoi…</string>
     <string name="crash_report_send_failed">Aucun relais n’a confirmé la réception. Le rapport est toujours enregistré sur cet appareil. Copie-le ou réessaie.</string>
+    <string name="settings_app_updates">Mises à jour de l’application</string>
+    <string name="settings_app_updates_description">Vérifier sur GitHub la dernière version stable de Postilla.</string>
+    <string name="settings_check_for_updates">Rechercher des mises à jour</string>
+    <string name="settings_update_checking">Vérification…</string>
+    <string name="settings_update_check_up_to_date">Postilla est à jour.</string>
+    <string name="settings_update_check_available">Postilla %1$s est disponible. L’avis de mise à jour apparaîtra en haut de l’application.</string>
+    <string name="settings_update_check_preview">Version Preview : l’offre de test %1$s est active ; les mises à jour stables sont désactivées dans Preview.</string>
+    <string name="settings_update_check_failed">Impossible de vérifier les mises à jour. Vérifiez votre connexion Internet et réessayez.</string>
 </resources>

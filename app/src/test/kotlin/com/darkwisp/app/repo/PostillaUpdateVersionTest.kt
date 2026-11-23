@@ -24,4 +24,19 @@ class PostillaUpdateVersionTest {
         assertFalse(isNewerVersion("1.0.47-beta", "1.0.46"))
         assertFalse(isNewerVersion("latest", "1.0.46"))
     }
+    @Test fun canonicalVersionedReleaseAssetIsAccepted() {
+        assertTrue(isPostillaReleaseApkAsset("Postilla-v1.0.63.apk", "", "1.0.63"))
+    }
+
+    @Test fun legacyReleaseAssetIsAccepted() {
+        assertTrue(isPostillaReleaseApkAsset("app-release.apk", "", "1.0.63"))
+        assertTrue(isPostillaReleaseApkAsset("app-release.apk", "Postilla-v1.0.63.apk", "1.0.63"))
+    }
+
+    @Test fun unrelatedOrMismatchedAssetsAreRejected() {
+        assertFalse(isPostillaReleaseApkAsset("Postilla-v1.0.62.apk", "", "1.0.63"))
+        assertFalse(isPostillaReleaseApkAsset("other-app.apk", "other-app.apk", "1.0.63"))
+        assertFalse(isPostillaReleaseApkAsset("app-release.apk", "Postilla-v1.0.62.apk", "1.0.63"))
+    }
+
 }

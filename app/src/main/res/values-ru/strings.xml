@@ -1415,4 +1415,12 @@
     <string name="crash_report_copied">Отчёт о сбое скопирован</string>
     <string name="crash_report_sending">Отправка…</string>
     <string name="crash_report_send_failed">Ни один ретранслятор не подтвердил доставку. Отчёт сохранён на этом устройстве. Скопируйте его или повторите попытку.</string>
+    <string name="settings_app_updates">Обновления приложения</string>
+    <string name="settings_app_updates_description">Проверить на GitHub наличие последней стабильной версии Postilla.</string>
+    <string name="settings_check_for_updates">Проверить обновления</string>
+    <string name="settings_update_checking">Проверка…</string>
+    <string name="settings_update_check_up_to_date">Postilla обновлена до последней версии.</string>
+    <string name="settings_update_check_available">Доступна Postilla %1$s. Уведомление об обновлении появится в верхней части приложения.</string>
+    <string name="settings_update_check_preview">Сборка Preview: тестовое предложение %1$s активно; проверка стабильных обновлений в Preview отключена.</string>
+    <string name="settings_update_check_failed">Не удалось проверить обновления. Проверьте подключение к Интернету и повторите попытку.</string>
 </resources>

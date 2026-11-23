@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.repo.ExchangeRateRepository
 import com.darkwisp.app.repo.FiatPreferences
 import com.darkwisp.app.repo.InterfacePreferences
+import com.darkwisp.app.repo.PostillaUpdateManager
 import com.darkwisp.app.ui.component.TranslationSettingsSection
 import com.darkwisp.app.ui.component.PostillaBrandMark
 import com.darkwisp.app.repo.LocaleRepository
@@ -75,6 +77,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -100,6 +103,11 @@ fun InterfaceScreen(
     var languagesExpanded by remember { mutableStateOf(false) }
     var drawerOnRight by remember { mutableStateOf(interfacePrefs.isDrawerOnRight()) }
     var legacyDmEnabled by remember { mutableStateOf(interfacePrefs.isLegacyDmEnabled()) }
+    val updateContext = LocalContext.current
+    val updateCheckScope = rememberCoroutineScope()
+    var updateCheckInProgress by remember { mutableStateOf(false) }
+    var updateCheckMessage by remember { mutableIntStateOf(0) }
+    var updateCheckVersion by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -808,7 +816,83 @@ fun InterfaceScreen(
             }
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
+
+            // Release updates — manual force-check bypasses the 24-hour automatic-check interval.
+            Text(
+                text = stringResource(R.string.settings_app_updates),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_app_updates_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        if (!updateCheckInProgress) {
+                            updateCheckScope.launch {
+                                updateCheckInProgress = true
+                                updateCheckMessage = 0
+                                updateCheckVersion = null
+                                val succeeded = PostillaUpdateManager.checkIfDue(
+                                    updateContext,
+                                    forceCheck = true
+                                )
+                                val offer = PostillaUpdateManager.availableUpdate.value
+                                updateCheckVersion = offer?.versionName
+                                updateCheckMessage = when {
+                                    !succeeded -> R.string.settings_update_check_failed
+                                    offer?.previewOnly == true -> R.string.settings_update_check_preview
+                                    offer != null -> R.string.settings_update_check_available
+                                    else -> R.string.settings_update_check_up_to_date
+                                }
+                                updateCheckInProgress = false
+                            }
+                        }
+                    },
+                    enabled = !updateCheckInProgress
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (updateCheckInProgress) R.string.settings_update_checking
+                            else R.string.settings_check_for_updates
+                        )
+                    )
+                }
+            }
+            if (updateCheckMessage != 0) {
+                val status = when (updateCheckMessage) {
+                    R.string.settings_update_check_available ->
+                        stringResource(R.string.settings_update_check_available, updateCheckVersion.orEmpty())
+                    R.string.settings_update_check_preview ->
+                        stringResource(R.string.settings_update_check_preview, updateCheckVersion.orEmpty())
+                    R.string.settings_update_check_failed ->
+                        stringResource(R.string.settings_update_check_failed)
+                    else ->
+                        stringResource(R.string.settings_update_check_up_to_date)
+                }
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (updateCheckMessage == R.string.settings_update_check_failed) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
 
             // Version — long-press 5 times to reveal diagnostic mode
             val context = LocalContext.current

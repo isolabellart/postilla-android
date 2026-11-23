@@ -112,16 +112,21 @@ object PostillaUpdateManager {
                 }
 
                 val assets = release.optJSONArray("assets") ?: throw IOException("Release has no assets")
+                val releaseTag = release.optString("tag_name")
+                if (releaseTag != "v$versionName") {
+                    throw IOException("The GitHub release tag does not match its version name")
+                }
+                val expectedAssetUrlPrefix = "$RELEASE_APK_PREFIX$releaseTag/"
                 var apkUrl: String? = null
                 var digest: String? = null
                 for (index in 0 until assets.length()) {
                     val asset = assets.optJSONObject(index) ?: continue
                     val assetName = asset.optString("name")
                     val label = asset.optString("label")
-                    if (assetName == "app-release.apk" || label.endsWith(".apk", ignoreCase = true)) {
+                    if (isPostillaReleaseApkAsset(assetName, label, versionName)) {
                         val candidateUrl = asset.optString("browser_download_url")
                         val candidateDigest = asset.optString("digest").removePrefix("sha256:")
-                        if (candidateUrl.startsWith(RELEASE_APK_PREFIX) &&
+                        if (candidateUrl.startsWith(expectedAssetUrlPrefix) &&
                             candidateDigest.matches(Regex("^[0-9a-fA-F]{64}$"))
                         ) {
                             apkUrl = candidateUrl
@@ -343,4 +348,15 @@ internal fun isNewerVersion(candidate: String, installed: String): Boolean {
         }
     }
     return false
+}
+
+
+/** Accept the canonical release APK name and the legacy name used by older releases. */
+internal fun isPostillaReleaseApkAsset(assetName: String, label: String, versionName: String): Boolean {
+    val canonicalName = "Postilla-v$versionName.apk"
+    return assetName.equals(canonicalName, ignoreCase = true) ||
+        (
+            assetName.equals("app-release.apk", ignoreCase = true) &&
+                (label.isBlank() || label.equals(canonicalName, ignoreCase = true))
+        )
 }

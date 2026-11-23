@@ -1518,4 +1518,12 @@
     <string name="crash_report_copied">Crash report copied</string>
     <string name="crash_report_sending">Sending…</string>
     <string name="crash_report_send_failed">No relay confirmed delivery. The report is still saved on this device. Copy it or try again.</string>
+    <string name="settings_app_updates">App updates</string>
+    <string name="settings_app_updates_description">Check GitHub for the latest stable Postilla release.</string>
+    <string name="settings_check_for_updates">Check for updates</string>
+    <string name="settings_update_checking">Checking…</string>
+    <string name="settings_update_check_up_to_date">Postilla is up to date.</string>
+    <string name="settings_update_check_available">Postilla %1$s is available. The update banner will appear at the top of the app.</string>
+    <string name="settings_update_check_preview">Preview build: test offer %1$s is active; stable update checks are disabled.</string>
+    <string name="settings_update_check_failed">Could not check for updates. Check your internet connection and try again.</string>
 </resources>

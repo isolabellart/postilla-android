@@ -1507,4 +1507,12 @@
     <string name="crash_report_copied">クラッシュレポートをコピーしました</string>
     <string name="crash_report_sending">送信中…</string>
     <string name="crash_report_send_failed">どのリレーからも受信確認がありませんでした。レポートはこの端末に保存されています。コピーするか、もう一度お試しください。</string>
+    <string name="settings_app_updates">アプリのアップデート</string>
+    <string name="settings_app_updates_description">GitHubでPostillaの最新安定版を確認します。</string>
+    <string name="settings_check_for_updates">アップデートを確認</string>
+    <string name="settings_update_checking">確認中…</string>
+    <string name="settings_update_check_up_to_date">Postillaは最新です。</string>
+    <string name="settings_update_check_available">Postilla %1$s が利用可能です。アプリ上部にアップデート通知が表示されます。</string>
+    <string name="settings_update_check_preview">Preview版：テスト用オファー %1$s が有効です。Preview版では安定版への更新確認は無効です。</string>
+    <string name="settings_update_check_failed">アップデートを確認できませんでした。インターネット接続を確認して、もう一度お試しください。</string>
 </resources>

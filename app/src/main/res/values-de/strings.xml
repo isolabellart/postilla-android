@@ -1508,4 +1508,12 @@
     <string name="crash_report_copied">Crash-Bericht kopiert</string>
     <string name="crash_report_sending">Wird gesendet…</string>
     <string name="crash_report_send_failed">Kein Relay hat den Empfang bestätigt. Der Bericht ist weiterhin auf diesem Gerät gespeichert. Kopiere ihn oder versuche es erneut.</string>
+    <string name="settings_app_updates">App-Updates</string>
+    <string name="settings_app_updates_description">Suche auf GitHub nach der neuesten stabilen Postilla-Version.</string>
+    <string name="settings_check_for_updates">Nach Updates suchen</string>
+    <string name="settings_update_checking">Suche läuft…</string>
+    <string name="settings_update_check_up_to_date">Postilla ist auf dem neuesten Stand.</string>
+    <string name="settings_update_check_available">Postilla %1$s ist verfügbar. Der Update-Hinweis erscheint oben in der App.</string>
+    <string name="settings_update_check_preview">Preview-Version: Das Testangebot %1$s ist aktiv; stabile Updates sind in Preview deaktiviert.</string>
+    <string name="settings_update_check_failed">Updates konnten nicht abgerufen werden. Prüfe deine Internetverbindung und versuche es erneut.</string>
 </resources>
