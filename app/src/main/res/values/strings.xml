@@ -1511,7 +1511,7 @@
     <string name="postilla_bookmarks_empty">No bookmarked notes</string>
     <string name="postilla_bookmarks_not_loaded">Notes not loaded yet</string>
     <string name="crash_report_title">Postilla crashed</string>
-    <string name="crash_report_disclosure">Sending shares this diagnostic log as an encrypted Nostr private message to your own Nostr account configured in Postilla. It is routed through auth1.nostr.com and nos.lol. The log contains the date and time, app version, device manufacturer and model, Android version, and stack trace. Recipient key: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
+    <string name="crash_report_disclosure">Sending shares this diagnostic log as an encrypted Nostr private message to the developer's Nostr account configured in Postilla. It is routed through auth1.nostr.com and nos.lol. The log contains the date and time, app version, device manufacturer and model, Android version, and stack trace. Recipient key: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
     <string name="crash_report_copy">Copy report</string>
     <string name="crash_report_send">Send encrypted report</string>
     <string name="crash_report_dismiss">Dismiss</string>
