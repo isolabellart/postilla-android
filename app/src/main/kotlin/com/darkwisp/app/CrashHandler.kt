@@ -10,6 +10,10 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object CrashHandler {
 
@@ -91,20 +95,44 @@ object CrashHandler {
                 message = crashLog
             )
             val message = ClientMessage.event(wrap)
-            val outcome = relayPool.publishWithConfirmation(
-                eventId = wrap.id,
-                timeoutMs = 15_000L
+
+            // Start listening before opening the report relays. If a relay requires
+            // NIP-42, RelayPool will ask the user for approval; once AUTH is sent,
+            // retry the same Gift Wrap so it can receive a real accepted NIP-20 OK.
+            val authRetryJob = CoroutineScope(Dispatchers.IO).launch(
+                start = CoroutineStart.UNDISPATCHED
             ) {
-                CRASH_REPORT_RELAYS.count { url ->
-                    relayPool.sendToRelayOrEphemeral(
-                        url = url,
-                        message = message,
-                        write = true,
-                        autoReconnect = true
-                    )
+                relayPool.authCompleted.collect { authenticatedUrl ->
+                    if (authenticatedUrl in CRASH_REPORT_RELAYS) {
+                        relayPool.sendToRelayOrEphemeral(
+                            url = authenticatedUrl,
+                            message = message,
+                            write = true,
+                            autoReconnect = true
+                        )
+                    }
                 }
             }
-            outcome.confirmed
+
+            try {
+                val outcome = relayPool.publishWithConfirmation(
+                    eventId = wrap.id,
+                    timeoutMs = 15_000L
+                ) {
+                    CRASH_REPORT_RELAYS.count { url ->
+                        relayPool.markDmDeliveryTarget(url)
+                        relayPool.sendToRelayOrEphemeral(
+                            url = url,
+                            message = message,
+                            write = true,
+                            autoReconnect = true
+                        )
+                    }
+                }
+                outcome.confirmed
+            } finally {
+                authRetryJob.cancel()
+            }
         } catch (_: Exception) {
             false
         }
