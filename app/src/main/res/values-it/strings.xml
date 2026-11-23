@@ -1501,7 +1501,7 @@
     <string name="postilla_bookmarks_empty">Nessuna nota salvata</string>
     <string name="postilla_bookmarks_not_loaded">Note non ancora caricate</string>
     <string name="crash_report_title">Postilla si è arrestata</string>
-    <string name="crash_report_disclosure">L’invio trasmette questo registro diagnostico come messaggio privato Nostr cifrato alla chiave pubblica dello sviluppatore configurata in Postilla. Il messaggio passa attraverso relay.0xchat.com, relay.utxo.one/chat e relay.damus.io. Il registro contiene data e ora, versione dell’app, produttore e modello del dispositivo, versione Android e stack trace. Chiave destinataria: e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb.</string>
+    <string name="crash_report_disclosure">L’invio trasmette questo registro diagnostico come messaggio privato Nostr cifrato al tuo account Nostr configurato in Postilla. Il messaggio passa attraverso relay.0xchat.com, relay.utxo.one/chat e relay.damus.io. Il registro contiene data e ora, versione dell’app, produttore e modello del dispositivo, versione Android e stack trace. Chiave destinataria: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
     <string name="crash_report_copy">Copia rapporto</string>
     <string name="crash_report_send">Invia rapporto cifrato</string>
     <string name="crash_report_dismiss">Chiudi</string>

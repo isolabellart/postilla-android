@@ -13,7 +13,8 @@ import java.util.Locale
 
 object CrashHandler {
 
-    const val DEVELOPER_PUBKEY = "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb"
+    // Decoded from the Postilla account owner's npub; crash reports are sent back to this account.
+    const val CRASH_REPORT_RECIPIENT_PUBKEY = "f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0"
     private const val CRASH_LOG_FILE = "crash_log.txt"
 
     private var defaultHandler: Thread.UncaughtExceptionHandler? = null
@@ -64,7 +65,7 @@ object CrashHandler {
         File(context.filesDir, CRASH_LOG_FILE).delete()
     }
 
-    private val DEVELOPER_DM_RELAYS = listOf(
+    private val CRASH_REPORT_RELAYS = listOf(
         "wss://relay.0xchat.com",
         "wss://relay.utxo.one/chat",
         "wss://relay.damus.io"
@@ -73,7 +74,7 @@ object CrashHandler {
     suspend fun sendCrashDm(keyRepo: KeyRepository, relayPool: RelayPool, crashLog: String) {
         val keypair = keyRepo.getKeypair() ?: return
 
-        val recipientPubkey = DEVELOPER_PUBKEY.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val recipientPubkey = CRASH_REPORT_RECIPIENT_PUBKEY.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
         val wrap = Nip17.createGiftWrap(
             senderPrivkey = keypair.privkey,
@@ -83,7 +84,7 @@ object CrashHandler {
         )
         val msg = ClientMessage.event(wrap)
 
-        for (url in DEVELOPER_DM_RELAYS) {
+        for (url in CRASH_REPORT_RELAYS) {
             relayPool.sendToRelayOrEphemeral(url, msg)
         }
     }
