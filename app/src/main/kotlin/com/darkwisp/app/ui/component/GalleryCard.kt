@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -91,6 +92,8 @@ import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.ProfileData
 import com.darkwisp.app.nostr.hexToByteArray
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.TranslationState
+import com.darkwisp.app.repo.TranslationStatus
 import com.darkwisp.app.repo.Nip05Repository
 import com.darkwisp.app.repo.Nip05Status
 import com.darkwisp.app.repo.ZapDetail
@@ -151,6 +154,8 @@ fun GalleryCard(
     onPin: () -> Unit = {},
     isPinned: Boolean = false,
     onDelete: () -> Unit = {},
+    translationState: TranslationState = TranslationState(),
+    onTranslate: () -> Unit = {},
     onEditVideo: (() -> Unit)? = null,
     allowVideoAutoplay: Boolean = true,
     quoteDepth: Int = 0,
@@ -165,6 +170,11 @@ fun GalleryCard(
         event.tags.firstOrNull { it.size >= 1 && it[0] == "content-warning" }
     }
     var contentRevealed by remember { mutableStateOf(false) }
+    var showTranslation by remember(event.id) { mutableStateOf(true) }
+    val isTranslating =
+        translationState.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+            translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
+            translationState.status == TranslationStatus.TRANSLATING
 
     // Parse media entries
     val imageEntries = remember(event.id) { Nip68.parseImetaEntries(event) }
@@ -222,6 +232,8 @@ fun GalleryCard(
             onPin = onPin,
             isPinned = isPinned,
             onDelete = onDelete,
+            translationState = translationState,
+            onTranslate = onTranslate,
             quoteDepth = quoteDepth,
             modifier = modifier,
             showDivider = showDivider
@@ -344,6 +356,45 @@ fun GalleryCard(
                             nip05Repo = nip05Repo,
                             onClick = onProfileClick,
                             showHandle = false
+                        )
+                    }
+                }
+            }
+            if (event.content.isNotBlank() && (contentWarning == null || contentRevealed)) {
+                IconButton(
+                    onClick = {
+                        if (translationState.status == TranslationStatus.DONE) {
+                            showTranslation = !showTranslation
+                        } else if (!isTranslating && translationState.status != TranslationStatus.SAME_LANGUAGE) {
+                            onTranslate()
+                        }
+                    },
+                    enabled = !isTranslating && translationState.status != TranslationStatus.SAME_LANGUAGE,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    if (isTranslating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 1.5.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Translate,
+                            contentDescription = stringResource(
+                                when {
+                                    translationState.status == TranslationStatus.DONE && showTranslation -> R.string.translate_show_original
+                                    translationState.status == TranslationStatus.DONE -> R.string.translate_show_translation
+                                    translationState.status == TranslationStatus.SAME_LANGUAGE -> R.string.translate_same_language
+                                    else -> R.string.translate_translate
+                                }
+                            ),
+                            tint = if (translationState.status == TranslationStatus.DONE && showTranslation) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -613,8 +664,14 @@ fun GalleryCard(
         // Description (event.content)
         if (event.content.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
+            val displayedContent =
+                if (translationState.status == TranslationStatus.DONE && showTranslation) {
+                    translationState.translatedText
+                } else {
+                    event.content
+                }
             RichContent(
-                content = event.content,
+                content = displayedContent,
                 eventRepo = eventRepo,
                 emojiMap = emojiMap,
                 onProfileClick = onNavigateToProfile,
@@ -627,6 +684,14 @@ fun GalleryCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             )
+            if (translationState.status == TranslationStatus.ERROR) {
+                Text(
+                    text = translationState.errorMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
 
         // Top zapper banner

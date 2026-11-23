@@ -1508,12 +1508,12 @@
     <string name="crash_report_copied">Rapporto di crash copiato</string>
     <string name="crash_report_sending">Invio in corso…</string>
     <string name="crash_report_send_failed">Nessun relay ha confermato la ricezione. Il rapporto è ancora salvato su questo dispositivo. Copialo oppure riprova.</string>
-    <string name="settings_app_updates">Aggiornamenti dell'app</string>
-    <string name="settings_app_updates_description">Controlla su GitHub qual è l'ultima versione stabile di Postilla.</string>
+    <string name="settings_app_updates">Aggiornamenti dell\'app</string>
+    <string name="settings_app_updates_description">Controlla su GitHub qual è l\'ultima versione stabile di Postilla.</string>
     <string name="settings_check_for_updates">Controlla aggiornamenti</string>
     <string name="settings_update_checking">Controllo in corso…</string>
     <string name="settings_update_check_up_to_date">Postilla è aggiornata.</string>
-    <string name="settings_update_check_available">È disponibile Postilla %1$s. L'avviso di aggiornamento apparirà nella parte superiore dell'app.</string>
-    <string name="settings_update_check_preview">Versione Preview: è attiva l'offerta di prova %1$s; gli aggiornamenti stabili sono disabilitati in Preview.</string>
+    <string name="settings_update_check_available">È disponibile Postilla %1$s. L\'avviso di aggiornamento apparirà nella parte superiore dell\'app.</string>
+    <string name="settings_update_check_preview">Versione Preview: è attiva l\'offerta di prova %1$s; gli aggiornamenti stabili sono disabilitati in Preview.</string>
     <string name="settings_update_check_failed">Impossibile controllare gli aggiornamenti. Verifica la connessione Internet e riprova.</string>
 </resources>

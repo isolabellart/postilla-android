@@ -1855,6 +1855,8 @@ private fun FeedItem(
             onPin = onPin,
             isPinned = isPinned,
             onDelete = onDelete,
+            translationState = translationState,
+            onTranslate = onTranslateCb,
             nip05Repo = viewModel.nip05Repo
         )
     } else {

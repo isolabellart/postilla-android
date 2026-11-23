@@ -390,6 +390,8 @@ fun ThreadScreen(
                                         nip05Repo = nip05Repo,
                                         onQuotedNoteClick = onQuotedNoteClick,
                                         noteActions = noteActions,
+                                        translationState = translationState,
+                                        onTranslate = { translationRepo?.translate(event.id, event.content) },
                                         showDivider = !showConnector,
                                         modifier = Modifier.padding(start = indentPadding)
                                     )
