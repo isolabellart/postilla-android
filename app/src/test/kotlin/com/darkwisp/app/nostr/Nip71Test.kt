@@ -155,4 +155,22 @@ class Nip71Test {
         )
     }
 
+    @Test
+    fun duplicateRelayDeliveriesAreCollapsedByEventId() {
+        val legacyVideo = event(Nip71.KIND_VIDEO_HORIZONTAL, emptyList())
+        val picture = NostrEvent(
+            id = "picture-id",
+            pubkey = "author",
+            created_at = 1_700_000_001L,
+            kind = 20,
+            tags = emptyList(),
+            content = "",
+            sig = "signature"
+        )
+        val visible = Nip71.onlyLatestAddressableVideoRevisions(
+            listOf(legacyVideo, picture, legacyVideo, picture)
+        )
+        assertEquals(listOf(legacyVideo, picture), visible)
+    }
+
 }

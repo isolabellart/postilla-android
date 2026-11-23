@@ -1032,6 +1032,7 @@ fun UserProfileScreen(
                                     isPinned = event.id in pinnedIds,
                                     onDelete = { onDeleteEvent(event.id, event.kind) },
                                     onEditVideo = { if (isOwnProfile && Nip71.isAddressableVideo(event)) videoBeingEdited = event },
+                                    allowVideoAutoplay = false,
                                     resolvedEmojis = resolvedEmojis,
                                     unicodeEmojis = unicodeEmojis,
                                     onOpenEmojiLibrary = onOpenEmojiLibrary
@@ -1132,9 +1133,13 @@ fun UserProfileScreen(
                             ) {
                                 for (event in row) {
                                     val firstMedia = remember(event.id) {
-                                        val img = com.darkwisp.app.nostr.Nip68.parseImetaEntries(event).firstOrNull()
-                                        val vid = com.darkwisp.app.nostr.Nip71.parseVideoMeta(event).firstOrNull()
-                                        Triple(img?.url ?: vid?.thumbnailUrl, vid != null && img == null, event)
+                                        if (Nip71.isVideoKind(event.kind)) {
+                                            val video = Nip71.parseVideoMeta(event).firstOrNull()
+                                            Triple(video?.thumbnailUrl?.takeIf { it.isNotBlank() }, video != null, event)
+                                        } else {
+                                            val image = Nip68.parseImetaEntries(event).firstOrNull()
+                                            Triple(image?.url?.takeIf { it.isNotBlank() }, false, event)
+                                        }
                                     }
                                     Box(
                                         modifier = Modifier

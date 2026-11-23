@@ -2720,9 +2720,14 @@ private fun ImageWithContextMenu(meta: MediaMeta, onFullScreen: () -> Unit) {
 
 @OptIn(UnstableApi::class)
 @Composable
-internal fun InlineVideoPlayerWithFullscreen(meta: MediaMeta, onFullScreen: (positionMs: Long) -> Unit) {
+internal fun InlineVideoPlayerWithFullscreen(
+    meta: MediaMeta,
+    onFullScreen: (positionMs: Long) -> Unit,
+    allowAutoPlay: Boolean = true
+) {
     val url = meta.url
     val mediaSettings = LocalMediaSettings.current
+    val shouldAutoPlay = mediaSettings.videoAutoPlay && allowAutoPlay
     var loaded by remember { mutableStateOf(mediaSettings.autoLoadMedia) }
 
     if (!loaded) {
@@ -2904,7 +2909,7 @@ internal fun InlineVideoPlayerWithFullscreen(meta: MediaMeta, onFullScreen: (pos
                 val visibleFraction = if (totalHeight > 0) visibleHeight / totalHeight else 0f
                 val player = exoPlayer
                 if (visibleFraction > 0.5f) {
-                    if (mediaSettings.videoAutoPlay && !userPaused) {
+                    if (shouldAutoPlay && !userPaused) {
                         val current = activeVideoUrl.value
                         if (current == null || current == url) {
                             if (player == null) {
@@ -3066,7 +3071,7 @@ internal fun InlineVideoPlayerWithFullscreen(meta: MediaMeta, onFullScreen: (pos
             }
         }
         // Play button overlay when video is not playing and autoplay is off
-        if (!mediaSettings.videoAutoPlay && !isPlaying) {
+        if (!shouldAutoPlay && !isPlaying) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

@@ -152,6 +152,7 @@ fun GalleryCard(
     isPinned: Boolean = false,
     onDelete: () -> Unit = {},
     onEditVideo: (() -> Unit)? = null,
+    allowVideoAutoplay: Boolean = true,
     quoteDepth: Int = 0,
     modifier: Modifier = Modifier,
     showDivider: Boolean = true
@@ -604,7 +605,8 @@ fun GalleryCard(
                 ),
                 onFullScreen = { positionMs ->
                     FullScreenVideoState.enter(video.url, positionMs)
-                }
+                },
+                allowAutoPlay = allowVideoAutoplay
             )
         }
 

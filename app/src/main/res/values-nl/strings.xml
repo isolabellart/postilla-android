@@ -1446,4 +1446,10 @@
     <string name="postilla_notif_24h"> · 24 uur</string>
     <string name="postilla_not_available">Niet beschikbaar</string>
     <string name="postilla_video_open_failed">Kan video niet openen.</string>
+    <string name="crash_report_title">Postilla is vastgelopen</string>
+    <string name="crash_report_disclosure">Bij verzenden wordt dit diagnoselog als een versleuteld privébericht via Nostr gedeeld met de openbare ontwikkelaarssleutel die in Postilla is ingesteld. Het bericht wordt verzonden via relay.0xchat.com, relay.utxo.one/chat en relay.damus.io. Het log bevat datum en tijd, appversie, fabrikant en model van het apparaat, Android-versie en stacktrace. Ontvangende sleutel: e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb.</string>
+    <string name="crash_report_copy">Rapport kopiëren</string>
+    <string name="crash_report_send">Versleuteld rapport verzenden</string>
+    <string name="crash_report_dismiss">Sluiten</string>
+    <string name="crash_report_copied">Crashrapport gekopieerd</string>
 </resources>

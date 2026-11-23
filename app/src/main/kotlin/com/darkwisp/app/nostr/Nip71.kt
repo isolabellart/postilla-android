@@ -133,8 +133,11 @@ object Nip71 {
      * relay; they must not render as separate videos after an edit.
      */
     fun onlyLatestAddressableVideoRevisions(events: List<NostrEvent>): List<NostrEvent> {
+        // Collapse duplicate deliveries from different relays before this list is used
+        // by Compose, where event IDs also serve as stable LazyColumn item keys.
+        val uniqueEvents = events.distinctBy { it.id }
         val latestByCoordinate = HashMap<String, NostrEvent>()
-        for (event in events) {
+        for (event in uniqueEvents) {
             if (!isAddressableVideo(event)) continue
             val dTag = getDTag(event)?.takeIf { it.isNotBlank() } ?: continue
             val coordinate = event.pubkey + ":" + event.kind + ":" + dTag
@@ -143,7 +146,7 @@ object Nip71 {
                 latestByCoordinate[coordinate] = event
             }
         }
-        return events.filter { event ->
+        return uniqueEvents.filter { event ->
             if (!isAddressableVideo(event)) return@filter true
             val dTag = getDTag(event)?.takeIf { it.isNotBlank() } ?: return@filter true
             val coordinate = event.pubkey + ":" + event.kind + ":" + dTag

@@ -1447,4 +1447,10 @@
     <string name="postilla_notif_24h"> · 24 小时</string>
     <string name="postilla_not_available">不可用</string>
     <string name="postilla_video_open_failed">无法打开视频。</string>
+    <string name="crash_report_title">Postilla 已崩溃</string>
+    <string name="crash_report_disclosure">发送时，此诊断日志会作为加密的 Nostr 私信发送到 Postilla 中配置的开发者公钥。消息会通过 relay.0xchat.com、relay.utxo.one/chat 和 relay.damus.io 中继。日志包含日期和时间、应用版本、设备制造商和型号、Android 版本以及堆栈跟踪。接收方公钥：e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb。</string>
+    <string name="crash_report_copy">复制报告</string>
+    <string name="crash_report_send">发送加密报告</string>
+    <string name="crash_report_dismiss">关闭</string>
+    <string name="crash_report_copied">已复制崩溃报告</string>
 </resources>

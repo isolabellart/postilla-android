@@ -1500,4 +1500,10 @@
     <string name="postilla_bookmarks_title">Signets</string>
     <string name="postilla_bookmarks_empty">Aucune note enregistrée</string>
     <string name="postilla_bookmarks_not_loaded">Les notes ne sont pas encore chargées</string>
+    <string name="crash_report_title">Postilla a planté</string>
+    <string name="crash_report_disclosure">L’envoi transmet ce journal de diagnostic sous forme de message privé Nostr chiffré à la clé publique du développeur configurée dans Postilla. Le message passe par relay.0xchat.com, relay.utxo.one/chat et relay.damus.io. Le journal contient la date et l’heure, la version de l’application, le fabricant et le modèle de l’appareil, la version d’Android et la trace de pile. Clé du destinataire : e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb.</string>
+    <string name="crash_report_copy">Copier le rapport</string>
+    <string name="crash_report_send">Envoyer le rapport chiffré</string>
+    <string name="crash_report_dismiss">Fermer</string>
+    <string name="crash_report_copied">Rapport de plantage copié</string>
 </resources>
