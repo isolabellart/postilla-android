@@ -1661,6 +1661,8 @@ private fun ReferencedNotePostCard(
                     )
                 } else null
             },
+            translationState = translationState,
+            onTranslate = { params.translationRepo?.translate(event.id, event.content) },
             showDivider = false
         )
     } else {
