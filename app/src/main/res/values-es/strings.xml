@@ -1502,9 +1502,11 @@
     <string name="postilla_bookmarks_empty">No hay notas guardadas</string>
     <string name="postilla_bookmarks_not_loaded">Las notas aún no se han cargado</string>
     <string name="crash_report_title">Postilla se ha cerrado inesperadamente</string>
-    <string name="crash_report_disclosure">Al enviarlo, este registro de diagnóstico se comparte como mensaje privado de Nostr cifrado con tu propia cuenta de Nostr configurada en Postilla. Se transmite a través de relay.0xchat.com, relay.utxo.one/chat y relay.damus.io. El registro incluye fecha y hora, versión de la aplicación, fabricante y modelo del dispositivo, versión de Android y traza de la pila. Clave destinataria: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
+    <string name="crash_report_disclosure">Al enviarlo, este registro de diagnóstico se comparte como mensaje privado de Nostr cifrado con tu propia cuenta de Nostr configurada en Postilla. Se transmite a través de auth1.nostr.com y nos.lol. El registro incluye fecha y hora, versión de la aplicación, fabricante y modelo del dispositivo, versión de Android y traza de la pila. Clave destinataria: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
     <string name="crash_report_copy">Copiar informe</string>
     <string name="crash_report_send">Enviar informe cifrado</string>
     <string name="crash_report_dismiss">Cerrar</string>
     <string name="crash_report_copied">Informe de fallos copiado</string>
+    <string name="crash_report_sending">Enviando…</string>
+    <string name="crash_report_send_failed">Ningún relay confirmó la entrega. El informe sigue guardado en este dispositivo. Cópialo o inténtalo de nuevo.</string>
 </resources>

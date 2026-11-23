@@ -1500,9 +1500,11 @@
     <string name="postilla_bookmarks_empty">ブックマークしたノートはありません</string>
     <string name="postilla_bookmarks_not_loaded">ノートはまだ読み込まれていません</string>
     <string name="crash_report_title">Postilla がクラッシュしました</string>
-    <string name="crash_report_disclosure">送信すると、この診断ログは Postilla に設定されているあなた自身の Nostr アカウント宛てに、暗号化された Nostr プライベートメッセージとして送られます。送信先リレーは relay.0xchat.com、relay.utxo.one/chat、relay.damus.io です。ログには日時、アプリのバージョン、端末のメーカーとモデル、Android のバージョン、スタックトレースが含まれます。受信者の公開鍵: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0。</string>
+    <string name="crash_report_disclosure">送信すると、この診断ログは Postilla に設定されているあなた自身の Nostr アカウント宛てに、暗号化された Nostr プライベートメッセージとして送られます。送信先リレーは auth1.nostr.com と nos.lol です。ログには日時、アプリのバージョン、端末のメーカーとモデル、Android のバージョン、スタックトレースが含まれます。受信者の公開鍵: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0。</string>
     <string name="crash_report_copy">レポートをコピー</string>
     <string name="crash_report_send">暗号化レポートを送信</string>
     <string name="crash_report_dismiss">閉じる</string>
     <string name="crash_report_copied">クラッシュレポートをコピーしました</string>
+    <string name="crash_report_sending">送信中…</string>
+    <string name="crash_report_send_failed">どのリレーからも受信確認がありませんでした。レポートはこの端末に保存されています。コピーするか、もう一度お試しください。</string>
 </resources>

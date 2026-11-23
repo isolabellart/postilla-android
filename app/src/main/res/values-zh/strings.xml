@@ -1448,9 +1448,11 @@
     <string name="postilla_not_available">不可用</string>
     <string name="postilla_video_open_failed">无法打开视频。</string>
     <string name="crash_report_title">Postilla 已崩溃</string>
-    <string name="crash_report_disclosure">发送时，此诊断日志会作为加密的 Nostr 私信发送到 Postilla 中配置的你自己的 Nostr 账户。消息会通过 relay.0xchat.com、relay.utxo.one/chat 和 relay.damus.io 中继。日志包含日期和时间、应用版本、设备制造商和型号、Android 版本以及堆栈跟踪。接收方公钥：f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0。</string>
+    <string name="crash_report_disclosure">发送时，此诊断日志会作为加密的 Nostr 私信发送到 Postilla 中配置的你自己的 Nostr 账户。消息会通过 auth1.nostr.com 和 nos.lol 中继。日志包含日期和时间、应用版本、设备制造商和型号、Android 版本以及堆栈跟踪。接收方公钥：f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0。</string>
     <string name="crash_report_copy">复制报告</string>
     <string name="crash_report_send">发送加密报告</string>
     <string name="crash_report_dismiss">关闭</string>
     <string name="crash_report_copied">已复制崩溃报告</string>
+    <string name="crash_report_sending">正在发送…</string>
+    <string name="crash_report_send_failed">没有任何中继确认收到报告。报告仍保存在此设备上。请复制报告或重试。</string>
 </resources>

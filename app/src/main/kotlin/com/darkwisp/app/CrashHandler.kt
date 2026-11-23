@@ -66,26 +66,47 @@ object CrashHandler {
     }
 
     private val CRASH_REPORT_RELAYS = listOf(
-        "wss://relay.0xchat.com",
-        "wss://relay.utxo.one/chat",
-        "wss://relay.damus.io"
+        "wss://auth1.nostr.com",
+        "wss://nos.lol"
     )
 
-    suspend fun sendCrashDm(keyRepo: KeyRepository, relayPool: RelayPool, crashLog: String) {
-        val keypair = keyRepo.getKeypair() ?: return
+    /**
+     * Sends one NIP-17 gift wrap to the configured report relays.
+     * Success is returned only after at least one relay answers with an accepted NIP-20 OK.
+     * A queued WebSocket write is not treated as successful delivery.
+     */
+    suspend fun sendCrashDm(keyRepo: KeyRepository, relayPool: RelayPool, crashLog: String): Boolean {
+        return try {
+            val keypair = keyRepo.getKeypair() ?: return false
+            val recipientPubkey = CRASH_REPORT_RECIPIENT_PUBKEY
+                .chunked(2)
+                .map { it.toInt(16).toByte() }
+                .toByteArray()
+            if (recipientPubkey.size != 32) return false
 
-        val recipientPubkey = CRASH_REPORT_RECIPIENT_PUBKEY.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-
-        val wrap = Nip17.createGiftWrap(
-            senderPrivkey = keypair.privkey,
-            senderPubkey = keypair.pubkey,
-            recipientPubkey = recipientPubkey,
-            message = crashLog
-        )
-        val msg = ClientMessage.event(wrap)
-
-        for (url in CRASH_REPORT_RELAYS) {
-            relayPool.sendToRelayOrEphemeral(url, msg)
+            val wrap = Nip17.createGiftWrap(
+                senderPrivkey = keypair.privkey,
+                senderPubkey = keypair.pubkey,
+                recipientPubkey = recipientPubkey,
+                message = crashLog
+            )
+            val message = ClientMessage.event(wrap)
+            val outcome = relayPool.publishWithConfirmation(
+                eventId = wrap.id,
+                timeoutMs = 15_000L
+            ) {
+                CRASH_REPORT_RELAYS.count { url ->
+                    relayPool.sendToRelayOrEphemeral(
+                        url = url,
+                        message = message,
+                        write = true,
+                        autoReconnect = true
+                    )
+                }
+            }
+            outcome.confirmed
+        } catch (_: Exception) {
+            false
         }
     }
 }

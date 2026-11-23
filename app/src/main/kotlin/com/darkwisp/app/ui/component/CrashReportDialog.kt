@@ -28,13 +28,15 @@ import com.darkwisp.app.R
 @Composable
 fun CrashReportDialog(
     crashLog: String,
+    isSending: Boolean = false,
+    sendError: String? = null,
     onSend: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSending) onDismiss() },
         title = { Text(stringResource(R.string.crash_report_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -42,6 +44,13 @@ fun CrashReportDialog(
                     text = stringResource(R.string.crash_report_disclosure),
                     style = MaterialTheme.typography.bodySmall
                 )
+                if (sendError != null) {
+                    Text(
+                        text = sendError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 SelectionContainer {
                     Text(
                         text = crashLog,
@@ -59,8 +68,13 @@ fun CrashReportDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onSend) {
-                Text(stringResource(R.string.crash_report_send))
+            TextButton(onClick = onSend, enabled = !isSending) {
+                Text(
+                    stringResource(
+                        if (isSending) R.string.crash_report_sending
+                        else R.string.crash_report_send
+                    )
+                )
             }
         },
         dismissButton = {
@@ -80,7 +94,7 @@ fun CrashReportDialog(
                 ) {
                     Text(stringResource(R.string.crash_report_copy))
                 }
-                TextButton(onClick = onDismiss) {
+                TextButton(onClick = onDismiss, enabled = !isSending) {
                     Text(stringResource(R.string.crash_report_dismiss))
                 }
             }

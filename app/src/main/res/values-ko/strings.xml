@@ -1430,9 +1430,11 @@
     <string name="postilla_not_available">사용할 수 없음</string>
     <string name="postilla_video_open_failed">동영상을 열 수 없습니다.</string>
     <string name="crash_report_title">Postilla가 비정상 종료되었습니다</string>
-    <string name="crash_report_disclosure">전송하면 이 진단 로그가 Postilla에 설정된 본인 Nostr 계정으로 암호화된 Nostr 비공개 메시지로 전송됩니다. 메시지는 relay.0xchat.com, relay.utxo.one/chat, relay.damus.io를 통해 전달됩니다. 로그에는 날짜와 시간, 앱 버전, 기기 제조업체 및 모델, Android 버전, 스택 추적이 포함됩니다. 수신자 공개 키: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
+    <string name="crash_report_disclosure">전송하면 이 진단 로그가 Postilla에 설정된 본인 Nostr 계정으로 암호화된 Nostr 비공개 메시지로 전송됩니다. 메시지는 auth1.nostr.com 및 nos.lol을 통해 전달됩니다. 로그에는 날짜와 시간, 앱 버전, 기기 제조업체 및 모델, Android 버전, 스택 추적이 포함됩니다. 수신자 공개 키: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0。</string>
     <string name="crash_report_copy">보고서 복사</string>
     <string name="crash_report_send">암호화된 보고서 보내기</string>
     <string name="crash_report_dismiss">닫기</string>
     <string name="crash_report_copied">충돌 보고서를 복사했습니다</string>
+    <string name="crash_report_sending">전송 중…</string>
+    <string name="crash_report_send_failed">어느 릴레이에서도 수신 확인을 받지 못했습니다. 보고서는 이 기기에 저장되어 있습니다. 복사하거나 다시 시도하세요.</string>
 </resources>

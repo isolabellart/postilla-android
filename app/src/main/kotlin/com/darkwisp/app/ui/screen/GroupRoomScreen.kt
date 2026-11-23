@@ -1358,13 +1358,16 @@ private fun GroupMessageBubble(
                 ) {
                     Column(
                         modifier = Modifier
-                            .width(IntrinsicSize.Max)
+                            // RichContent can contain BoxWithConstraints (SubcomposeLayout).
+                            // IntrinsicSize.Max here asks that child for an intrinsic width
+                            // and crashes the NIP-29 room layout at runtime.
+                            .wrapContentWidth()
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         // Header row hidden for own messages
                         if (!isOwnMessage) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.wrapContentWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -1374,7 +1377,7 @@ private fun GroupMessageBubble(
                                     color = nameColor,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 if (hasZaps) {
                                     Text(

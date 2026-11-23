@@ -1501,9 +1501,11 @@
     <string name="postilla_bookmarks_empty">Keine gespeicherten Notizen</string>
     <string name="postilla_bookmarks_not_loaded">Notizen noch nicht geladen</string>
     <string name="crash_report_title">Postilla ist abgestürzt</string>
-    <string name="crash_report_disclosure">Beim Senden wird dieses Diagnoseprotokoll als verschlüsselte private Nostr-Nachricht an dein eigenes, in Postilla verwendetes Nostr-Konto gesendet. Die Nachricht wird über relay.0xchat.com, relay.utxo.one/chat und relay.damus.io weitergeleitet. Das Protokoll enthält Datum und Uhrzeit, App-Version, Gerätehersteller und -modell, Android-Version und Stacktrace. Empfängerschlüssel: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
+    <string name="crash_report_disclosure">Beim Senden wird dieses Diagnoseprotokoll als verschlüsselte private Nostr-Nachricht an dein eigenes, in Postilla verwendetes Nostr-Konto gesendet. Die Nachricht wird über auth1.nostr.com und nos.lol weitergeleitet. Das Protokoll enthält Datum und Uhrzeit, App-Version, Gerätehersteller und -modell, Android-Version und Stacktrace. Empfängerschlüssel: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
     <string name="crash_report_copy">Bericht kopieren</string>
     <string name="crash_report_send">Verschlüsselten Bericht senden</string>
     <string name="crash_report_dismiss">Schließen</string>
     <string name="crash_report_copied">Crash-Bericht kopiert</string>
+    <string name="crash_report_sending">Wird gesendet…</string>
+    <string name="crash_report_send_failed">Kein Relay hat den Empfang bestätigt. Der Bericht ist weiterhin auf diesem Gerät gespeichert. Kopiere ihn oder versuche es erneut.</string>
 </resources>

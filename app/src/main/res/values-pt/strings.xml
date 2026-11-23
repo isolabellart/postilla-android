@@ -1449,9 +1449,11 @@
     <string name="postilla_not_available">Indisponível</string>
     <string name="postilla_video_open_failed">Não foi possível abrir o vídeo.</string>
     <string name="crash_report_title">O Postilla falhou</string>
-    <string name="crash_report_disclosure">Ao enviar, este registo de diagnóstico é partilhado como uma mensagem privada Nostr encriptada com a tua própria conta Nostr configurada no Postilla. A mensagem passa por relay.0xchat.com, relay.utxo.one/chat e relay.damus.io. O registo inclui data e hora, versão da aplicação, fabricante e modelo do dispositivo, versão do Android e stack trace. Chave do destinatário: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
+    <string name="crash_report_disclosure">Ao enviar, este registo de diagnóstico é partilhado como uma mensagem privada Nostr encriptada com a tua própria conta Nostr configurada no Postilla. A mensagem passa por auth1.nostr.com e nos.lol. O registo inclui data e hora, versão da aplicação, fabricante e modelo do dispositivo, versão do Android e stack trace. Chave do destinatário: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
     <string name="crash_report_copy">Copiar relatório</string>
     <string name="crash_report_send">Enviar relatório encriptado</string>
     <string name="crash_report_dismiss">Fechar</string>
     <string name="crash_report_copied">Relatório de falha copiado</string>
+    <string name="crash_report_sending">A enviar…</string>
+    <string name="crash_report_send_failed">Nenhum relay confirmou a entrega. O relatório continua guardado neste dispositivo. Copie-o ou tente novamente.</string>
 </resources>

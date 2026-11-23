@@ -700,22 +700,40 @@ fun WispNavHost(
         feedViewModel.refreshDmsAndNotifications()
     }
 
-    // Crash report dialog — check on launch if a crash log exists
+    // Crash report dialog — check on launch if a crash log exists.
+    // Keep the local copy until at least one relay confirms the NIP-17 gift wrap.
     var showCrashDialog by remember { mutableStateOf(CrashHandler.hasCrashLog(context)) }
+    var crashReportSending by remember { mutableStateOf(false) }
+    var crashReportSendFailed by remember { mutableStateOf(false) }
     if (showCrashDialog) {
         val crashLog = remember { CrashHandler.getCrashLog(context) }
         CrashReportDialog(
             crashLog = crashLog,
+            isSending = crashReportSending,
+            sendError = if (crashReportSendFailed) context.getString(R.string.crash_report_send_failed) else null,
             onSend = {
-                showCrashDialog = false
-                CrashHandler.clearCrashLog(context)
-                kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.Default) {
-                    CrashHandler.sendCrashDm(authViewModel.keyRepo, feedViewModel.relayPool, crashLog)
+                if (!crashReportSending) {
+                    crashReportSending = true
+                    crashReportSendFailed = false
+                    kotlinx.coroutines.MainScope().launch {
+                        val confirmed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            CrashHandler.sendCrashDm(authViewModel.keyRepo, feedViewModel.relayPool, crashLog)
+                        }
+                        crashReportSending = false
+                        if (confirmed) {
+                            CrashHandler.clearCrashLog(context)
+                            showCrashDialog = false
+                        } else {
+                            crashReportSendFailed = true
+                        }
+                    }
                 }
             },
             onDismiss = {
-                showCrashDialog = false
-                CrashHandler.clearCrashLog(context)
+                if (!crashReportSending) {
+                    showCrashDialog = false
+                    CrashHandler.clearCrashLog(context)
+                }
             }
         )
     }

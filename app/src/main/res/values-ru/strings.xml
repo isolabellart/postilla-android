@@ -1408,9 +1408,11 @@
     <string name="postilla_not_available">Недоступно</string>
     <string name="postilla_video_open_failed">Не удалось открыть видео.</string>
     <string name="crash_report_title">Postilla завершила работу с ошибкой</string>
-    <string name="crash_report_disclosure">При отправке этот журнал диагностики передаётся как зашифрованное личное сообщение Nostr на твою собственную учётную запись Nostr, настроенную в Postilla. Сообщение проходит через relay.0xchat.com, relay.utxo.one/chat и relay.damus.io. Журнал содержит дату и время, версию приложения, производителя и модель устройства, версию Android и трассировку стека. Ключ получателя: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
+    <string name="crash_report_disclosure">При отправке этот журнал диагностики передаётся как зашифрованное личное сообщение Nostr на твою собственную учётную запись Nostr, настроенную в Postilla. Сообщение проходит через auth1.nostr.com и nos.lol. Журнал содержит дату и время, версию приложения, производителя и модель устройства, версию Android и трассировку стека. Ключ получателя: f4db5270bd991b17bea1e6d035f45dee392919c29474bbac10342d223c74e0d0.</string>
     <string name="crash_report_copy">Копировать отчёт</string>
     <string name="crash_report_send">Отправить зашифрованный отчёт</string>
     <string name="crash_report_dismiss">Закрыть</string>
     <string name="crash_report_copied">Отчёт о сбое скопирован</string>
+    <string name="crash_report_sending">Отправка…</string>
+    <string name="crash_report_send_failed">Ни один ретранслятор не подтвердил доставку. Отчёт сохранён на этом устройстве. Скопируйте его или повторите попытку.</string>
 </resources>
