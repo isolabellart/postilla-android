@@ -27,7 +27,8 @@ data class RelayInfo(
     val maxSubscriptions: Int? = null,
     val maxContentLength: Int? = null,
     val createdAtLowerLimit: Long? = null,
-    val createdAtUpperLimit: Long? = null
+    val createdAtUpperLimit: Long? = null,
+    val self: String? = null
 ) {
     fun isOpenPublicRelay(): Boolean =
         !paymentRequired && !authRequired && !restrictedWrites
@@ -76,7 +77,8 @@ object Nip11 {
                     maxSubscriptions = try { limitation?.get("max_subscriptions")?.jsonPrimitive?.int } catch (_: Exception) { null },
                     maxContentLength = try { limitation?.get("max_content_length")?.jsonPrimitive?.int } catch (_: Exception) { null },
                     createdAtLowerLimit = try { limitation?.get("created_at_lower_limit")?.jsonPrimitive?.content?.toLong() } catch (_: Exception) { null },
-                    createdAtUpperLimit = try { limitation?.get("created_at_upper_limit")?.jsonPrimitive?.content?.toLong() } catch (_: Exception) { null }
+                    createdAtUpperLimit = try { limitation?.get("created_at_upper_limit")?.jsonPrimitive?.content?.toLong() } catch (_: Exception) { null },
+                    self = try { obj["self"]?.jsonPrimitive?.content } catch (_: Exception) { null }
                 )
             } catch (_: Exception) {
                 null
