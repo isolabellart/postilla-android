@@ -28,35 +28,62 @@ object Nip29 {
     data class AdminEntry(val pubkey: String, val roles: List<String>)
 
     /**
-     * Parse a group identifier string like "groups.nostr.com'mygroup" into
-     * (relayUrl, groupId). Returns null if the format is invalid.
+     * Parse either a canonical NIP-29 naddr or the legacy `relay'groupId` identifier.
+     * Canonical addresses must reference kind 39000, include the relay's NIP-11 self key,
+     * and contain a relay hint so the group can be routed to its hosting relay.
      */
     fun parseGroupIdentifier(identifier: String): Pair<String, String>? {
-        val withoutQuery = identifier.substringBefore('?')
-        val idx = withoutQuery.indexOf('\'')
+        val address = identifier.trim().removePrefix("nostr:").substringBefore('?').trim()
+        if (address.startsWith("naddr1", ignoreCase = true)) {
+            val decoded = runCatching { Nip19.naddrDecode(address) }.getOrNull() ?: return null
+            if (decoded.kind != KIND_GROUP_METADATA ||
+                decoded.author?.matches(Regex("^[0-9a-fA-F]{64}$")) != true ||
+                decoded.dTag.isBlank()) return null
+            val relay = decoded.relays.firstNotNullOfOrNull { normalizeRelayUrl(it) } ?: return null
+            return relay to decoded.dTag
+        }
+
+        val idx = address.indexOf('\'')
         if (idx < 0) return null
-        // Normalize to lowercase — relay URLs are case-insensitive but used as map keys
-        val host = withoutQuery.substring(0, idx).trimStart('/').lowercase()
-        if (host.isEmpty()) return null  // bare apostrophe or leading slash only
-        val groupId = withoutQuery.substring(idx + 1).ifEmpty { "_" }
-        val relayUrl = (if (host.startsWith("wss://") || host.startsWith("ws://")) host
-                        else "wss://$host").trimEnd('/')
-        return Pair(relayUrl, groupId)
+        val relay = normalizeRelayUrl(address.substring(0, idx)) ?: return null
+        val groupId = address.substring(idx + 1).ifEmpty { "_" }
+        return relay to groupId
     }
 
     /**
-     * Parse an invite link `<relay>'<groupId>[?code=<code>]`, returning relay, groupId, and
-     * an optional invite code. Returns null if the basic identifier is invalid.
+     * Accept current NIP-29 naddr invites using ?invite= and legacy relay'groupId links
+     * using ?code=. The returned third field is always the code expected in kind 9021.
      */
     fun parseInviteLink(input: String): Triple<String, String, String?>? {
         val (relay, groupId) = parseGroupIdentifier(input) ?: return null
-        val qIdx = input.indexOf('?')
-        if (qIdx < 0) return Triple(relay, groupId, null)
-        val code = input.substring(qIdx + 1).split('&')
-            .firstOrNull { it.startsWith("code=") }
-            ?.removePrefix("code=")
+        val query = input.substringAfter('?', missingDelimiterValue = "")
+        val codeValue = query.split('&')
+            .firstOrNull { it.startsWith("invite=") || it.startsWith("code=") }
+            ?.substringAfter('=')
             ?.takeIf { it.isNotEmpty() }
-        return Triple(relay, groupId, code)
+            ?.let { runCatching { java.net.URLDecoder.decode(it, Charsets.UTF_8.name()) }.getOrDefault(it) }
+        return Triple(relay, groupId, codeValue)
+    }
+
+    /** Normalize a relay URL and reject non-WebSocket or malformed endpoints. */
+    fun normalizeRelayUrl(input: String): String? {
+        val raw = input.trim()
+        if (raw.isEmpty()) return null
+        val candidate = when {
+            raw.startsWith("wss://", ignoreCase = true) -> raw
+            raw.startsWith("ws://", ignoreCase = true) -> raw
+            "://" in raw -> return null
+            else -> "wss://$raw"
+        }
+        val uri = runCatching { java.net.URI(candidate) }.getOrNull() ?: return null
+        if (uri.scheme?.lowercase() !in setOf("ws", "wss") ||
+            uri.host.isNullOrBlank() || uri.rawUserInfo != null ||
+            uri.rawFragment != null) return null
+        val scheme = uri.scheme.lowercase()
+        val authority = uri.rawAuthority ?: return null
+        val path = uri.rawPath.orEmpty().trimEnd('/')
+        val query = uri.rawQuery?.let { "?$it" }.orEmpty()
+        return "$scheme://$authority$path$query"
     }
 
     fun parseGroupMetadata(event: NostrEvent): GroupMetadata? {
@@ -115,11 +142,31 @@ object Nip29 {
     )
 
     /**
-     * Build a kind 9002 edit-metadata event. For each flag that is non-null, emits either the
-     * positive tag (e.g. `["private"]`) when true or the inverse tag (e.g. `["public"]`) when
-     * false — this way a single event can deterministically set every flag regardless of the
-     * relay's default posture.
+     * Build standard NIP-29 kind-9002 tags. Restrictive flags are represented only
+     * when enabled; public/open/unrestricted/visible are the defaults and have no
+     * inverse tags in the NIP-29 event format.
      */
+    fun buildEditMetadataTags(
+        groupId: String,
+        name: String? = null,
+        about: String? = null,
+        picture: String? = null,
+        isPrivate: Boolean? = null,
+        isClosed: Boolean? = null,
+        isRestricted: Boolean? = null,
+        isHidden: Boolean? = null
+    ): List<List<String>> {
+        val tags = mutableListOf(listOf("h", groupId))
+        name?.takeIf { it.isNotBlank() }?.let { tags.add(listOf("name", it.trim())) }
+        about?.takeIf { it.isNotBlank() }?.let { tags.add(listOf("about", it.trim())) }
+        picture?.takeIf { it.isNotBlank() }?.let { tags.add(listOf("picture", it.trim())) }
+        if (isPrivate == true) tags.add(listOf("private"))
+        if (isClosed == true) tags.add(listOf("closed"))
+        if (isRestricted == true) tags.add(listOf("restricted"))
+        if (isHidden == true) tags.add(listOf("hidden"))
+        return tags
+    }
+
     fun buildEditMetadata(
         privkey: ByteArray,
         pubkey: ByteArray,
@@ -131,23 +178,15 @@ object Nip29 {
         isClosed: Boolean? = null,
         isRestricted: Boolean? = null,
         isHidden: Boolean? = null
-    ): NostrEvent {
-        val tags = mutableListOf(listOf("h", groupId))
-        name?.takeIf { it.isNotBlank() }?.let { tags.add(listOf("name", it.trim())) }
-        about?.takeIf { it.isNotBlank() }?.let { tags.add(listOf("about", it.trim())) }
-        picture?.takeIf { it.isNotBlank() }?.let { tags.add(listOf("picture", it.trim())) }
-        isPrivate?.let { tags.add(listOf(if (it) "private" else "public")) }
-        isClosed?.let { tags.add(listOf(if (it) "closed" else "open")) }
-        isRestricted?.let { tags.add(listOf(if (it) "restricted" else "unrestricted")) }
-        isHidden?.let { tags.add(listOf(if (it) "hidden" else "visible")) }
-        return NostrEvent.create(
-            privkey = privkey,
-            pubkey = pubkey,
-            kind = KIND_EDIT_METADATA,
-            content = "",
-            tags = tags
+    ): NostrEvent = NostrEvent.create(
+        privkey = privkey,
+        pubkey = pubkey,
+        kind = KIND_EDIT_METADATA,
+        content = "",
+        tags = buildEditMetadataTags(
+            groupId, name, about, picture, isPrivate, isClosed, isRestricted, isHidden
         )
-    }
+    )
 
     /** Build a kind 9000 event that assigns the given roles to `targetPubkey` in the group. */
     fun buildPutUser(
@@ -223,20 +262,57 @@ object Nip29 {
         tags = listOf(listOf("h", groupId), listOf("p", targetPubkey))
     )
 
-    /** Returns the canonical invite link string, e.g. "wss://groups.0xchat.com'abc123" */
+    /** Legacy-compatible identifier used only when the relay does not expose NIP-11 self. */
     fun inviteLink(relayUrl: String, groupId: String): String = "${relayUrl.lowercase()}'$groupId"
 
-    /** Invite link with a one-time code, e.g. "wss://groups.0xchat.com'abc123?code=xyz". */
+    /** Legacy invite code link retained for clients and relays that predate NIP-29 naddr invites. */
     fun inviteLink(relayUrl: String, groupId: String, code: String): String =
         "${inviteLink(relayUrl, groupId)}?code=$code"
 
-    const val DEFAULT_COMMUNITY_RELAY = "wss://groups.hzrd149.com"
-    const val DEFAULT_COMMUNITY_GROUP_ID = "2f28ff"
-    const val DEFAULT_COMMUNITY_INVITE = "wss://groups.hzrd149.com'2f28ff"
+    /** Canonical NIP-29 group coordinate, when the hosting relay's NIP-11 self key is known. */
+    fun groupAddress(relayUrl: String, groupId: String, relaySelf: String?): String? {
+        val normalizedRelay = normalizeRelayUrl(relayUrl) ?: return null
+        val self = relaySelf?.trim()?.lowercase()
+            ?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) } ?: return null
+        if (groupId.isBlank()) return null
+        return runCatching {
+            Nip19.naddrEncode(groupId, self, KIND_GROUP_METADATA, listOf(normalizedRelay))
+        }.getOrNull()
+    }
+
+    /** Prefer current ?invite= NIP-29 syntax, falling back to the old ?code= form. */
+    fun codedInviteLink(relayUrl: String, groupId: String, code: String, relaySelf: String?): String {
+        val address = groupAddress(relayUrl, groupId, relaySelf)
+        val value = runCatching {
+            java.net.URLEncoder.encode(code, Charsets.UTF_8.name())
+        }.getOrDefault(code)
+        return if (address != null) "$address?invite=$value"
+        else "${inviteLink(relayUrl, groupId)}?code=$value"
+    }
+
+    const val DEFAULT_COMMUNITY_RELAY = "wss://nostr.isolabellart.it.com"
+
+    // Populated only after the official group is created and its signed 39000 event is verified.
+    const val DEFAULT_COMMUNITY_GROUP_ID = ""
+    const val DEFAULT_COMMUNITY_INVITE = ""
+
+    val hasConfiguredDefaultCommunityGroup: Boolean
+        get() = DEFAULT_COMMUNITY_GROUP_ID.isNotBlank()
 
     /** A private or write-restricted group requires an explicit kind-9021 admission request. */
     fun requiresJoinRequest(metadata: GroupMetadata): Boolean =
         metadata.isPrivate || metadata.isRestricted
+
+    /** Build a NIP-29 previous tag from real event IDs already seen in this room. */
+    fun buildPreviousTag(previousEventIds: List<String>, maxReferences: Int = 3): List<String>? {
+        if (maxReferences <= 0) return null
+        val references = previousEventIds
+            .map { it.take(8).lowercase() }
+            .filter { it.matches(Regex("^[0-9a-f]{8}$")) }
+            .distinct()
+            .takeLast(maxReferences)
+        return if (references.isEmpty()) null else listOf("previous") + references
+    }
 
     val DEFAULT_GROUP_RELAYS = listOf(DEFAULT_COMMUNITY_RELAY)
 }
