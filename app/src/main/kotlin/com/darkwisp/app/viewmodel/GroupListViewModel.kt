@@ -619,15 +619,22 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun waitForRelayAuth(pool: RelayPool, relayUrl: String) {
         if (pool.isAuthenticated(relayUrl)) return
         val authDeferred = CompletableDeferred<Unit>()
+        val collectorReady = CompletableDeferred<Unit>()
         val authJob = accountScope.launch(Dispatchers.Default) {
             pool.authCompleted
-                .filter { it == relayUrl }
-                .collect { authDeferred.complete(Unit); return@collect }
+                .onSubscription { collectorReady.complete(Unit) }
+                .first { it == relayUrl }
+            authDeferred.complete(Unit)
         }
-        // Guard against AUTH landing between the check above and the subscribe above.
+        // Wait until the non-replaying SharedFlow collector is attached, then check again
+        // to cover AUTH that completed immediately before subscription became active.
+        collectorReady.await()
         if (pool.isAuthenticated(relayUrl)) authDeferred.complete(Unit)
-        withTimeoutOrNull(AUTH_PRE_SEND_WAIT_MS) { authDeferred.await() }
-        authJob.cancel()
+        try {
+            withTimeoutOrNull(AUTH_PRE_SEND_WAIT_MS) { authDeferred.await() }
+        } finally {
+            authJob.cancel()
+        }
     }
 
     /** Sign+publish an admin event, waiting for NIP-42 AUTH first and then the relay's OK.
