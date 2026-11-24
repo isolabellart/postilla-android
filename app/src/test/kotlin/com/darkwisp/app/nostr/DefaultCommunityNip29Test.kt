@@ -76,6 +76,34 @@ class DefaultCommunityNip29Test {
     }
 
     @Test
+    fun previousSelectionUsesLastFiftyRelayEventsBeforeExcludingOurOwn() {
+        val mine = "ab".repeat(32)
+        val other = "cd".repeat(32)
+        val recentEvents = (1..51).map { index ->
+            val id = index.toString(16).padStart(64, '0')
+            val author = if (index == 1 || index == 51) other else mine
+            id to author
+        }
+
+        // Event 1 is outside the last-50 window. Events 2..50 are ours; event 51 is not.
+        assertEquals(
+            listOf(51.toString(16).padStart(64, '0')),
+            Nip29.selectPreviousEventIds(recentEvents, mine)
+        )
+    }
+
+    @Test
+    fun previousTagRejectsIdsThatAreNotExactly64HexCharacters() {
+        val valid = "a".repeat(64)
+        val tooLong = "b".repeat(64) + "c"
+
+        assertEquals(
+            listOf("previous", "aaaaaaaa"),
+            Nip29.buildPreviousTag(listOf(valid, tooLong))
+        )
+    }
+
+    @Test
     fun onlyPrivateOrRestrictedMetadataRequiresMembershipAdmission() {
         val open = Nip29.GroupMetadata(
             groupId = "room",
