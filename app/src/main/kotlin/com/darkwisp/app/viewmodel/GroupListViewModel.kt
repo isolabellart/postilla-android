@@ -700,7 +700,6 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         }
         val groupId = Nip29.generateGroupId()
         val anyFlagSet = isPrivate || isClosed || isRestricted || isHidden
-        val needsMetadataUpdate = name.isNotBlank() || anyFlagSet
 
         accountScope.launch(Dispatchers.Default) {
             val createResult = publishAdminEvent(
@@ -717,11 +716,28 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
             // until this exact relay has explicitly accepted the create event.
             if (createResult?.accepted != true) return@launch
 
-            repo.addGroup(normalizedUrl, groupId)
+            // Commit the local room only after the relay has confirmed kind 9007. Keep the
+            // chosen title locally for simple public groups, avoiding a second signer prompt.
+            repo.addGroup(normalizedUrl, groupId, localName = name.trim().ifEmpty { null })
+            repo.updateMetadata(
+                normalizedUrl,
+                groupId,
+                Nip29.GroupMetadata(
+                    groupId = groupId,
+                    name = name.trim().ifEmpty { null },
+                    picture = null,
+                    about = null,
+                    isPrivate = isPrivate,
+                    isClosed = isClosed,
+                    isRestricted = isRestricted,
+                    isHidden = isHidden
+                )
+            )
             subscribeToGroup(normalizedUrl, groupId)
             publishGroupList(s)
 
-            if (!needsMetadataUpdate) return@launch
+            // Preserve the remote-signer-safe single-signature path for public/open groups.
+            if (!anyFlagSet) return@launch
 
             // Let the relay process 9007 and assign the creator as admin before sending 9002.
             kotlinx.coroutines.delay(1_500)
