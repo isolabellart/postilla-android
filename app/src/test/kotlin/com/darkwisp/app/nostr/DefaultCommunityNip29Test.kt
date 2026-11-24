@@ -105,7 +105,9 @@ class DefaultCommunityNip29Test {
 
     @Test
     fun previousTagKeepsTheLastThreeValidReferencesInTimelineOrder() {
-        val ids = (1..5).map { it.toString(16).padStart(64, '0') }
+        val ids = (1..5).map { index ->
+            index.toString(16).padStart(8, '0') + "a".repeat(56)
+        }
 
         assertEquals(
             listOf("previous", ids[2].take(8), ids[3].take(8), ids[4].take(8)),
