@@ -690,69 +690,71 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         val repo = groupRepo ?: return
         val pool = relayPool ?: return
-        val relayUrl = relayUrl.lowercase().trimEnd('/')
+        val normalizedUrl = Nip29.normalizeRelayUrl(relayUrl) ?: run {
+            _adminErrors.tryEmit(AdminError(relayUrl, "createGroup", "Invalid NIP-29 relay URL"))
+            return
+        }
+        val s = signer ?: run {
+            _adminErrors.tryEmit(AdminError(normalizedUrl, "createGroup", "A signer is required to create a group"))
+            return
+        }
         val groupId = Nip29.generateGroupId()
-        // Store name locally — avoids a second signing operation at create time which
-        // causes an infinite loop in the remote signer bridge after "Always allow" is granted.
-        repo.addGroup(relayUrl, groupId, localName = name.trim().ifEmpty { null })
-        // Optimistically record the chosen flags so the UI reflects the intended posture
-        // before the 39000 metadata event round-trips back from the relay.
-        repo.updateMetadata(relayUrl, groupId, Nip29.GroupMetadata(
-            groupId = groupId,
-            name = name.trim().ifEmpty { null },
-            picture = null,
-            about = null,
-            isPrivate = isPrivate,
-            isClosed = isClosed,
-            isRestricted = isRestricted,
-            isHidden = isHidden
-        ))
-        subscribeToGroup(relayUrl, groupId)
-        publishGroupList(signer)
         val anyFlagSet = isPrivate || isClosed || isRestricted || isHidden
-        signer?.let { s ->
-            accountScope.launch(Dispatchers.Default) {
-                val createResult = publishAdminEvent(
-                    pool = pool,
-                    signer = s,
-                    relayUrl = relayUrl,
-                    kind = Nip29.KIND_CREATE_GROUP,
-                    content = "",
-                    tags = listOf(listOf("h", groupId)),
-                    label = "createGroup/9007"
-                )
+        val needsMetadataUpdate = name.isNotBlank() || anyFlagSet
 
-                // If the relay rejected the create, rolling the local placeholder back avoids
-                // later 9009/9002 calls trying to address a group the relay doesn't know about.
-                if (createResult != null && !createResult.accepted) {
-                    repo.removeGroup(relayUrl, groupId)
-                    return@launch
-                }
+        accountScope.launch(Dispatchers.Default) {
+            val createResult = publishAdminEvent(
+                pool = pool,
+                signer = s,
+                relayUrl = normalizedUrl,
+                kind = Nip29.KIND_CREATE_GROUP,
+                content = "",
+                tags = listOf(listOf("h", groupId)),
+                label = "createGroup/9007"
+            )
 
-                // Only fire the follow-up 9002 if the user actually customized the group's
-                // posture. This keeps default "open" creations to a single signing op (the
-                // original behavior that avoided the remote-signer bridge infinite loop).
-                if (!anyFlagSet) return@launch
+            // A timeout is not an acceptance. Keep the room out of local storage and kind 10009
+            // until this exact relay has explicitly accepted the create event.
+            if (createResult?.accepted != true) return@launch
 
-                // Give the relay time to process 9007 and mark us as admin before 9002 —
-                // relay29 rejects edit-metadata from non-admins, and back-to-back events
-                // can race against the admin grant.
-                kotlinx.coroutines.delay(1_500)
+            repo.addGroup(normalizedUrl, groupId)
+            subscribeToGroup(normalizedUrl, groupId)
+            publishGroupList(s)
 
-                val editTags = mutableListOf(listOf("h", groupId))
-                if (name.isNotBlank()) editTags.add(listOf("name", name.trim()))
-                editTags.add(listOf(if (isPrivate) "private" else "public"))
-                editTags.add(listOf(if (isClosed) "closed" else "open"))
-                editTags.add(listOf(if (isRestricted) "restricted" else "unrestricted"))
-                editTags.add(listOf(if (isHidden) "hidden" else "visible"))
-                publishAdminEvent(
-                    pool = pool,
-                    signer = s,
-                    relayUrl = relayUrl,
-                    kind = Nip29.KIND_EDIT_METADATA,
-                    content = "",
-                    tags = editTags,
-                    label = "createGroup/9002"
+            if (!needsMetadataUpdate) return@launch
+
+            // Let the relay process 9007 and assign the creator as admin before sending 9002.
+            kotlinx.coroutines.delay(1_500)
+            val metadataResult = publishAdminEvent(
+                pool = pool,
+                signer = s,
+                relayUrl = normalizedUrl,
+                kind = Nip29.KIND_EDIT_METADATA,
+                content = "",
+                tags = Nip29.buildEditMetadataTags(
+                    groupId = groupId,
+                    name = name,
+                    isPrivate = isPrivate,
+                    isClosed = isClosed,
+                    isRestricted = isRestricted,
+                    isHidden = isHidden
+                ),
+                label = "createGroup/9002"
+            )
+            if (metadataResult?.accepted == true) {
+                repo.updateMetadata(
+                    normalizedUrl,
+                    groupId,
+                    Nip29.GroupMetadata(
+                        groupId = groupId,
+                        name = name.trim().ifEmpty { null },
+                        picture = null,
+                        about = null,
+                        isPrivate = isPrivate,
+                        isClosed = isClosed,
+                        isRestricted = isRestricted,
+                        isHidden = isHidden
+                    )
                 )
             }
         }
@@ -770,41 +772,43 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         val pool = relayPool ?: return
         val repo = groupRepo ?: return
         val s = signer ?: return
+        val normalizedUrl = Nip29.normalizeRelayUrl(relayUrl) ?: return
         accountScope.launch(Dispatchers.Default) {
-            val existing = repo.getRoom(relayUrl, groupId)
-            val existingMeta = existing?.metadata
-            val tags = mutableListOf(listOf("h", groupId))
-            if (name.isNotBlank()) tags.add(listOf("name", name.trim()))
-            if (about.isNotBlank()) tags.add(listOf("about", about.trim()))
-            if (picture.isNotBlank()) tags.add(listOf("picture", picture.trim()))
-            tags.add(listOf(if (existingMeta?.isPrivate == true) "private" else "public"))
-            tags.add(listOf(if (existingMeta?.isClosed == true) "closed" else "open"))
-            tags.add(listOf(if (existingMeta?.isRestricted == true) "restricted" else "unrestricted"))
-            tags.add(listOf(if (existingMeta?.isHidden == true) "hidden" else "visible"))
-            publishAdminEvent(
+            val existingMeta = repo.getRoom(normalizedUrl, groupId)?.metadata
+            val result = publishAdminEvent(
                 pool = pool,
                 signer = s,
-                relayUrl = relayUrl,
+                relayUrl = normalizedUrl,
                 kind = Nip29.KIND_EDIT_METADATA,
                 content = "",
-                tags = tags,
+                tags = Nip29.buildEditMetadataTags(
+                    groupId = groupId,
+                    name = name,
+                    about = about,
+                    picture = picture,
+                    isPrivate = existingMeta?.isPrivate,
+                    isClosed = existingMeta?.isClosed,
+                    isRestricted = existingMeta?.isRestricted,
+                    isHidden = existingMeta?.isHidden
+                ),
                 label = "updateMetadata/9002"
             )
-            // Optimistically update local metadata regardless of OK — the repo state will
-            // resync when the 39000 replay arrives (or stay in its prior form if rejected).
-            repo.updateMetadata(relayUrl, groupId, Nip29.GroupMetadata(
-                groupId = groupId,
-                name = name.trim().ifEmpty { existingMeta?.name },
-                picture = picture.trim().ifEmpty { existingMeta?.picture },
-                about = about.trim().ifEmpty { existingMeta?.about },
-                isPrivate = existingMeta?.isPrivate ?: false,
-                isClosed = existingMeta?.isClosed ?: false,
-                isRestricted = existingMeta?.isRestricted ?: false,
-                isHidden = existingMeta?.isHidden ?: false
-            ))
-            if (name.isNotBlank()) {
-                repo.addGroup(relayUrl, groupId, localName = name.trim())
-            }
+            // Keep the previous local state if the relay rejects or never confirms the edit.
+            if (result?.accepted != true) return@launch
+            repo.updateMetadata(
+                normalizedUrl,
+                groupId,
+                Nip29.GroupMetadata(
+                    groupId = groupId,
+                    name = name.trim().ifEmpty { existingMeta?.name },
+                    picture = picture.trim().ifEmpty { existingMeta?.picture },
+                    about = about.trim().ifEmpty { existingMeta?.about },
+                    isPrivate = existingMeta?.isPrivate ?: false,
+                    isClosed = existingMeta?.isClosed ?: false,
+                    isRestricted = existingMeta?.isRestricted ?: false,
+                    isHidden = existingMeta?.isHidden ?: false
+                )
+            )
         }
     }
 
@@ -974,12 +978,16 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                     .onSubscription { collectorReady.complete(Unit) }
                     .collect { ev ->
                         when {
-                            ev.subscriptionId == metaSubId && ev.event.kind == Nip29.KIND_GROUP_METADATA -> {
+                            ev.subscriptionId == metaSubId &&
+                                ev.event.kind == Nip29.KIND_GROUP_METADATA &&
+                                isTrustedRelaySnapshot(ev.relayUrl, ev.event) -> {
                                 val parsed = Nip29.parseGroupMetadata(ev.event)
                                 Log.d("GroupListVM", "[preview] got metadata name=${parsed?.name} from ${ev.relayUrl}")
                                 metaDeferred.complete(parsed)
                             }
-                            ev.subscriptionId == membersSubId && ev.event.kind == Nip29.KIND_GROUP_MEMBERS -> {
+                            ev.subscriptionId == membersSubId &&
+                                ev.event.kind == Nip29.KIND_GROUP_MEMBERS &&
+                                isTrustedRelaySnapshot(ev.relayUrl, ev.event) -> {
                                 val members = Nip29.parseGroupMembers(ev.event)
                                 Log.d("GroupListVM", "[preview] got members count=${members.size} from ${ev.relayUrl}")
                                 membersDeferred.complete(members)
@@ -1015,9 +1023,9 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Discover public chat rooms from known group relays.
-     * Fetches kind 39000 (metadata) and 39002 (members), deduplicates, and ranks by member count.
+     * Fetches relay-signed kind 39000 metadata; 39002 membership is optional and used only for ranking.
      */
-    fun discoverGroups() {
+    fun discoverGroups(additionalRelays: List<String> = emptyList()) {
         val pool = relayPool ?: return
         if (_discoveryLoading.value) return
         _discoveryLoading.value = true
@@ -1031,7 +1039,9 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         pool.registerDedupBypass(membersSubId)
         val groupRelays = Nip29.DEFAULT_GROUP_RELAYS +
             (groupRepo?.getJoinedGroupKeys()?.map { it.first }?.distinct() ?: emptyList())
-        val relayUrls = groupRelays.distinct()
+        val relayUrls = (groupRelays + additionalRelays)
+            .mapNotNull { Nip29.normalizeRelayUrl(it) }
+            .distinct()
 
         accountScope.launch(Dispatchers.Default) {
             val metadataMap = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Nip29.GroupMetadata>>() // key -> (relayUrl, metadata)
@@ -1043,12 +1053,16 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                     .onSubscription { collectorReady.complete(Unit) }
                     .collect { ev ->
                         when {
-                            ev.subscriptionId == metaSubId && ev.event.kind == Nip29.KIND_GROUP_METADATA -> {
+                            ev.subscriptionId == metaSubId &&
+                                ev.event.kind == Nip29.KIND_GROUP_METADATA &&
+                                isTrustedRelaySnapshot(ev.relayUrl, ev.event) -> {
                                 val meta = Nip29.parseGroupMetadata(ev.event) ?: return@collect
                                 val key = "${ev.relayUrl}|${meta.groupId}"
                                 metadataMap.putIfAbsent(key, Pair(ev.relayUrl, meta))
                             }
-                            ev.subscriptionId == membersSubId && ev.event.kind == Nip29.KIND_GROUP_MEMBERS -> {
+                            ev.subscriptionId == membersSubId &&
+                                ev.event.kind == Nip29.KIND_GROUP_MEMBERS &&
+                                isTrustedRelaySnapshot(ev.relayUrl, ev.event) -> {
                                 val groupId = ev.event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1) ?: return@collect
                                 val members = Nip29.parseGroupMembers(ev.event)
                                 val key = "${ev.relayUrl}|$groupId"
