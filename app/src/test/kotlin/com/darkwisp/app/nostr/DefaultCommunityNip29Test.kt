@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 
+/** Regression coverage for NIP-29 relay group identity, moderation and timeline semantics. */
 class DefaultCommunityNip29Test {
     @Test
     fun defaultRelayIsThePostillaNostrfyRelayButGroupIdWaitsForCreation() {
