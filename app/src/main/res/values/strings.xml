@@ -892,6 +892,9 @@
     <string name="title_join_rejected">Couldn\'t join chat room</string>
     <string name="msg_join_rejected_body">The relay rejected your join request. This room may be invite-only — ask an admin for an invite link with a code.</string>
     <string name="label_relay_url">Relay URL</string>
+    <string name="group_relay_discovery_notice">Search the Postilla relay and relays you add. External communities are hosted and moderated by their relay operators; Postilla is only the client.</string>
+    <string name="group_external_relay_notice">You can create groups on any compatible relay. External groups are hosted and moderated by their relay operators.</string>
+    <string name="error_invalid_relay_url">Enter a valid ws:// or wss:// relay URL.</string>
     <string name="label_group_id">Room ID</string>
     <string name="label_group_name">Room Name</string>
     <string name="action_join">Join</string>
