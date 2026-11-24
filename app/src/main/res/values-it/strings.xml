@@ -1253,7 +1253,7 @@
     <string name="label_notifications_on">Attive — i nuovi messaggi verranno registrati</string>
     <string name="label_notifications_off">Disattivate — tocca per attivare</string>
     <string name="group_flag_private_label">Privato</string>
-    <string name="group_flag_private_desc">Solo i membri possono leggere i messaggi</string>
+    <string name="group_flag_private_desc">Solo i membri possono leggere i messaggi; non è cifratura end-to-end: il relay può leggerli.</string>
     <string name="group_flag_closed_label">Chiuso</string>
     <string name="group_flag_closed_desc">Solo gli invitati possono entrare</string>
     <string name="group_flag_restricted_label">Limitato</string>
