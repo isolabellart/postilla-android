@@ -38,6 +38,16 @@ The existing secret names are retained intentionally for compatibility. Do not r
 
 The release token must be a fine-grained PAT limited to this repository with **Contents: Read and write** permission, used only by the final GitHub Release creation step. Workflow execution itself uses the read-only `GITHUB_TOKEN`. The PAT is not a signing password and must never be used as one.
 
+## Breez Spark SDK integration key
+
+The Spark wallet requires the repository Actions secret `BREEZ_API_KEY`.
+
+- Supply the API key exactly as issued by Breez (the SDK expects a Base64-encoded DER X.509 certificate).
+- Staging and release workflows validate that the value decodes to a Breez-issued certificate before compiling.
+- Gradle accepts `BREEZ_API_KEY` from the environment; local development may alternatively use `breez.api.key` in the ignored `local.properties` file.
+- The value is embedded in the Android application because the Spark SDK consumes it client-side. Treat it as an application integration credential, not as a private key or wallet secret; assume it can be extracted from a distributed APK.
+- Never commit it to source control or print it in CI logs.
+
 Zapstore secrets are separate:
 - `ZAPSTORE_SIGN_WITH`
 - `ZAPSTORE_BUNKER_CLIENT_KEY`

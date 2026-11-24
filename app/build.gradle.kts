@@ -20,21 +20,24 @@ android {
         if (f.exists()) f.inputStream().use { load(it) }
     }
     fun prop(name: String): String? =
-        localProps.getProperty(name)?.takeIf { it.isNotBlank() } ?: System.getenv(name)
+        localProps.getProperty(name)?.takeIf { it.isNotBlank() }
+            ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+            ?: if (name == "breez.api.key") System.getenv("BREEZ_API_KEY")?.takeIf { it.isNotBlank() } else null
 
     defaultConfig {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 65
-        versionName = "1.0.65"
+        versionCode = 66
+        versionName = "1.0.66"
         resValue("string", "app_name", "Postilla")
 
         ndk {
             abiFilters += "arm64-v8a"
         }
 
-        buildConfigField("String", "BREEZ_API_KEY", "\"${prop("breez.api.key") ?: ""}\"")
+        val breezApiKey = (prop("breez.api.key") ?: prop("BREEZ_API_KEY") ?: "").trim()
+        buildConfigField("String", "BREEZ_API_KEY", "\"$breezApiKey\"")
         buildConfigField("String", "BREEZ_SDK_VERSION", "\"${libs.versions.breez.sdk.spark.get()}\"")
     }
 

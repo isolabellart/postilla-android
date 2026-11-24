@@ -35,6 +35,7 @@ jobs:
       STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+      BREEZ_API_KEY: ${{ secrets.BREEZ_API_KEY }}
 
     steps:
       - name: Check required signing secrets
@@ -46,11 +47,29 @@ jobs:
           [[ -z "$STORE_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_STORE_PASSWORD")
           [[ -z "$KEY_ALIAS" ]] && missing+=("DARK_WISP_ENHANCED_KEY_ALIAS")
           [[ -z "$KEY_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_KEY_PASSWORD")
+          [[ -z "$BREEZ_API_KEY" ]] && missing+=("BREEZ_API_KEY")
           if (( ${#missing[@]} > 0 )); then
             echo "::error::Missing required permanent signing secrets: ${missing[*]}"
             exit 1
           fi
 
+      - name: Validate Breez API key certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BREEZ_API_KEY" || {
+            echo "::error::Repository secret BREEZ_API_KEY is missing."
+            exit 1
+          }
+          CERT_PATH="$RUNNER_TEMP/breez-api-key.der"
+          printf '%s' "$BREEZ_API_KEY" | base64 --decode > "$CERT_PATH"
+          test -s "$CERT_PATH"
+          ISSUER="$(openssl x509 -inform DER -in "$CERT_PATH" -noout -issuer -nameopt RFC2253)"
+          printf '%s\n' "$ISSUER" | grep -Eq '(^|[=,])CN=Breez([^,]*)($|,)' || {
+            echo "::error::BREEZ_API_KEY is not a Breez-issued DER certificate."
+            exit 1
+          }
+          echo "Breez API key certificate validated."
       - name: Check out source
         uses: actions/checkout@v4
         with:

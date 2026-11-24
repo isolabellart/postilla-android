@@ -25,6 +25,8 @@ jobs:
   release:
     timeout-minutes: 45
     runs-on: ubuntu-latest
+    env:
+      BREEZ_API_KEY: ${{ secrets.BREEZ_API_KEY }}
     steps:
       - name: Allow releases only from a versioned Postilla release branch
         shell: bash
@@ -35,7 +37,7 @@ jobs:
             exit 1
           fi
 
-      - name: Check signing secrets
+      - name: Check signing and Breez secrets
         id: signing
         shell: bash
         env:
@@ -43,12 +45,14 @@ jobs:
           STORE_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.DARK_WISP_ENHANCED_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.DARK_WISP_ENHANCED_KEY_PASSWORD }}
+          BREEZ_API_KEY: ${{ secrets.BREEZ_API_KEY }}
         run: |
           missing=()
           [[ -z "$KEYSTORE_B64" ]] && missing+=("DARK_WISP_ENHANCED_KEYSTORE_BASE64")
           [[ -z "$STORE_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_STORE_PASSWORD")
           [[ -z "$KEY_ALIAS" ]] && missing+=("DARK_WISP_ENHANCED_KEY_ALIAS")
           [[ -z "$KEY_PASSWORD" ]] && missing+=("DARK_WISP_ENHANCED_KEY_PASSWORD")
+          [[ -z "$BREEZ_API_KEY" ]] && missing+=("BREEZ_API_KEY")
           if (( ${#missing[@]} > 0 )); then
             echo "::notice title=Signing not configured::Add repository Actions secrets: ${missing[*]}"
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -56,11 +60,29 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Validate Breez API key certificate
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BREEZ_API_KEY" || {
+            echo "::error::Repository secret BREEZ_API_KEY is missing."
+            exit 1
+          }
+          CERT_PATH="$RUNNER_TEMP/breez-api-key.der"
+          printf '%s' "$BREEZ_API_KEY" | base64 --decode > "$CERT_PATH"
+          test -s "$CERT_PATH"
+          ISSUER="$(openssl x509 -inform DER -in "$CERT_PATH" -noout -issuer -nameopt RFC2253)"
+          printf '%s\n' "$ISSUER" | grep -Eq '(^|[=,])CN=Breez([^,]*)($|,)' || {
+            echo "::error::BREEZ_API_KEY is not a Breez-issued DER certificate."
+            exit 1
+          }
+          echo "Breez API key certificate validated."
       - name: Explain skipped release
         if: steps.signing.outputs.ready != 'true'
         run: |
           echo "No APK was built or published."
-          echo "Configure the four signing secrets, then dispatch this workflow manually from the matching versioned release branch."
+          echo "Configure the four signing secrets and BREEZ_API_KEY, then dispatch this workflow manually from the matching versioned release branch."
 
       - name: Check release publishing permission
         if: steps.signing.outputs.ready == 'true'
