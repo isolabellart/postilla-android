@@ -694,6 +694,9 @@
     <string name="title_join_chat_room">Unisciti alla stanza di chat</string>
     <string name="title_create_group">Crea stanza di chat</string>
     <string name="label_relay_url">URL del relay</string>
+    <string name="group_relay_discovery_notice">Cerca sul relay Postilla e sui relay che aggiungi. Le comunità esterne sono ospitate e moderate dai rispettivi operatori: Postilla è soltanto il client.</string>
+    <string name="group_external_relay_notice">Puoi creare gruppi su qualsiasi relay compatibile. I gruppi esterni sono ospitati e moderati dai rispettivi operatori.</string>
+    <string name="error_invalid_relay_url">Inserisci un URL relay valido che inizi con ws:// o wss://.</string>
     <string name="label_group_id">ID stanza</string>
     <string name="label_group_name">Nome stanza</string>
     <string name="action_join">Unisciti</string>
