@@ -104,6 +104,16 @@ class DefaultCommunityNip29Test {
     }
 
     @Test
+    fun previousTagKeepsTheLastThreeValidReferencesInTimelineOrder() {
+        val ids = (1..5).map { it.toString(16).padStart(64, '0') }
+
+        assertEquals(
+            listOf("previous", ids[2].take(8), ids[3].take(8), ids[4].take(8)),
+            Nip29.buildPreviousTag(ids)
+        )
+    }
+
+    @Test
     fun onlyPrivateOrRestrictedMetadataRequiresMembershipAdmission() {
         val open = Nip29.GroupMetadata(
             groupId = "room",
