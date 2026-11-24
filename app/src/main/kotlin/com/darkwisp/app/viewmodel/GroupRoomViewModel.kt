@@ -154,6 +154,12 @@ class GroupRoomViewModel(app: Application) : AndroidViewModel(app) {
             _sendError.value = null
             try {
                 val tags = mutableListOf(listOf("h", groupId, relayUrl))
+                val previousIds = groupRepo?.getRoom(relayUrl, groupId)
+                    ?.messages
+                    ?.takeLast(50)
+                    ?.map { it.id }
+                    .orEmpty()
+                Nip29.buildPreviousTag(previousIds)?.let { tags.add(it) }
                 if (replyId != null && replyAuthorPubkey != null) {
                     // q is the NIP-29 convention for chat replies
                     tags.add(listOf("q", replyId, relayUrl, replyAuthorPubkey))
