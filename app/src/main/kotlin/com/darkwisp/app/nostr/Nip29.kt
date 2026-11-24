@@ -303,12 +303,29 @@ object Nip29 {
     fun requiresJoinRequest(metadata: GroupMetadata): Boolean =
         metadata.isPrivate || metadata.isRestricted
 
-    /** Build a NIP-29 previous tag from real event IDs already seen in this room. */
+    /**
+     * Select timeline references from the last [windowSize] events seen on this relay.
+     * The window is chosen BEFORE removing our own events, as required by NIP-29.
+     * [recentEvents] must be ordered oldest-to-newest and contains (eventId, authorPubkey).
+     */
+    fun selectPreviousEventIds(
+        recentEvents: List<Pair<String, String>>,
+        currentPubkey: String,
+        windowSize: Int = 50
+    ): List<String> {
+        if (windowSize <= 0) return emptyList()
+        return recentEvents
+            .takeLast(windowSize)
+            .filter { (_, authorPubkey) -> !authorPubkey.equals(currentPubkey, ignoreCase = true) }
+            .map { (eventId, _) -> eventId }
+    }
+
+    /** Build a NIP-29 previous tag from complete, valid event IDs already seen in this room. */
     fun buildPreviousTag(previousEventIds: List<String>, maxReferences: Int = 3): List<String>? {
         if (maxReferences <= 0) return null
         val references = previousEventIds
+            .filter { it.matches(Regex("^[0-9a-fA-F]{64}$")) }
             .map { it.take(8).lowercase() }
-            .filter { it.matches(Regex("^[0-9a-f]{8}$")) }
             .distinct()
             .takeLast(maxReferences)
         return if (references.isEmpty()) null else listOf("previous") + references
