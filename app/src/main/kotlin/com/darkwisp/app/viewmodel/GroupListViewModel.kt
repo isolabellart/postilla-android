@@ -6,9 +6,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
+import com.darkwisp.app.nostr.Nip11
 import com.darkwisp.app.nostr.Nip29
 import com.darkwisp.app.nostr.Nip30
 import com.darkwisp.app.nostr.Nip51
+import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.nostr.SimpleGroupEntry
 import com.darkwisp.app.relay.PublishResult
@@ -45,6 +47,10 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
     private val defaultCommunityJoinRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val defaultCommunityInviteWarnings = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var defaultCommunityListPublishedPubkey: String? = null
+
+    // Relay-generated NIP-29 snapshots are trusted only when their signature matches NIP-11 self.
+    private val relaySelfCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val relaySelfRequests = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<String?>>()
 
     /** Groups that currently have an open relay connection and active subscriptions. */
     private val subscribedGroups = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -99,6 +105,9 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         defaultCommunityJoinRequests.clear()
         defaultCommunityInviteWarnings.clear()
         defaultCommunityListPublishedPubkey = null
+        relaySelfRequests.values.forEach { it.complete(null) }
+        relaySelfRequests.clear()
+        relaySelfCache.clear()
     }
     val unreadGroups: StateFlow<Set<String>>
         get() = groupRepo?.unreadGroups ?: MutableStateFlow(emptySet())
@@ -131,6 +140,9 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         val repo = groupRepo ?: return
         val relayUrl = Nip29.DEFAULT_COMMUNITY_RELAY
         val groupId = Nip29.DEFAULT_COMMUNITY_GROUP_ID
+        // Do not create a phantom local room: the official group ID is assigned only
+        // after the owner creates the real group and verifies its relay-signed metadata.
+        if (groupId.isBlank()) return
 
         defaultCommunitySigner = signer
         if (repo.getRoom(relayUrl, groupId) == null) {
@@ -326,6 +338,34 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun isTrustedRelaySnapshot(relayUrl: String, event: NostrEvent): Boolean {
+        if (!event.verifySignature()) return false
+        val key = relayUrl.lowercase().trimEnd('/')
+        val expectedSelf = relaySelfCache[key] ?: run {
+            val created = CompletableDeferred<String?>()
+            val inFlight = relaySelfRequests.putIfAbsent(key, created)
+            if (inFlight != null) {
+                inFlight.await()
+            } else {
+                try {
+                    val self = Nip11.fetchRelayInfo(key)?.self
+                        ?.trim()
+                        ?.lowercase()
+                        ?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
+                    if (self != null) relaySelfCache[key] = self
+                    created.complete(self)
+                    self
+                } catch (_: Exception) {
+                    created.complete(null)
+                    null
+                } finally {
+                    relaySelfRequests.remove(key, created)
+                }
+            }
+        } ?: return false
+        return event.pubkey.equals(expectedSelf, ignoreCase = true)
+    }
+
     private fun collectRelayEvents() {
         val pool = relayPool ?: return
         accountScope.launch(Dispatchers.Default) {
@@ -384,6 +424,10 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                         repo.addReaction(relayUrl, groupId, messageId, event.pubkey, emoji, emojiUrl)
                     }
                     Nip29.KIND_GROUP_METADATA -> {
+                        if (!isTrustedRelaySnapshot(relayUrl, event)) {
+                            Log.w("GroupListVM", "Ignoring unverified 39000 snapshot from $relayUrl")
+                            return@collect
+                        }
                         Log.d("GroupListVM", "[raw 39000 metadata] relay=$relayUrl ${event.toJson()}")
                         val metadata = Nip29.parseGroupMetadata(event) ?: return@collect
                         repo.getRoom(relayUrl, metadata.groupId) ?: return@collect
@@ -394,6 +438,10 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                     Nip29.KIND_GROUP_ADMINS -> {
+                        if (!isTrustedRelaySnapshot(relayUrl, event)) {
+                            Log.w("GroupListVM", "Ignoring unverified 39001 snapshot from $relayUrl")
+                            return@collect
+                        }
                         Log.d("GroupListVM", "[raw 39001 admins] relay=$relayUrl ${event.toJson()}")
                         val groupId = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
                             ?: return@collect
@@ -401,6 +449,10 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
                         repo.updateAdmins(relayUrl, groupId, Nip29.parseGroupAdminPubkeys(event))
                     }
                     Nip29.KIND_GROUP_MEMBERS -> {
+                        if (!isTrustedRelaySnapshot(relayUrl, event)) {
+                            Log.w("GroupListVM", "Ignoring unverified 39002 snapshot from $relayUrl")
+                            return@collect
+                        }
                         Log.d("GroupListVM", "[raw 39002 members] relay=$relayUrl ${event.toJson()}")
                         val groupId = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
                             ?: return@collect
