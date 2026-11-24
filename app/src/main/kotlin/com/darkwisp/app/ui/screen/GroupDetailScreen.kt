@@ -49,6 +49,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.darkwisp.app.R
+import com.darkwisp.app.nostr.Nip11
 import com.darkwisp.app.nostr.Nip29
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
@@ -102,10 +104,18 @@ fun GroupDetailScreen(
     var removeTarget by remember { mutableStateOf<String?>(null) }
     var assignRoleTarget by remember { mutableStateOf<String?>(null) }
     var latestInviteCode by remember { mutableStateOf<String?>(null) }
+    var relaySelf by remember(relayUrl) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(relayUrl) {
+        relaySelf = Nip11.fetchRelayInfo(relayUrl)?.self
+    }
 
     val clipboardManager = LocalClipboardManager.current
-    val inviteLink = Nip29.inviteLink(relayUrl, groupId)
-    val codedInviteLink = latestInviteCode?.let { Nip29.inviteLink(relayUrl, groupId, it) }
+    val inviteLink = Nip29.groupAddress(relayUrl, groupId, relaySelf)
+        ?: Nip29.inviteLink(relayUrl, groupId)
+    val codedInviteLink = latestInviteCode?.let {
+        Nip29.codedInviteLink(relayUrl, groupId, it, relaySelf)
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
