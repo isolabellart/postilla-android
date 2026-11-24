@@ -938,7 +938,7 @@
 
     <!-- NIP-29 group configuration flags -->
     <string name="group_flag_private_label">Private</string>
-    <string name="group_flag_private_desc">Only members can read messages</string>
+    <string name="group_flag_private_desc">Only members can read messages; this is not end-to-end encryption and the relay can read them.</string>
     <string name="group_flag_closed_label">Closed</string>
     <string name="group_flag_closed_desc">Only invited users can join</string>
     <string name="group_flag_restricted_label">Restricted</string>
