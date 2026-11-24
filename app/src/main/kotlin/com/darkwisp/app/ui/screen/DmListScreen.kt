@@ -109,6 +109,8 @@ fun DmListScreen(
     val haptics = LocalHapticFeedback.current
     val hiddenPrefs = remember(context) { context.getSharedPreferences("wisp_settings", android.content.Context.MODE_PRIVATE) }
     val hiddenPrefKey = "hidden_dm_conversations_${userPubkey ?: "default"}"
+    val customGroupRelaysPrefKey = "custom_group_relays_${userPubkey ?: "default"}"
+    var customGroupRelays by remember(userPubkey) { mutableStateOf(emptySet<String>()) }
     var hiddenConversationKeys by remember(userPubkey) { mutableStateOf(emptySet<String>()) }
     var showHiddenChats by rememberSaveable { mutableStateOf(false) }
     var selectedConversationKeys by remember { mutableStateOf(emptySet<String>()) }
@@ -117,6 +119,7 @@ fun DmListScreen(
     var showChatMenu by remember { mutableStateOf(false) }
     LaunchedEffect(userPubkey) {
         hiddenConversationKeys = hiddenPrefs.getStringSet(hiddenPrefKey, emptySet())?.toSet() ?: emptySet()
+        customGroupRelays = hiddenPrefs.getStringSet(customGroupRelaysPrefKey, emptySet())?.toSet() ?: emptySet()
         selectedConversationKeys = emptySet()
         showHiddenChats = false
     }
@@ -124,6 +127,10 @@ fun DmListScreen(
         hiddenConversationKeys = next
         hiddenPrefs.edit().putStringSet(hiddenPrefKey, next).apply()
         selectedConversationKeys = emptySet()
+    }
+    fun persistCustomGroupRelays(next: Set<String>) {
+        customGroupRelays = next
+        hiddenPrefs.edit().putStringSet(customGroupRelaysPrefKey, next).apply()
     }
 
     var selectedTab by rememberSaveable { mutableStateOf("private") }
@@ -377,6 +384,8 @@ fun DmListScreen(
         DiscoverGroupsSheet(
             groupListViewModel = groupListViewModel,
             eventRepo = eventRepo,
+            initialRelayUrls = customGroupRelays.toList(),
+            onRelayUrlsChanged = { persistCustomGroupRelays(it) },
             onDismiss = { showDiscoverSheet = false },
             onJoin = { relayUrl, groupId ->
                 showDiscoverSheet = false
@@ -711,6 +720,11 @@ private fun CreateGroupDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Text(
+                    text = stringResource(R.string.group_external_relay_notice),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(8.dp))
                 GroupFlagSwitch(
                     label = stringResource(R.string.group_flag_private_label),
@@ -893,15 +907,41 @@ private fun formatTimestamp(epoch: Long): String {
 private fun DiscoverGroupsSheet(
     groupListViewModel: GroupListViewModel,
     eventRepo: EventRepository,
+    initialRelayUrls: List<String>,
+    onRelayUrlsChanged: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
     onJoin: (relayUrl: String, groupId: String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val discoveredGroups by groupListViewModel.discoveredGroups.collectAsState()
     val isLoading by groupListViewModel.discoveryLoading.collectAsState()
+    var relayInput by remember { mutableStateOf("") }
+    var relayInputError by remember { mutableStateOf(false) }
+    var relayUrls by remember(initialRelayUrls) { mutableStateOf(initialRelayUrls.toSet()) }
 
-    LaunchedEffect(Unit) {
-        groupListViewModel.discoverGroups()
+    LaunchedEffect(initialRelayUrls) {
+        groupListViewModel.discoverGroups(initialRelayUrls)
+    }
+
+    fun addRelay() {
+        val normalized = com.darkwisp.app.nostr.Nip29.normalizeRelayUrl(relayInput)
+        if (normalized == null) {
+            relayInputError = true
+            return
+        }
+        val next = relayUrls + normalized
+        relayUrls = next
+        onRelayUrlsChanged(next)
+        relayInput = ""
+        relayInputError = false
+        groupListViewModel.discoverGroups(next.toList())
+    }
+
+    fun removeRelay(relay: String) {
+        val next = relayUrls - relay
+        relayUrls = next
+        onRelayUrlsChanged(next)
+        groupListViewModel.discoverGroups(next.toList())
     }
 
     ModalBottomSheet(
@@ -918,6 +958,50 @@ private fun DiscoverGroupsSheet(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
+            Text(
+                text = stringResource(R.string.group_relay_discovery_notice),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                OutlinedTextField(
+                    value = relayInput,
+                    onValueChange = { relayInput = it; relayInputError = false },
+                    label = { Text(stringResource(R.string.label_relay_url)) },
+                    placeholder = { Text("wss://relay.example") },
+                    singleLine = true,
+                    isError = relayInputError,
+                    supportingText = if (relayInputError) {
+                        { Text(stringResource(R.string.error_invalid_relay_url)) }
+                    } else null,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { addRelay() }, enabled = !isLoading) {
+                    Text(stringResource(R.string.btn_add))
+                }
+            }
+            relayUrls.sorted().forEach { relay ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        relay,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    TextButton(onClick = { removeRelay(relay) }, enabled = !isLoading) {
+                        Text(stringResource(R.string.action_remove))
+                    }
+                }
+            }
 
             if (isLoading && discoveredGroups.isEmpty()) {
                 Box(
