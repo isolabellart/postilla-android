@@ -154,12 +154,11 @@ class GroupRoomViewModel(app: Application) : AndroidViewModel(app) {
             _sendError.value = null
             try {
                 val tags = mutableListOf(listOf("h", groupId, relayUrl))
-                val previousIds = groupRepo?.getRoom(relayUrl, groupId)
-                    ?.messages
-                    ?.takeLast(50)
-                    ?.filter { it.senderPubkey != signer.pubkeyHex }
-                    ?.map { it.id }
-                    .orEmpty()
+                val recentMessages = groupRepo?.getRoom(relayUrl, groupId)?.messages.orEmpty()
+                val previousIds = Nip29.selectPreviousEventIds(
+                    recentEvents = recentMessages.map { it.id to it.senderPubkey },
+                    currentPubkey = signer.pubkeyHex
+                )
                 Nip29.buildPreviousTag(previousIds)?.let { tags.add(it) }
                 if (replyId != null && replyAuthorPubkey != null) {
                     // q is the NIP-29 convention for chat replies
