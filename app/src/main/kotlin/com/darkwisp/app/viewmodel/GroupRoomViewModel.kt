@@ -157,6 +157,7 @@ class GroupRoomViewModel(app: Application) : AndroidViewModel(app) {
                 val previousIds = groupRepo?.getRoom(relayUrl, groupId)
                     ?.messages
                     ?.takeLast(50)
+                    ?.filter { it.senderPubkey != signer.pubkeyHex }
                     ?.map { it.id }
                     .orEmpty()
                 Nip29.buildPreviousTag(previousIds)?.let { tags.add(it) }
