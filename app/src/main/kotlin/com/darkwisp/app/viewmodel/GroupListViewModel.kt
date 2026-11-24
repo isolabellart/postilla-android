@@ -31,6 +31,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -535,16 +536,23 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         // challenge before we'd have a chance to attach a collector.
         val resultDeferred = CompletableDeferred<PublishResult>()
         val authDeferred = CompletableDeferred<Unit>()
+        val resultCollectorReady = CompletableDeferred<Unit>()
+        val authCollectorReady = CompletableDeferred<Unit>()
         val collectResultJob = accountScope.launch(Dispatchers.Default) {
-            pool.publishResults
-                .filter { it.eventId == event.id && it.relayUrl == normalizedUrl }
-                .collect { resultDeferred.complete(it); return@collect }
+            val result = pool.publishResults
+                .onSubscription { resultCollectorReady.complete(Unit) }
+                .first { it.eventId == event.id && it.relayUrl == normalizedUrl }
+            resultDeferred.complete(result)
         }
         val collectAuthJob = accountScope.launch(Dispatchers.Default) {
             pool.authCompleted
-                .filter { it == normalizedUrl }
-                .collect { authDeferred.complete(Unit); return@collect }
+                .onSubscription { authCollectorReady.complete(Unit) }
+                .first { it == normalizedUrl }
+            authDeferred.complete(Unit)
         }
+        // Do not send until both non-replaying SharedFlow collectors are attached.
+        resultCollectorReady.await()
+        authCollectorReady.await()
         // Cover the case where AUTH already happened before we subscribed.
         if (pool.isAuthenticated(normalizedUrl)) authDeferred.complete(Unit)
 
@@ -648,16 +656,24 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val resultDeferred = CompletableDeferred<PublishResult>()
+        val collectorReady = CompletableDeferred<Unit>()
         val collectJob = accountScope.launch(Dispatchers.Default) {
-            pool.publishResults
-                .filter { it.eventId == event.id && it.relayUrl == relayUrl }
-                .collect { resultDeferred.complete(it); return@collect }
+            val matchingResult = pool.publishResults
+                .onSubscription { collectorReady.complete(Unit) }
+                .first { it.eventId == event.id && it.relayUrl == relayUrl }
+            resultDeferred.complete(matchingResult)
         }
 
+        // publishResults is a SharedFlow without replay: attach the listener before EVENT,
+        // otherwise a fast relay OK can arrive before the collector starts and be lost.
+        collectorReady.await()
         pool.sendToRelayOrEphemeral(relayUrl, ClientMessage.event(event), skipBadCheck = true)
 
-        val result = withTimeoutOrNull(okTimeoutMs) { resultDeferred.await() }
-        collectJob.cancel()
+        val result = try {
+            withTimeoutOrNull(okTimeoutMs) { resultDeferred.await() }
+        } finally {
+            collectJob.cancel()
+        }
         when {
             result == null -> _adminErrors.tryEmit(AdminError(relayUrl, label, "Relay did not confirm (timeout)"))
             !result.accepted -> _adminErrors.tryEmit(AdminError(relayUrl, label, result.message))
@@ -718,21 +734,9 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
 
             // Commit the local room only after the relay has confirmed kind 9007. Keep the
             // chosen title locally for simple public groups, avoiding a second signer prompt.
+            // addGroup seeds only the public/open defaults locally. Do not mirror
+            // requested restrictions until the relay has accepted the kind-9002 event.
             repo.addGroup(normalizedUrl, groupId, localName = name.trim().ifEmpty { null })
-            repo.updateMetadata(
-                normalizedUrl,
-                groupId,
-                Nip29.GroupMetadata(
-                    groupId = groupId,
-                    name = name.trim().ifEmpty { null },
-                    picture = null,
-                    about = null,
-                    isPrivate = isPrivate,
-                    isClosed = isClosed,
-                    isRestricted = isRestricted,
-                    isHidden = isHidden
-                )
-            )
             subscribeToGroup(normalizedUrl, groupId)
             publishGroupList(s)
 
