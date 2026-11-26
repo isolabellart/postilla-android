@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordChatRepository
 import com.darkwisp.app.concord.ConcordCommunityRepository
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
@@ -22,6 +23,14 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val isCreating: Boolean = false,
         val result: ConcordCommunityRepository.CreationResult? = null,
         val error: String? = null,
+    )
+
+    data class AdminState(
+        val isLoading: Boolean = false,
+        val members: List<ConcordCommunityRepository.CommunityMember> = emptyList(),
+        val roles: List<ConcordCommunityRepository.CommunityRole> = emptyList(),
+        val error: String? = null,
+        val status: String? = null,
     )
 
     data class JoinState(
@@ -54,6 +63,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _creation = MutableStateFlow(CreationState())
     val creation: StateFlow<CreationState> = _creation
+
+    private val _admin = MutableStateFlow(AdminState())
+    val admin: StateFlow<AdminState> = _admin
 
     private val _join = MutableStateFlow(JoinState())
     val join: StateFlow<JoinState> = _join
@@ -181,6 +193,116 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     }
 
 
+
+
+    fun loadCommunityAdmin(communityId: String, signer: NostrSigner?) {
+        val repo = repository ?: return
+        if (signer == null) {
+            _admin.value = AdminState(error = "A Nostr signer is required")
+            return
+        }
+        _admin.value = _admin.value.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val quartzSigner = PostillaQuartzSigner(signer)
+                val members = repo.loadMembers(quartzSigner, communityId)
+                val roles = repo.loadRoles(quartzSigner, communityId)
+                _admin.value = AdminState(members = members, roles = roles)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _admin.value = _admin.value.copy(isLoading = false, error = error.message ?: "Could not load community members")
+            }
+        }
+    }
+
+    private fun runAdminAction(
+        communityId: String,
+        signer: NostrSigner?,
+        action: suspend (ConcordCommunityRepository, PostillaQuartzSigner) -> String,
+    ) {
+        val repo = repository
+        if (repo == null || signer == null) {
+            _admin.value = _admin.value.copy(error = "Community service and signer are required")
+            return
+        }
+        if (_admin.value.isLoading) return
+        _admin.value = _admin.value.copy(isLoading = true, error = null, status = null)
+        viewModelScope.launch {
+            try {
+                val quartzSigner = PostillaQuartzSigner(signer)
+                val status = action(repo, quartzSigner)
+                val members = repo.loadMembers(quartzSigner, communityId)
+                val roles = repo.loadRoles(quartzSigner, communityId)
+                _admin.value = AdminState(members = members, roles = roles, status = status)
+                refreshLocalCommunities(quartzSigner, repo)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _admin.value = _admin.value.copy(isLoading = false, error = error.message ?: "Community administration failed")
+            }
+        }
+    }
+
+    fun createCommunityRole(
+        communityId: String,
+        signer: NostrSigner?,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+    ) = runAdminAction(communityId, signer) { repo, quartzSigner ->
+        val id = repo.createRole(quartzSigner, communityId, name, position, permissions)
+        "Role created: $id"
+    }
+
+    fun grantCommunityRole(
+        communityId: String,
+        signer: NostrSigner?,
+        memberPubKey: String,
+        roleId: String,
+    ) = runAdminAction(communityId, signer) { repo, quartzSigner ->
+        repo.grantRole(quartzSigner, communityId, memberPubKey, roleId)
+        "Role granted"
+    }
+
+    fun revokeCommunityRole(
+        communityId: String,
+        signer: NostrSigner?,
+        memberPubKey: String,
+        roleId: String,
+    ) = runAdminAction(communityId, signer) { repo, quartzSigner ->
+        repo.revokeRole(quartzSigner, communityId, memberPubKey, roleId)
+        "Role revoked"
+    }
+
+    fun deleteCommunityRole(
+        communityId: String,
+        signer: NostrSigner?,
+        roleId: String,
+    ) = runAdminAction(communityId, signer) { repo, quartzSigner ->
+        repo.deleteRole(quartzSigner, communityId, roleId)
+        "Role deleted"
+    }
+
+    fun kickCommunityMember(communityId: String, signer: NostrSigner?, pubkey: String) =
+        runAdminAction(communityId, signer) { repo, quartzSigner ->
+            val result = repo.kickAndRotate(quartzSigner, communityId, pubkey)
+            if (result.didRefound) "Member kicked and community rotated to epoch ${result.newEpoch}"
+            else "Member removed from the public Guestbook; public invite links remain usable"
+        }
+
+    fun banCommunityMember(communityId: String, signer: NostrSigner?, pubkey: String) =
+        runAdminAction(communityId, signer) { repo, quartzSigner ->
+            val result = repo.banAndRotate(quartzSigner, communityId, pubkey)
+            if (result.didRefound) "Member banned and community rotated to epoch ${result.epoch}"
+            else "Member banned; public community remains on epoch ${result.epoch}"
+        }
+
+    fun resumeCommunityRefounding(communityId: String, signer: NostrSigner?) =
+        runAdminAction(communityId, signer) { repo, quartzSigner ->
+            val result = repo.refoundCommunity(quartzSigner, communityId)
+            "Community rotation completed at epoch ${result.newEpoch}"
+        }
 
     fun joinCommunityFromInvite(inviteUrl: String, signer: NostrSigner?) {
         if (_join.value.isJoining) return
