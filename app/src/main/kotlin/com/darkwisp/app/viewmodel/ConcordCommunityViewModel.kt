@@ -24,6 +24,12 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
 
+    data class JoinState(
+        val isJoining: Boolean = false,
+        val result: ConcordCommunityRepository.JoinResult? = null,
+        val error: String? = null,
+    )
+
     data class InviteState(
         val isCreating: Boolean = false,
         val url: String? = null,
@@ -48,6 +54,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _creation = MutableStateFlow(CreationState())
     val creation: StateFlow<CreationState> = _creation
+
+    private val _join = MutableStateFlow(JoinState())
+    val join: StateFlow<JoinState> = _join
 
     private val _invite = MutableStateFlow(InviteState())
     val invite: StateFlow<InviteState> = _invite
@@ -171,6 +180,48 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+
+
+    fun joinCommunityFromInvite(inviteUrl: String, signer: NostrSigner?) {
+        if (_join.value.isJoining) return
+        if (signer == null) {
+            _join.value = JoinState(error = "A writable Nostr signer is required")
+            return
+        }
+        val repo = repository
+        if (repo == null) {
+            _join.value = JoinState(error = "Community service is not initialized")
+            return
+        }
+        _join.value = JoinState(isJoining = true)
+        viewModelScope.launch {
+            try {
+                val quartzSigner = PostillaQuartzSigner(signer)
+                val result = repo.joinCommunityFromInvite(quartzSigner, inviteUrl)
+                val entries = repo.loadLocalMemberships(quartzSigner)
+                memberships.clear()
+                entries.forEach { memberships[it.id] = it }
+                _communities.value = entries.map { entry ->
+                    CommunityItem(
+                        id = entry.id,
+                        name = entry.name.ifBlank { entry.id.take(12) },
+                        generalChannelId = repo.getLocalGeneralChannelId(entry.id),
+                        rootEpoch = entry.rootEpoch,
+                        relays = entry.relays,
+                    )
+                }
+                _join.value = JoinState(result = result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _join.value = JoinState(error = error.message ?: "Community join failed")
+            }
+        }
+    }
+
+    fun clearJoinResult() {
+        if (!_join.value.isJoining) _join.value = JoinState()
+    }
 
     fun createInviteLink(communityId: String, signer: NostrSigner?) {
         if (_invite.value.isCreating) return
