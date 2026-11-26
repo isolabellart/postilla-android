@@ -615,6 +615,16 @@ class ConcordCommunityRepository(
             }
         }
 
+        prefs.all.keys.filter { it.startsWith("events_") }.forEach { key ->
+            prefs.getStringSet(key, emptySet()).orEmpty().forEach { encoded ->
+                runCatching { NostrEvent.fromJson(encoded) }.getOrNull()?.let { event ->
+                    if (event.kind == ConcordInviteListEvent.KIND && event.pubkey == signer.pubKey) {
+                        events.putIfAbsent(event.id, event)
+                    }
+                }
+            }
+        }
+
         var merged: ConcordInviteListDocument? = null
         for (event in events.values) {
             val plaintext = try {
