@@ -16,6 +16,8 @@ import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip01EventOrder
 import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.relay.EventBroadcastFailure
+import com.darkwisp.app.relay.EventBroadcastReport
 import com.darkwisp.app.nostr.NostrEvent.Companion.fromJson
 import com.darkwisp.app.nostr.ProfileData
 import kotlinx.coroutines.CoroutineScope
@@ -113,6 +115,19 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     fun markPrivate(eventId: String) { privateEventIds.add(eventId) }
     fun isPrivate(eventId: String): Boolean = eventId in privateEventIds
+
+    /** The active account's RelayPool is injected here to keep UI cards independent of relay ownership. */
+    @Volatile var eventBroadcastHandler: (suspend (NostrEvent) -> EventBroadcastReport)? = null
+    val isBroadcastAvailable: Boolean get() = eventBroadcastHandler != null
+
+    suspend fun broadcastEvent(event: NostrEvent): EventBroadcastReport {
+        if (isPrivate(event.id) || event.kind in setOf(4, 13, 14, 15, 1059)) {
+            return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.PRIVATE_EVENT)
+        }
+        val handler = eventBroadcastHandler
+            ?: return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.UNAVAILABLE)
+        return handler(event)
+    }
 
     /** Emits event IDs that were removed (e.g. via NIP-09 deletion). Screens like ThreadScreen
      *  observe this to prune their local state when a deletion arrives on any subscription. */

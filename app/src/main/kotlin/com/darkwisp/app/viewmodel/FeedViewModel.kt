@@ -233,6 +233,7 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
         it.deletedEventsRepo = deletedEventsRepo
         it.eventPersistence = eventPersistence
         it.keyRepo = keyRepo
+        it.eventBroadcastHandler = { event -> relayPool.broadcastEvent(event) }
     }
     val contactRepo = ContactRepository(app, pubkeyHex).also {
         eventRepo.contactRepo = it

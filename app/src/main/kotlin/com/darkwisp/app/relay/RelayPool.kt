@@ -32,6 +32,49 @@ data class PublishResult(val relayUrl: String, val eventId: String, val accepted
 data class PublishOutcome(val sentCount: Int, val confirmed: Boolean)
 data class BroadcastState(val accepted: Int, val sent: Int)
 
+enum class EventBroadcastFailure {
+    NO_WRITE_RELAYS,
+    PRIVATE_EVENT,
+    INVALID_SIGNATURE,
+    UNAVAILABLE
+}
+
+enum class EventBroadcastStatus {
+    ACCEPTED,
+    ALREADY_PRESENT,
+    REJECTED,
+    NOT_SENT,
+    NO_ACK
+}
+
+data class EventBroadcastRelayResult(
+    val relayUrl: String,
+    val status: EventBroadcastStatus,
+    val detail: String = ""
+)
+
+data class EventBroadcastReport(
+    val eventId: String,
+    val relayResults: List<EventBroadcastRelayResult>,
+    val failureReason: EventBroadcastFailure? = null
+) {
+    val acceptedCount: Int get() = relayResults.count { it.status == EventBroadcastStatus.ACCEPTED }
+    val alreadyPresentCount: Int get() = relayResults.count { it.status == EventBroadcastStatus.ALREADY_PRESENT }
+}
+
+internal fun classifyEventBroadcastStatus(
+    sent: Boolean,
+    result: PublishResult?
+): EventBroadcastStatus = when {
+    !sent -> EventBroadcastStatus.NOT_SENT
+    result == null -> EventBroadcastStatus.NO_ACK
+    result.accepted -> EventBroadcastStatus.ACCEPTED
+    result.message.contains("duplicate", ignoreCase = true) ||
+        result.message.contains("already have", ignoreCase = true) ||
+        result.message.contains("already exists", ignoreCase = true) -> EventBroadcastStatus.ALREADY_PRESENT
+    else -> EventBroadcastStatus.REJECTED
+}
+
 class RelayPool(private var prefs: SharedPreferences? = null) {
     /** Point AUTH storage at another account, clearing the old signer/trust first.
      * Configure pinned/DM/group AUTH targets and the new signer AFTER this call. */
@@ -726,6 +769,73 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         val final = writeRelays.count { it.isConnected }
         Log.d("RLC", "[Pool] ensureWriteRelaysConnected — timed out, $final/${writeRelays.size} connected")
         return final
+    }
+
+    /**
+     * Re-send an existing signed event to configured public write relays.
+     * The event is not re-signed or wrapped in a repost, and the app's separate
+     * local relay is deliberately excluded because it may already hold the event.
+     * Every relay's NIP-20 OK is collected so the caller can distinguish accepted,
+     * duplicate, rejected, offline and unconfirmed destinations.
+     */
+    suspend fun broadcastEvent(
+        event: NostrEvent,
+        connectTimeoutMs: Long = 5_000L,
+        acknowledgementTimeoutMs: Long = 8_000L
+    ): EventBroadcastReport {
+        if (event.kind in setOf(4, 13, 14, 15, 1059)) {
+            return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.PRIVATE_EVENT)
+        }
+        if (!kotlinx.coroutines.withContext(Dispatchers.Default) { event.verifySignature() }) {
+            return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.INVALID_SIGNATURE)
+        }
+
+        val localUrl = localRelayConfig?.takeIf { it.enabled }?.url
+        val targets = relays
+            .filter { it.config.write && it.config.url !in blockedUrls && it.config.url != localUrl }
+            .distinctBy { it.config.url }
+        if (targets.isEmpty()) {
+            return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.NO_WRITE_RELAYS)
+        }
+
+        // Try to recover disconnected write relays, but never hold the UI indefinitely.
+        ensureWriteRelaysConnected(timeoutMs = connectTimeoutMs)
+
+        val targetUrls = targets.map { it.config.url }.toSet()
+        val acknowledgements = java.util.concurrent.ConcurrentHashMap<String, PublishResult>()
+        val collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            publishResults
+                .filter { it.eventId == event.id && it.relayUrl in targetUrls }
+                .collect { result -> acknowledgements.putIfAbsent(result.relayUrl, result) }
+        }
+
+        try {
+            // ClientMessage.event serializes the original NostrEvent, preserving its ID,
+            // pubkey, tags, content, timestamp and signature. No new kind-6 event is made.
+            val message = ClientMessage.event(event)
+            val sentUrls = targets.filter { relay ->
+                val sent = relay.send(message, queueIfDisconnected = false)
+                if (sent && appIsActive) healthTracker?.onEventSent(relay.config.url, message.length)
+                sent
+            }.map { it.config.url }.toSet()
+
+            val deadline = System.currentTimeMillis() + acknowledgementTimeoutMs
+            while (sentUrls.any { it !in acknowledgements } && System.currentTimeMillis() < deadline) {
+                delay(50)
+            }
+
+            val relayResults = targets.map { relay ->
+                val result = acknowledgements[relay.config.url]
+                EventBroadcastRelayResult(
+                    relayUrl = relay.config.url,
+                    status = classifyEventBroadcastStatus(relay.config.url in sentUrls, result),
+                    detail = result?.message.orEmpty()
+                )
+            }
+            return EventBroadcastReport(eventId = event.id, relayResults = relayResults)
+        } finally {
+            collector.cancel()
+        }
     }
 
     /**

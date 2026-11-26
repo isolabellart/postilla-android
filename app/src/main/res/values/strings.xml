@@ -1526,4 +1526,19 @@
     <string name="settings_update_check_available">Postilla %1$s is available. The update banner will appear at the top of the app.</string>
     <string name="settings_update_check_preview">Preview build: test offer %1$s is active; stable update checks are disabled.</string>
     <string name="settings_update_check_failed">Could not check for updates. Check your internet connection and try again.</string>
+
+    <string name="btn_broadcast">Broadcast</string>
+    <string name="broadcast_result_title">Broadcast result</string>
+    <string name="broadcast_in_progress">Sending the original event to your write relays…</string>
+    <string name="broadcast_summary">%1$d accepted, %2$d already present, %3$d not confirmed (%4$d write relays)</string>
+    <string name="broadcast_status_accepted">Confirmed</string>
+    <string name="broadcast_status_already_present">Already present</string>
+    <string name="broadcast_status_rejected">Rejected: %1$s</string>
+    <string name="broadcast_status_not_sent">Not sent (relay unavailable)</string>
+    <string name="broadcast_status_no_ack">No confirmation received</string>
+    <string name="broadcast_no_write_relays">No other write relays are configured. The local relay was not contacted again.</string>
+    <string name="broadcast_private_event">Private events cannot be broadcast to public relays.</string>
+    <string name="broadcast_invalid_signature">The original event signature is invalid.</string>
+    <string name="broadcast_unavailable">Broadcast is not available right now.</string>
+    <string name="broadcast_failed">Broadcast failed. Please try again.</string>
 </resources>
