@@ -58,6 +58,7 @@ fun ConcordCommunitiesScreen(
     signer: NostrSigner?,
     onOpenCommunity: (String) -> Unit,
     onBack: (() -> Unit)? = null,
+    embedded: Boolean = false,
 ) {
     val communities by viewModel.communities.collectAsState()
     val creation by viewModel.creation.collectAsState()
@@ -73,17 +74,19 @@ fun ConcordCommunitiesScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = { Text("Communities") },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            if (!embedded) {
+                TopAppBar(
+                    title = { Text("Communities") },
+                    navigationIcon = {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
