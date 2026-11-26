@@ -12,6 +12,8 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * First Concord vertical slice: create a CORD-02 community, publish its two genesis
@@ -91,7 +93,9 @@ class ConcordCommunityRepository(
         // The two genesis wraps and membership fragments are all saved locally before
         // network I/O. Their payloads are encrypted by the Concord envelope / NIP-44 list.
         val events = (community.genesisWraps + listEvents).map { NostrEvent.fromJson(it.toJson()) }
-        journalEvents(community.communityIdHex, events)
+        withContext(Dispatchers.IO) {
+            journalEvents(community.communityIdHex, events)
+        }
 
         var published = 0
         val pending = mutableListOf<String>()
