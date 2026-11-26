@@ -1119,6 +1119,17 @@ class ConcordCommunityRepository(
         val joinedAt: Long,
         val inviteCreator: String? = null,
         val inviteLabel: String? = null,
+        val roleIds: List<String> = emptyList(),
+        val roleNames: List<String> = emptyList(),
+        val rank: Long? = null,
+        val permissionBits: Int = 0,
+    )
+
+    data class CommunityRole(
+        val id: String,
+        val name: String,
+        val position: Long,
+        val permissionBits: Int,
     )
 
     private data class ControlPlaneSnapshot(
@@ -1159,6 +1170,20 @@ class ConcordCommunityRepository(
         return ControlPlaneSnapshot(keys, wraps, editions, state)
     }
 
+
+    suspend fun loadRoles(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+    ): List<CommunityRole> {
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val state = loadControlPlaneSnapshot(membership).state
+        return state.authority.roles().mapNotNull { (id, role) ->
+            if (role.deleted || !role.isWellFormedAt(id)) null
+            else CommunityRole(id, role.name, role.position, role.permissionBits().toWire())
+        }.sortedBy { it.position }
+    }
+
     /** Reads and coalesces the Guestbook against the currently folded authority roster. */
     suspend fun loadMembers(
         signer: PostillaQuartzSigner,
@@ -1195,11 +1220,20 @@ class ConcordCommunityRepository(
             .filter { it.action == GuestbookAction.JOIN }
             .sortedBy { it.createdAt }
             .map {
+                val roleIds = control.state.authority.rolesOf(it.member).toList().sorted()
+                val roleDefinitions = roleIds.mapNotNull { roleId -> control.state.authority.roles()[roleId] }
+                val permissions = roleDefinitions.fold(
+                    if (control.state.authority.isOwner(it.member)) ConcordPermissions.ALL else ConcordPermissions.NONE,
+                ) { acc, role -> acc union role.permissionBits() }
                 CommunityMember(
                     pubkey = it.member,
                     joinedAt = it.createdAt,
                     inviteCreator = it.inviteCreator,
                     inviteLabel = it.inviteLabel,
+                    roleIds = roleIds,
+                    roleNames = roleDefinitions.map { role -> role.name },
+                    rank = control.state.authority.rank(it.member),
+                    permissionBits = permissions.toWire(),
                 )
             }
     }
