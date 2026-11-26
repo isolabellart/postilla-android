@@ -513,19 +513,18 @@ class ConcordCommunityRepository(
             grant,
             head?.known?.content,
         )
-        val event = publishControlEdition(
-            signer = signer,
-            membership = membership,
-            control = control,
-            entityKind = ControlEntityKind.GRANT,
-            entityId = grantId,
-            content = content,
-            permission = ConcordPermissions.MANAGE_ROLES,
-            previousVersion = head?.version,
-            previousHash = head?.hashHex,
-        )
-        if (hadStaffPermissions && !effective.hasAny(ConcordPermissions.STAFF_BITS)) {
-            refoundCommunity(signer, communityId, extraControlEvents = listOf(event))
+        val event = if (hadStaffPermissions && !effective.hasAny(ConcordPermissions.STAFF_BITS)) {
+            val pendingEdition = buildControlEdition(
+                signer, membership, control, ControlEntityKind.GRANT, grantId, content,
+                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
+            )
+            refoundCommunity(signer, communityId, extraControlEvents = listOf(pendingEdition))
+            pendingEdition
+        } else {
+            publishControlEdition(
+                signer, membership, control, ControlEntityKind.GRANT, grantId, content,
+                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
+            )
         }
         return event.id
     }
@@ -561,19 +560,18 @@ class ConcordCommunityRepository(
             deleted,
             head?.known?.content,
         )
-        val event = publishControlEdition(
-            signer = signer,
-            membership = membership,
-            control = control,
-            entityKind = ControlEntityKind.ROLE,
-            entityId = roleIdBytes,
-            content = content,
-            permission = ConcordPermissions.MANAGE_ROLES,
-            previousVersion = head?.version,
-            previousHash = head?.hashHex,
-        )
-        if (current.permissionBits().hasAny(ConcordPermissions.STAFF_BITS)) {
-            refoundCommunity(signer, communityId, extraControlEvents = listOf(event))
+        val event = if (current.permissionBits().hasAny(ConcordPermissions.STAFF_BITS)) {
+            val pendingEdition = buildControlEdition(
+                signer, membership, control, ControlEntityKind.ROLE, roleIdBytes, content,
+                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
+            )
+            refoundCommunity(signer, communityId, extraControlEvents = listOf(pendingEdition))
+            pendingEdition
+        } else {
+            publishControlEdition(
+                signer, membership, control, ControlEntityKind.ROLE, roleIdBytes, content,
+                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
+            )
         }
         return event.id
     }
@@ -682,15 +680,12 @@ class ConcordCommunityRepository(
                 encrypted = true,
             ).toJson(),
         )
-        withContext(Dispatchers.IO) { journalEvents(communityId, listOf(kickEvent)) }
-        if (!publishConfirmed(kickEvent, membership.relays)) {
-            throw IllegalStateException("The Kick was not confirmed; no root rotation was attempted")
-        }
         return refoundCommunity(
             signer = signer,
             communityId = communityId,
             excludedMembers = setOf(target),
             extraGuestbookEntries = listOf(kickEntry),
+            extraGuestbookEvents = listOf(kickEvent),
         )
     }
 
@@ -717,16 +712,9 @@ class ConcordCommunityRepository(
         )
         val head = heads[banlistId.toHexKey()]
         val content = ConcordJson.instance.encodeToString(ListSerializer(String.serializer()), banned)
-        val banEvent = publishControlEdition(
-            signer = signer,
-            membership = membership,
-            control = control,
-            entityKind = ControlEntityKind.BANLIST,
-            entityId = banlistId,
-            content = content,
-            permission = ConcordPermissions.BAN,
-            previousVersion = head?.version,
-            previousHash = head?.hashHex,
+        val banEvent = buildControlEdition(
+            signer, membership, control, ControlEntityKind.BANLIST, banlistId, content,
+            ConcordPermissions.BAN, head?.version, head?.hashHex,
         )
         return refoundCommunity(
             signer = signer,
