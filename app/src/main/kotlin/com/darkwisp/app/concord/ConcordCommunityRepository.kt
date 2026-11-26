@@ -387,15 +387,17 @@ class ConcordCommunityRepository(
             label = "control",
             requireAllResponders = true,
         )
-        val editions = controlEvents.mapNotNull { nostrEvent ->
-            runCatching {
+        val editions = controlEvents.map { nostrEvent ->
+            try {
                 val opened = ConcordStreamEnvelope.open(
                     Event.fromJson(nostrEvent.toJson()),
                     controlKeys.address,
                     controlKeys.readKey.conversationKey,
                 )
                 ControlEdition.fromOpened(opened)
-            }.getOrNull()
+            } catch (error: Exception) {
+                throw IllegalStateException("A Control Plane edition failed cryptographic validation", error)
+            }
         }
         if (editions.isEmpty()) {
             throw IllegalStateException("The community Control Plane could not be read or verified")
@@ -626,12 +628,14 @@ class ConcordCommunityRepository(
             label = "invite-registry-control",
             requireAllResponders = true,
         )
-        val editions = controlWraps.mapNotNull { event ->
-            runCatching {
+        val editions = controlWraps.map { event ->
+            try {
                 ControlEdition.fromOpened(
                     ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), controlKeys),
                 )
-            }.getOrNull()
+            } catch (error: Exception) {
+                throw IllegalStateException("A Control Plane edition failed cryptographic validation", error)
+            }
         }
         if (editions.isEmpty()) throw IllegalStateException("The current Control Plane could not be folded for invite registration")
         val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
