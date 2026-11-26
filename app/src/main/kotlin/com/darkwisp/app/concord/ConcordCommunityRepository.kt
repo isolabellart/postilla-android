@@ -9,9 +9,12 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -95,6 +98,7 @@ class ConcordCommunityRepository(
         val events = (community.genesisWraps + listEvents).map { NostrEvent.fromJson(it.toJson()) }
         withContext(Dispatchers.IO) {
             journalEvents(community.communityIdHex, events)
+        prefs.edit().putString(generalChannelKey(community.communityIdHex), community.generalChannelIdHex).commit()
         }
 
         var published = 0
@@ -120,6 +124,39 @@ class ConcordCommunityRepository(
         )
     }
 
+
+    /**
+     * Rebuilds locally journaled memberships from the self-encrypted kind-33302
+     * fragments. This is a recovery path, not a substitute for relay discovery.
+     */
+    suspend fun loadLocalMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> {
+        val encodedEvents = prefs.all.keys
+            .filter { it.startsWith("events_") }
+            .flatMap { key -> prefs.getStringSet(key, emptySet()).orEmpty() }
+        val events = encodedEvents.mapNotNull { encoded ->
+            runCatching { NostrEvent.fromJson(encoded) }.getOrNull()
+        }.filter {
+            it.kind == ConcordCommunityListFragmentEvent.KIND && it.pubkey == signer.pubKey
+        }
+
+        var merged: JsonObject? = null
+        for (event in events) {
+            try {
+                val plaintext = signer.nip44Decrypt(event.content, signer.pubKey)
+                val fragment = ConcordListFragments.decodeFragment(plaintext)
+                merged = merged?.let { ConcordListFragments.mergeDocs(it, fragment.doc) } ?: fragment.doc
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // An unreadable local fragment is not treated as an empty membership list.
+            }
+        }
+        return merged?.let { ConcordCommunityList.decodeDocument(it).entries } ?: emptyList()
+    }
+
+    fun getLocalGeneralChannelId(communityId: String): String? =
+        prefs.getString(generalChannelKey(communityId), null)
+
     /** Returns the locally journaled, already-signed events for recovery/retry tooling. */
     fun getJournaledEvents(communityId: String): List<NostrEvent> {
         val stored = prefs.getStringSet(eventKey(communityId), emptySet()).orEmpty()
@@ -138,6 +175,7 @@ class ConcordCommunityRepository(
     }
 
     private fun eventKey(communityId: String) = "events_$communityId"
+    private fun generalChannelKey(communityId: String) = "general_channel_$communityId"
 
     private companion object {
         const val PREFS_NAME = "concord_community_journal"
