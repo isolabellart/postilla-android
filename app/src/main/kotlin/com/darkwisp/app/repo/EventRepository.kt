@@ -660,6 +660,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (muteRepo?.isBlocked(event.pubkey) == true) return false
         if (muteRepo?.isEventMuted(event) == true) return false
         if (deletedEventsRepo?.isEventDeleted(event) == true) return false
+        if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
+            val threadRoot = Nip22.getRootScopeId(event)
+                ?: Nip10.getRootId(event)
+                ?: Nip10.getReplyTarget(event)
+                ?: event.id
+            if (muteRepo?.isThreadMuted(threadRoot) == true) return false
+        }
         return !isWotFiltered(event.pubkey, event.kind)
     }
 

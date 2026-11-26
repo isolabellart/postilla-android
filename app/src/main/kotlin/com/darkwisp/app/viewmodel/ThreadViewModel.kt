@@ -16,6 +16,7 @@ import com.darkwisp.app.ml.NSpamClassifier
 import com.darkwisp.app.ml.NoteInput
 import com.darkwisp.app.repo.ContactRepository
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.ExtendedNetworkCache
 import com.darkwisp.app.repo.MetadataFetcher
 import com.darkwisp.app.repo.MuteRepository
 import com.darkwisp.app.repo.RelayHintStore
@@ -30,8 +31,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+internal fun filterVisibleThreadEvents(
+    events: Iterable<NostrEvent>,
+    isVisibleToUser: (NostrEvent) -> Boolean
+): List<NostrEvent> =
+    events.filter(isVisibleToUser)
 
 class ThreadViewModel : ViewModel() {
     private val _rootEvent = MutableStateFlow<NostrEvent?>(null)
@@ -147,13 +157,25 @@ class ThreadViewModel : ViewModel() {
         this.safetyPrefs = safetyPrefs
         this.contactRepo = contactRepo
         this.eventRepoRef = eventRepo
-        // Reactively rebuild thread when blocked users change (e.g. blocking mid-thread)
+        // Rebuild when any visibility input changes, not only when an author is blocked.
         muteObserverJob?.cancel()
-        muteObserverJob = muteRepo?.let { repo ->
-            viewModelScope.launch {
-                repo.blockedPubkeys.collect { scheduleRebuild() }
-            }
-        }
+        val effectiveMuteRepo = muteRepo ?: eventRepo.muteRepo
+        val blockedPubkeys = effectiveMuteRepo?.blockedPubkeys ?: flowOf<Set<String>>(emptySet())
+        val mutedWords = effectiveMuteRepo?.mutedWords ?: flowOf<Set<String>>(emptySet())
+        val mutedThreads = effectiveMuteRepo?.mutedThreads ?: flowOf<Set<String>>(emptySet())
+        val activeSafetyPrefs = safetyPrefs ?: eventRepo.safetyPrefs
+        val wotEnabled = activeSafetyPrefs?.wotFilterEnabled ?: flowOf(false)
+        val networkSnapshot = eventRepo.extendedNetworkRepo?.cachedNetwork
+            ?: flowOf<ExtendedNetworkCache?>(null)
+        muteObserverJob = combine(
+            blockedPubkeys,
+            mutedWords,
+            mutedThreads,
+            wotEnabled,
+            networkSnapshot
+        ) { _, _, _, _, _ ->
+            scheduleRebuild()
+        }.launchIn(viewModelScope)
         this.relayPoolRef = relayPool
         this.topRelayUrls = topRelayUrls
         this.relayListRepoRef = relayListRepo
@@ -506,11 +528,20 @@ class ThreadViewModel : ViewModel() {
         val spamEvents = mutableListOf<NostrEvent>()
         val pubkeysToScore = mutableSetOf<String>()
 
-        val deletedRepo = eventRepoRef?.deletedEventsRepo
-        for (event in threadEvents.values) {
+        val visibleEvents = filterVisibleThreadEvents(threadEvents.values) { event ->
+            eventRepoRef?.isEventVisibleToUser(event) != false
+        }
+        val root = visibleEvents.firstOrNull { it.id == rootId }
+        if (root == null) {
+            _rootEvent.value = null
+            _flatThread.value = emptyList()
+            _spamThread.value = emptyList()
+            return
+        }
+        _rootEvent.value = root
+
+        for (event in visibleEvents) {
             if (event.id == rootId) continue
-            if (deletedRepo?.isDeleted(event.id) == true) continue
-            if (muteRepo?.isBlocked(event.pubkey) == true) continue
             if (Nip10.isStandaloneQuote(event)) continue
 
             val noteCount = eventRepoRef?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
@@ -556,7 +587,6 @@ class ThreadViewModel : ViewModel() {
             children.sortBy { it.created_at }
         }
 
-        val root = threadEvents[rootId]
         val flattened = ThreadFlattener.flatten(
             rootId = rootId,
             rootEvent = root,
