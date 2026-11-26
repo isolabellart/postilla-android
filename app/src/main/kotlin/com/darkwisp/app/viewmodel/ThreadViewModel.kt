@@ -165,6 +165,8 @@ class ThreadViewModel : ViewModel() {
         val mutedThreads = effectiveMuteRepo?.mutedThreads ?: flowOf<Set<String>>(emptySet())
         val activeSafetyPrefs = safetyPrefs ?: eventRepo.safetyPrefs
         val wotEnabled = activeSafetyPrefs?.wotFilterEnabled ?: flowOf(false)
+        val spamEnabled = activeSafetyPrefs?.spamFilterEnabled ?: flowOf(false)
+        val spamSafelist = activeSafetyPrefs?.spamSafelist ?: flowOf<Set<String>>(emptySet())
         val networkSnapshot = eventRepo.extendedNetworkRepo?.cachedNetwork
             ?: flowOf<ExtendedNetworkCache?>(null)
         muteObserverJob = combine(
@@ -172,8 +174,10 @@ class ThreadViewModel : ViewModel() {
             mutedWords,
             mutedThreads,
             wotEnabled,
+            spamEnabled,
+            spamSafelist,
             networkSnapshot
-        ) { _, _, _, _, _ ->
+        ) { _, _, _, _, _, _, _ ->
             scheduleRebuild()
         }.launchIn(viewModelScope)
         this.relayPoolRef = relayPool
