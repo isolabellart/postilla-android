@@ -145,6 +145,7 @@ import com.darkwisp.app.viewmodel.PowStatus
 import com.darkwisp.app.viewmodel.SplashViewModel
 import com.darkwisp.app.viewmodel.LiveStreamViewModel
 import com.darkwisp.app.viewmodel.WalletViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
