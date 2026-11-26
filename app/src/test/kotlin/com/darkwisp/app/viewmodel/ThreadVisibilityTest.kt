@@ -24,6 +24,7 @@ class ThreadVisibilityTest {
         assertEquals(emptyList<String>(), filterVisibleThreadEvents(listOf(note)) { false }.map { it.id })
         assertEquals(listOf(note.id), filterVisibleThreadEvents(listOf(note)) { true }.map { it.id })
     }
+
     @Test
     fun threadRootAndOpenedNotificationEventRemainAsAnchors() {
         val root = event("thread-root")
