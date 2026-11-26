@@ -17,6 +17,13 @@ import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookAction
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
+import com.vitorpamplona.quartz.concord.cord04Roles.ControlEditionBuilder
+import com.vitorpamplona.quartz.concord.cord04Roles.ControlEntityKind
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordJson
+import com.vitorpamplona.quartz.concord.cord04Roles.GrantEntity
+import com.vitorpamplona.quartz.concord.cord04Roles.RoleEntity
+import com.vitorpamplona.quartz.concord.cord04Roles.RoleScope
+import com.vitorpamplona.quartz.concord.cord04Roles.ControlRootWrap
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteBundleStatus
@@ -33,6 +40,7 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteRegistry
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.crypto.random.RandomInstance
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -322,6 +330,256 @@ class ConcordCommunityRepository(
         prefs.getString(generalChannelKey(communityId), null)
 
 
+
+
+    suspend fun createRole(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+    ): String {
+        require(name.isNotBlank()) { "Role name cannot be blank" }
+        require(position >= 1L) { "Role position 0 is reserved for the owner" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        val actorRank = authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        require(actorRank < position) { "A role cannot be created at or above the actor's authority" }
+
+        val roleIdBytes = RandomInstance.bytes(32)
+        val roleId = roleIdBytes.toHexKey()
+        val role = RoleEntity(
+            roleId = roleId,
+            name = name.trim(),
+            position = position,
+            permissions = permissions.toWire(),
+            scope = RoleScope(kind = "server"),
+        )
+        val content = ConcordJson.instance.encodeToString(RoleEntity.serializer(), role)
+        publishControlEdition(
+            signer = signer,
+            membership = membership,
+            control = control,
+            entityKind = ControlEntityKind.ROLE,
+            entityId = roleIdBytes,
+            content = content,
+            permission = ConcordPermissions.MANAGE_ROLES,
+        )
+        return roleId
+    }
+
+    suspend fun grantRole(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        memberPubKey: String,
+        roleId: String,
+    ): String {
+        val target = memberPubKey.lowercase()
+        val targetBytes = target.hexToByteArray()
+        require(targetBytes.size == 32) { "Member public key must be 32 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        require(!authority.isOwner(target)) { "The owner cannot be assigned or modified through a Grant" }
+        require(!authority.isBanned(target)) { "A banned member cannot receive a role" }
+        val role = authority.roles()[roleId]
+            ?: throw IllegalArgumentException("Role does not exist in the current Control Plane")
+        require(!role.deleted && role.isWellFormedAt(roleId)) { "Role is not assignable" }
+        val actorRank = authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        require(actorRank < role.position) { "The actor does not outrank the role being granted" }
+
+        val roleIds = (authority.rolesOf(target) + roleId).distinct()
+        val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
+            authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
+        }
+        val controlRoot = membership.controlRoot
+        val controlWrap = if (effective.hasAny(ConcordPermissions.STAFF_BITS)) {
+            val root = controlRoot ?: throw IllegalStateException("The current Control Plane write key is unavailable")
+            ControlRootWrap.build(signer, target, membership.rootEpoch, root.hexToByteArray())
+        } else {
+            null
+        }
+        val grant = GrantEntity(member = target, roleIds = roleIds, controlWrap = controlWrap)
+        val grantId = ConcordKeyDerivation.grantCoordinate(membership.id.hexToByteArray(), targetBytes)
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[grantId.toHexKey()]
+        val content = ConcordJson.encodePreserving(
+            GrantEntity.serializer(),
+            grant,
+            head?.known?.content,
+        )
+        val event = publishControlEdition(
+            signer = signer,
+            membership = membership,
+            control = control,
+            entityKind = ControlEntityKind.GRANT,
+            entityId = grantId,
+            content = content,
+            permission = ConcordPermissions.MANAGE_ROLES,
+            previousVersion = head?.version,
+            previousHash = head?.hashHex,
+        )
+        return event.id
+    }
+
+    suspend fun revokeRole(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        memberPubKey: String,
+        roleId: String,
+    ): String {
+        val target = memberPubKey.lowercase()
+        val targetBytes = target.hexToByteArray()
+        require(targetBytes.size == 32) { "Member public key must be 32 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        require(!authority.isOwner(target)) { "The owner cannot be modified through a Grant" }
+        val roleIds = authority.rolesOf(target).filterNot { it == roleId }
+        val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
+            authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
+        }
+        val controlWrap = if (effective.hasAny(ConcordPermissions.STAFF_BITS)) {
+            val root = membership.controlRoot
+                ?: throw IllegalStateException("The current Control Plane write key is unavailable")
+            ControlRootWrap.build(signer, target, membership.rootEpoch, root.hexToByteArray())
+        } else {
+            null
+        }
+        val grant = GrantEntity(member = target, roleIds = roleIds, controlWrap = controlWrap)
+        val grantId = ConcordKeyDerivation.grantCoordinate(membership.id.hexToByteArray(), targetBytes)
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[grantId.toHexKey()]
+        val content = ConcordJson.encodePreserving(
+            GrantEntity.serializer(),
+            grant,
+            head?.known?.content,
+        )
+        val event = publishControlEdition(
+            signer = signer,
+            membership = membership,
+            control = control,
+            entityKind = ControlEntityKind.GRANT,
+            entityId = grantId,
+            content = content,
+            permission = ConcordPermissions.MANAGE_ROLES,
+            previousVersion = head?.version,
+            previousHash = head?.hashHex,
+        )
+        return event.id
+    }
+
+    suspend fun deleteRole(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        roleId: String,
+    ): String {
+        val roleIdBytes = roleId.hexToByteArray()
+        require(roleIdBytes.size == 32) { "Role id must be 32 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        val current = control.state.authority.roles()[roleId]
+            ?: throw IllegalArgumentException("Role does not exist")
+        val deleted = current.copy(deleted = true)
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[roleId]
+        val content = ConcordJson.encodePreserving(
+            RoleEntity.serializer(),
+            deleted,
+            head?.known?.content,
+        )
+        val event = publishControlEdition(
+            signer = signer,
+            membership = membership,
+            control = control,
+            entityKind = ControlEntityKind.ROLE,
+            entityId = roleIdBytes,
+            content = content,
+            permission = ConcordPermissions.MANAGE_ROLES,
+            previousVersion = head?.version,
+            previousHash = head?.hashHex,
+        )
+        return event.id
+    }
+
+    private suspend fun publishControlEdition(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        entityKind: ControlEntityKind,
+        entityId: ByteArray,
+        content: String,
+        permission: Int,
+        previousVersion: Long? = null,
+        previousHash: String? = null,
+    ): NostrEvent {
+        if (!control.state.authority.hasPermission(signer.pubKey, permission)) {
+            throw IllegalStateException("This account is not authorized for this Control Plane action")
+        }
+        require(control.keys.signer != null) { "The Control Plane write key is unavailable on this device" }
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[entityId.toHexKey()]
+        val version = (previousVersion ?: head?.version ?: 0L) + 1L
+        val prevHash = previousHash?.hexToByteArray() ?: head?.hashHex?.hexToByteArray()
+        val rumor = ControlEditionBuilder.rumor(
+            authorPubKey = signer.pubKey,
+            entityKind = entityKind,
+            entityId = entityId,
+            version = version,
+            prevHash = prevHash,
+            content = content,
+            createdAt = System.currentTimeMillis() / 1000,
+            authorityCitation = control.state.authority.citationFor(signer.pubKey),
+        )
+        val event = NostrEvent.fromJson(
+            ConcordStreamEnvelope.wrap(
+                rumor = rumor,
+                keys = control.keys,
+                authorSigner = signer,
+                encrypted = false,
+            ).toJson(),
+        )
+        withContext(Dispatchers.IO) { journalEvents(membership.id, listOf(event)) }
+        if (!publishConfirmed(event, membership.relays)) {
+            throw IllegalStateException("Control Plane edition was not confirmed by a community relay")
+        }
+        return event
+    }
 
     data class CommunityMember(
         val pubkey: String,
