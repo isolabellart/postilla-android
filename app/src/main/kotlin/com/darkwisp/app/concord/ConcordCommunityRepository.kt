@@ -1202,11 +1202,123 @@ class ConcordCommunityRepository(
         }
     }
 
+
+    private data class RefoundingPlanEvents(
+        val control: List<NostrEvent>,
+        val inviteList: List<NostrEvent>,
+        val registry: List<NostrEvent>,
+        val inviteBundles: List<NostrEvent>,
+        val rekey: List<NostrEvent>,
+        val membership: List<NostrEvent>,
+        val guestbook: List<NostrEvent>,
+    ) {
+        fun all(): List<NostrEvent> = control + inviteList + registry + inviteBundles + rekey + membership + guestbook
+    }
+
+    private fun pendingRefounding(communityId: String): PendingRefounding? {
+        val prefix = "pending_refounding_$communityId."
+        val root = securePrefs.getString(prefix + "root", null)?.hexToByteArray() ?: return null
+        val controlRoot = securePrefs.getString(prefix + "control_root", null)?.hexToByteArray() ?: return null
+        val epoch = securePrefs.getLong(prefix + "epoch", -1L)
+        val prevCommit = securePrefs.getString(prefix + "prev_commit", null) ?: return null
+        val id = securePrefs.getString(prefix + "community_id", null) ?: return null
+        if (epoch < 0L) return null
+        return PendingRefounding(id, epoch, prevCommit, root, controlRoot)
+    }
+
+    private fun savePendingRefounding(pending: PendingRefounding) {
+        val prefix = "pending_refounding_${pending.communityId}."
+        securePrefs.edit()
+            .putString(prefix + "community_id", pending.communityId)
+            .putLong(prefix + "epoch", pending.rootEpoch)
+            .putString(prefix + "prev_commit", pending.prevCommit)
+            .putString(prefix + "root", pending.newRoot.toHexKey())
+            .putString(prefix + "control_root", pending.newControlRoot.toHexKey())
+            .commit()
+    }
+
+    private fun clearPendingRefounding(communityId: String) {
+        val prefix = "pending_refounding_$communityId."
+        securePrefs.edit()
+            .remove(prefix + "community_id")
+            .remove(prefix + "epoch")
+            .remove(prefix + "prev_commit")
+            .remove(prefix + "root")
+            .remove(prefix + "control_root")
+            .commit()
+        val editor = prefs.edit().remove(refoundingReadyKey(communityId))
+        REFUNDING_CATEGORIES.forEach { editor.remove(refoundingIdsKey(communityId, it)) }
+        editor.commit()
+    }
+
+    private fun storePendingRefoundingPlan(communityId: String, plan: RefoundingPlanEvents) {
+        journalEvents(communityId, plan.all())
+        val editor = prefs.edit().putBoolean(refoundingReadyKey(communityId), true)
+        val groups = mapOf(
+            "control" to plan.control,
+            "invite_list" to plan.inviteList,
+            "registry" to plan.registry,
+            "invite_bundles" to plan.inviteBundles,
+            "rekey" to plan.rekey,
+            "membership" to plan.membership,
+            "guestbook" to plan.guestbook,
+        )
+        groups.forEach { (category, events) ->
+            editor.putStringSet(refoundingIdsKey(communityId, category), events.map { it.id }.toSet())
+        }
+        editor.commit()
+    }
+
+    private fun loadPendingRefoundingPlan(communityId: String): RefoundingPlanEvents {
+        require(prefs.getBoolean(refoundingReadyKey(communityId), false)) {
+            "The refounding key reservation exists but its signed event plan has not been saved"
+        }
+        val journal = getJournaledEvents(communityId).associateBy { it.id }
+        fun group(category: String): List<NostrEvent> =
+            prefs.getStringSet(refoundingIdsKey(communityId, category), emptySet()).orEmpty().map { id ->
+                journal[id] ?: throw IllegalStateException("A saved refounding event is missing from the local journal")
+            }
+        return RefoundingPlanEvents(
+            control = group("control"),
+            inviteList = group("invite_list"),
+            registry = group("registry"),
+            inviteBundles = group("invite_bundles"),
+            rekey = group("rekey"),
+            membership = group("membership"),
+            guestbook = group("guestbook"),
+        )
+    }
+
+    private suspend fun publishRefoundingPlan(
+        communityId: String,
+        relays: List<String>,
+        plan: RefoundingPlanEvents,
+    ) {
+        suspend fun publishGroup(events: List<NostrEvent>, extraRelays: List<String>, label: String) {
+            for (event in events) {
+                if (!publishConfirmed(event, extraRelays)) {
+                    throw IllegalStateException("$label publication was not confirmed; the same signed events are retained for retry")
+                }
+            }
+        }
+        publishGroup(plan.control, relays, "Compacted Control Plane")
+        publishGroup(plan.inviteList, emptyList(), "Private Invite List")
+        publishGroup(plan.registry, relays, "Invite Registry")
+        publishGroup(plan.inviteBundles, relays, "Refreshed invite bundles")
+        publishGroup(plan.rekey, relays, "Base rekey")
+        publishGroup(plan.membership, emptyList(), "Rotated membership list")
+        publishGroup(plan.guestbook, relays, "New Guestbook")
+    }
+
+    private fun refoundingReadyKey(communityId: String) = "refounding_ready_$communityId"
+    private fun refoundingIdsKey(communityId: String, category: String) = "refounding_${category}_$communityId"
+
     private fun eventKey(communityId: String) = "events_$communityId"
     private fun generalChannelKey(communityId: String) = "general_channel_$communityId"
 
     private companion object {
         const val PREFS_NAME = "concord_community_journal"
+        val REFUNDING_CATEGORIES = listOf("control", "invite_list", "registry", "invite_bundles", "rekey", "membership", "guestbook")
         val journalLock = Any()
     }
 }
