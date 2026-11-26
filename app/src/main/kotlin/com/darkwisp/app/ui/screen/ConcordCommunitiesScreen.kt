@@ -1,5 +1,6 @@
 package com.darkwisp.app.ui.screen
 
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,11 +20,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +66,8 @@ fun ConcordCommunitiesScreen(
 ) {
     val communities by viewModel.communities.collectAsState()
     val creation by viewModel.creation.collectAsState()
+    val invite by viewModel.invite.collectAsState()
+    val context = LocalContext.current
     val isLoading by viewModel.isLoading.collectAsState()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -69,6 +75,16 @@ fun ConcordCommunitiesScreen(
 
     LaunchedEffect(signer?.pubkeyHex) {
         viewModel.init(relayPool, signer)
+    }
+    LaunchedEffect(invite.url) {
+        invite.url?.let { url ->
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, url)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share Concord invite"))
+            viewModel.clearInviteResult()
+        }
     }
 
     Scaffold(
@@ -112,6 +128,10 @@ fun ConcordCommunitiesScreen(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
+            }
+            invite.error?.let { error ->
+                Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
             }
             creation.error?.let { error ->
                 Text(
@@ -178,6 +198,13 @@ fun ConcordCommunitiesScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
+                                }
+                                IconButton(
+                                    enabled = !invite.isCreating && signer != null,
+                                    onClick = { viewModel.createInviteLink(community.id, signer) },
+                                ) {
+                                    if (invite.isCreating) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    else Icon(Icons.Outlined.Share, contentDescription = "Create and share invite")
                                 }
                             }
                         }
