@@ -22,6 +22,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.GuestbookAction
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEditionBuilder
+import com.vitorpamplona.quartz.concord.cord04Roles.ControlRootWrap
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEntityKind
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordJson
 import com.vitorpamplona.quartz.concord.cord04Roles.GrantEntity
@@ -1257,6 +1258,41 @@ class ConcordCommunityRepository(
             it.definition.name.equals("general", ignoreCase = true)
         } ?: throw IllegalStateException("The community has no live #general channel")
 
+        val currentList = fetchCommunityList(signer)
+        val existingMembership = currentList.document.entries.firstOrNull { it.id == invite.communityId }
+        val memberControlRoot = when {
+            state.authority.isOwner(signer.pubKey) -> existingMembership?.controlRoot
+                ?: throw IllegalStateException("The owner must restore the original private membership list; an invite link does not disclose the owner's Control Root")
+            state.authority.effectivePermissions(signer.pubKey).hasAny(ConcordPermissions.STAFF_BITS) -> {
+                val grantHead = state.authority.grantHead(signer.pubKey)
+                    ?: throw IllegalStateException("A staff member has no honored Grant head")
+                val grantId = ConcordKeyDerivation.grantCoordinate(
+                    communityIdBytes,
+                    signer.pubKey.hexToByteArray(),
+                ).toHexKey()
+                val grantEdition = editions.firstOrNull {
+                    it.entityKind == ControlEntityKind.GRANT &&
+                        it.entityIdHex == grantId &&
+                        it.version == grantHead.version &&
+                        it.hashHex == grantHead.hashHex
+                } ?: throw IllegalStateException("The staff Grant edition is missing from the Control Plane")
+                val grant = ConcordJson.instance.decodeFromString(GrantEntity.serializer(), grantEdition.content)
+                val wrappedRoot = grant.controlWrap
+                    ?: throw IllegalStateException("The staff Grant does not carry a Control Root")
+                val delivered = ControlRootWrap.openOrNull(wrappedRoot, signer, grantEdition.authorPubKey)
+                    ?: throw IllegalStateException("The Control Root could not be opened from the staff Grant")
+                val controlPk = invite.controlPk
+                    ?: throw IllegalStateException("This legacy invite has no split Control Plane public key")
+                if (delivered.epoch != invite.rootEpoch ||
+                    !ControlRootWrap.derivesTo(delivered.controlRoot, communityIdBytes, invite.rootEpoch, controlPk)
+                ) {
+                    throw IllegalStateException("The delivered Control Root does not match this invite's Control Plane")
+                }
+                delivered.controlRoot.toHexKey()
+            }
+            else -> null
+        }
+
         val savedRelays = metadata.relays.distinct().take(5).ifEmpty { communityRelays }
         val newEntry = ConcordCommunityListEntry(
             id = invite.communityId,
@@ -1265,6 +1301,7 @@ class ConcordCommunityRepository(
             root = invite.communityRoot,
             rootEpoch = invite.rootEpoch,
             controlPk = invite.controlPk,
+            controlRoot = memberControlRoot,
             privateChannels = invite.channels
                 .filter { it.key.isNotBlank() }
                 .map { PrivateChannelKey(it.id, it.key, it.epoch, it.name) },
@@ -1274,7 +1311,6 @@ class ConcordCommunityRepository(
             inviteRef = ConcordInviteLink.bareForm(inviteUrl),
         )
 
-        val currentList = fetchCommunityList(signer)
         val mergedEntries = ConcordCommunityList.merge(currentList.document.entries, listOf(newEntry))
         val winner = mergedEntries.firstOrNull { it.id == invite.communityId }
             ?: throw IllegalStateException("The membership could not be merged")
