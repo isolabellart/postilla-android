@@ -169,15 +169,18 @@ class ThreadViewModel : ViewModel() {
         val spamSafelist = activeSafetyPrefs?.spamSafelist ?: flowOf<Set<String>>(emptySet())
         val networkSnapshot = eventRepo.extendedNetworkRepo?.cachedNetwork
             ?: flowOf<ExtendedNetworkCache?>(null)
-        muteObserverJob = combine(
+        val moderationInputs = combine(
             blockedPubkeys,
             mutedWords,
             mutedThreads,
             wotEnabled,
-            spamEnabled,
+            spamEnabled
+        ) { _, _, _, _, _ -> Unit }
+        val graphAndSafelistInputs = combine(
             spamSafelist,
             networkSnapshot
-        ) { _, _, _, _, _, _, _ ->
+        ) { _, _ -> Unit }
+        muteObserverJob = combine(moderationInputs, graphAndSafelistInputs) { _, _ ->
             scheduleRebuild()
         }.launchIn(viewModelScope)
         this.relayPoolRef = relayPool
