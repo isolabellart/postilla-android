@@ -760,7 +760,10 @@ class ConcordCommunityRepository(
         val control = if (extraControlEvents.isEmpty()) {
             fetchedControl
         } else {
-            val extraWraps = extraControlEvents.map { Event.fromJson(it.toJson()) }
+            val fetchedIds = fetchedControl.wraps.map { it.id }.toSet()
+            val extraWraps = extraControlEvents
+                .filterNot { it.id in fetchedIds }
+                .map { Event.fromJson(it.toJson()) }
             val extraEditions = extraWraps.map { wrap ->
                 val opened = ConcordStreamEnvelope.open(wrap, fetchedControl.keys)
                 ControlEdition.fromOpened(opened)
