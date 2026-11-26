@@ -6,6 +6,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import kotlinx.serialization.json.jsonObject
 import org.junit.Test
 
 class ConcordCommunityListEncodingTest {
