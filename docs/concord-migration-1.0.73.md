@@ -40,3 +40,5 @@ The Coinos repository URL supplied for reference was not accessible from the bui
 - Added a JVM unit test for fragmented-list packing and base64url wire encoding of 32-byte key material.
 
 This is an initial repository slice, not yet a user-facing Community chat. It does not yet restore the journal into live community state, subscribe to Control/Chat planes, implement channel messaging, or wire a Community UI. Those remain explicit implementation gates; no staging APK from this slice is intended for community testing.
+
+- CI validation request for the repository slice is recorded on the staging branch; this build is compile/test validation only, not a Community-chat test APK.
