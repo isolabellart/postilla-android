@@ -13,11 +13,13 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
+import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteBundleStatus
 import com.vitorpamplona.quartz.concord.crypto.ControlPlaneKeys
+import com.vitorpamplona.quartz.concord.crypto.ConcordKeyDerivation
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
@@ -117,7 +119,20 @@ class ConcordCommunityRepository(
             )
         }
 
-        val genesisEvents = community.genesisWraps.map { NostrEvent.fromJson(it.toJson()) }
+        val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
+            communityRoot = community.communityRoot,
+            communityId = community.communityIdHex.hexToByteArray(),
+            epoch = community.rootEpoch,
+        )
+        val ownerJoin = Guestbook.join(signer.pubKey, createdAt)
+        val guestbookJoinWrap = ConcordStreamEnvelope.wrap(
+            rumor = ownerJoin,
+            stream = guestbookKey,
+            authorSigner = signer,
+            encrypted = true,
+            createdAt = createdAt,
+        )
+        val genesisEvents = (community.genesisWraps + guestbookJoinWrap).map { NostrEvent.fromJson(it.toJson()) }
         val allEvents = genesisEvents + listEvents.map { NostrEvent.fromJson(it.toJson()) }
         withContext(Dispatchers.IO) {
             journalEvents(community.communityIdHex, allEvents)
@@ -431,9 +446,26 @@ class ConcordCommunityRepository(
                 createdAt = write.createdAt,
             )
         }.map { NostrEvent.fromJson(it.toJson()) }
+        val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
+            communityRoot = invite.communityRoot.hexToByteArray(),
+            communityId = communityIdBytes,
+            epoch = invite.rootEpoch,
+        )
+        val memberJoin = Guestbook.join(
+            memberPubKey = signer.pubKey,
+            createdAt = System.currentTimeMillis() / 1000,
+        )
+        val guestbookJoinEvent = NostrEvent.fromJson(
+            ConcordStreamEnvelope.wrap(
+                rumor = memberJoin,
+                stream = guestbookKey,
+                authorSigner = signer,
+                encrypted = true,
+            ).toJson(),
+        )
 
         withContext(Dispatchers.IO) {
-            if (listEvents.isNotEmpty()) journalEvents(invite.communityId, listEvents)
+            journalEvents(invite.communityId, listEvents + guestbookJoinEvent)
             if (winner.rootEpoch == invite.rootEpoch) {
                 prefs.edit().putString(generalChannelKey(invite.communityId), generalChannel.channelIdHex).commit()
             }
@@ -444,13 +476,14 @@ class ConcordCommunityRepository(
         for (event in listEvents) {
             if (publishConfirmed(event, emptyList())) published++ else pending += event.id
         }
+        if (publishConfirmed(guestbookJoinEvent, savedRelays)) published++ else pending += guestbookJoinEvent.id
         val channelId = getLocalGeneralChannelId(invite.communityId) ?: generalChannel.channelIdHex
         return JoinResult(
             communityId = invite.communityId,
             name = winner.name,
             generalChannelId = channelId,
             publishedCount = published,
-            totalCount = listEvents.size,
+            totalCount = listEvents.size + 1,
             pendingEventIds = pending,
         )
     }
