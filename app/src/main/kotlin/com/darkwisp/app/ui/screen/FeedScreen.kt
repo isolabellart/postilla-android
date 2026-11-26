@@ -1227,7 +1227,7 @@ fun FeedScreen(
                     }
 
                     AnimatedVisibility(visible = !autoHideFeedChrome || feedChromeVisible) {
-                    val feedSectionIndex = when (feedType) {
+                    val feedSectionIndex = if (showFeedTypeDropdown) 3 else when (feedType) {
                         FeedType.FOR_YOU -> 0
                         FeedType.FOLLOWS -> 1
                         FeedType.WITH_REPLIES -> 2
