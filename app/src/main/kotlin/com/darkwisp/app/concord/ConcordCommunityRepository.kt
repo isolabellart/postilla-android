@@ -244,6 +244,59 @@ class ConcordCommunityRepository(
         return CommunityListSnapshot(fragmentSet, ConcordCommunityList.decodeDocument(mergedDocument))
     }
 
+
+    /** Loads the relay-merged membership list, falling back to the local encrypted journal for display. */
+    suspend fun loadLocalMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> = try {
+        fetchCommunityList(signer).document.entries
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        loadJournaledMemberships(signer)
+    }
+
+    private suspend fun loadJournaledMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> {
+        val encodedEvents = prefs.all.keys
+            .filter { it.startsWith("events_") }
+            .flatMap { key -> prefs.getStringSet(key, emptySet()).orEmpty() }
+        val events = encodedEvents.mapNotNull { encoded ->
+            runCatching { NostrEvent.fromJson(encoded) }.getOrNull()
+        }.filter { it.pubkey == signer.pubKey }
+
+        val copies = events
+            .filter { it.kind == ConcordCommunityListFragmentEvent.KIND }
+            .mapNotNull { event ->
+                val d = event.tags.firstOrNull { it.firstOrNull() == "d" }?.getOrNull(1) ?: return@mapNotNull null
+                val index = ConcordCommunityListFragmentEvent.parseIndex(d) ?: return@mapNotNull null
+                val plaintext = try {
+                    signer.nip44Decrypt(event.content, signer.pubKey)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                ConcordListFragmentSet.Copy(index, event.created_at, event.id, plaintext)
+            }
+        val fragments = ConcordListFragmentSet.of(copies)
+
+        val legacyPlaintext = events
+            .filter { it.kind == 13302 }
+            .maxByOrNull { it.created_at }
+            ?.let { event ->
+                try {
+                    signer.nip44Decrypt(event.content, signer.pubKey)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        val merged = ConcordCommunityList.readWithLegacy(fragments, legacyPlaintext)
+        return ConcordCommunityList.decodeDocument(merged).entries
+    }
+
+    fun getLocalGeneralChannelId(communityId: String): String? =
+        prefs.getString(generalChannelKey(communityId), null)
+
     /**
      * Mints and publishes a Vector-compatible public invite link.
      *
