@@ -840,7 +840,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                 }
             }
 
-            targets.forEach(::sendToRelay)
+            targets.forEach { relay -> sendToRelay(relay) }
             awaitAcknowledgements(sentUrls, acknowledgementTimeoutMs)
 
             // OkHttp can accept a WebSocket write on a half-open socket. If a relay
