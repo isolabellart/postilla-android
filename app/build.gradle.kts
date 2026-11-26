@@ -107,6 +107,8 @@ android {
     }
 
     buildFeatures {
+        // AGP 9 no longer infers this from resValue() calls in the old DSL.
+        androidResources = true
         compose = true
         buildConfig = true
     }
