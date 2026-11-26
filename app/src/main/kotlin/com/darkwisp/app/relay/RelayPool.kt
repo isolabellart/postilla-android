@@ -820,7 +820,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
             }.map { it.config.url }.toSet()
 
             val deadline = System.currentTimeMillis() + acknowledgementTimeoutMs
-            while (sentUrls.any { it !in acknowledgements } && System.currentTimeMillis() < deadline) {
+            while (sentUrls.any { !acknowledgements.containsKey(it) } && System.currentTimeMillis() < deadline) {
                 delay(50)
             }
 
