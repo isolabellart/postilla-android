@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.TrackChanges
 import android.widget.Toast
 import kotlinx.coroutines.launch
 
@@ -95,7 +97,7 @@ fun PaymentTargetsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Payment Targets") },
+                title = { PostillaSettingsTitle("Payment Targets", Icons.Outlined.TrackChanges) },
                 navigationIcon = {
                     IconButton(onClick = { if (scanning) scanning = false else onBack() }) {
                         Icon(

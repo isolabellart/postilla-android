@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,7 +75,7 @@ fun BlossomServersScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.blossom_title)) },
+                title = { PostillaSettingsTitle(stringResource(R.string.blossom_title), Icons.Outlined.Cloud) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")

@@ -6,6 +6,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Router
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.TrackChanges
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.WifiTethering
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -19,12 +31,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.darkwisp.app.R
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
 
-/**
- * Settings landing page. Sub-pages are pushed on the navigation stack so Back
- * returns here; leaving this page returns to the feed.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsHubScreen(
@@ -44,7 +54,7 @@ fun SettingsHubScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.drawer_settings)) },
+                title = { PostillaSettingsTitle(stringResource(R.string.drawer_settings), Icons.Outlined.Settings) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
@@ -56,20 +66,21 @@ fun SettingsHubScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             val entries = listOf(
-                R.string.drawer_interface to onInterface,
-                R.string.drawer_relays to onRelays,
-                R.string.drawer_media_servers to onMediaServers,
-                R.string.drawer_keys to onKeys,
-                R.string.drawer_safety to onSafety,
-                R.string.drawer_proof_of_work to onPow,
-                R.string.drawer_social_graph to onSocialGraph,
-                R.string.drawer_custom_emojis to onCustomEmojis,
-                R.string.drawer_payment_targets to onPaymentTargets,
-                R.string.drawer_relay_health to onRelayHealth,
-                R.string.drawer_console to onConsole
+                Triple(R.string.drawer_interface, Icons.Outlined.Tune, onInterface),
+                Triple(R.string.drawer_relays, Icons.Outlined.WifiTethering, onRelays),
+                Triple(R.string.drawer_media_servers, Icons.Outlined.Cloud, onMediaServers),
+                Triple(R.string.drawer_keys, Icons.Outlined.Key, onKeys),
+                Triple(R.string.drawer_safety, Icons.Outlined.Block, onSafety),
+                Triple(R.string.drawer_proof_of_work, Icons.Outlined.Shield, onPow),
+                Triple(R.string.drawer_social_graph, Icons.Outlined.Hub, onSocialGraph),
+                Triple(R.string.drawer_custom_emojis, Icons.Outlined.EmojiEmotions, onCustomEmojis),
+                Triple(R.string.drawer_payment_targets, Icons.Outlined.TrackChanges, onPaymentTargets),
+                Triple(R.string.drawer_relay_health, Icons.Outlined.Router, onRelayHealth),
+                Triple(R.string.drawer_console, Icons.Outlined.BugReport, onConsole)
             )
-            entries.forEach { (labelRes, action) ->
+            entries.forEach { (labelRes, icon, action) ->
                 ListItem(
+                    leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     headlineContent = { Text(stringResource(labelRes)) },
                     modifier = Modifier.clickable(onClick = action)
                 )

@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.WifiTethering
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.platform.LocalView
 import android.view.HapticFeedbackConstants
@@ -83,7 +85,7 @@ fun RelayScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.title_relays)) },
+                title = { PostillaSettingsTitle(stringResource(R.string.title_relays), Icons.Outlined.WifiTethering) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))

@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import android.content.ContentResolver
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -95,7 +97,7 @@ fun CustomEmojiScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Custom Emojis") },
+                title = { PostillaSettingsTitle("Custom Emojis", Icons.Outlined.EmojiEmotions) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

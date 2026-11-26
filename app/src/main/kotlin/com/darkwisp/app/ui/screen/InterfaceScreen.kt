@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.Tune
 import android.app.Activity
 import android.app.Application
 import androidx.compose.foundation.background
@@ -113,7 +115,7 @@ fun InterfaceScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.title_interface)) },
+                title = { PostillaSettingsTitle(stringResource(R.string.title_interface), Icons.Outlined.Tune) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))

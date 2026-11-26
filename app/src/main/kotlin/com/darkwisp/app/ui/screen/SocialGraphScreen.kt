@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.Hub
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
@@ -138,7 +140,7 @@ fun SocialGraphScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.drawer_social_graph)) },
+                title = { PostillaSettingsTitle(stringResource(R.string.drawer_social_graph), Icons.Outlined.Hub) },
                 navigationIcon = {
                     IconButton(onClick = onBack, enabled = !isComputing) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

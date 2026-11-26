@@ -1,5 +1,7 @@
 package com.darkwisp.app.ui.screen
 
+import com.darkwisp.app.ui.component.PostillaSettingsTitle
+import androidx.compose.material.icons.outlined.Key
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContextWrapper
@@ -91,7 +93,7 @@ fun KeysScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.title_keys)) },
+                title = { PostillaSettingsTitle(stringResource(R.string.title_keys), Icons.Outlined.Key) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.btn_back))
