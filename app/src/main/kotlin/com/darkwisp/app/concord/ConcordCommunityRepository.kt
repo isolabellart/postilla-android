@@ -558,6 +558,41 @@ class ConcordCommunityRepository(
         val relays = membership.relays.distinct().take(5)
         require(relays.isNotEmpty()) { "Community has no relay configured for invite discovery" }
 
+        val controlRootHex = membership.controlRoot
+            ?: throw IllegalStateException("This account does not hold the current Control Plane write key")
+        val preflightKeys = ControlPlaneKeys.of(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = membership.id.hexToByteArray(),
+            epoch = membership.rootEpoch,
+            controlPk = membership.controlPk,
+            controlRoot = controlRootHex,
+        )
+        val preflightWraps = fetchEventsFromRelays(
+            relays = relays,
+            filter = Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = listOf(preflightKeys.address),
+                limit = 5000,
+            ),
+            label = "invite-permission-check",
+            requireAllResponders = true,
+        )
+        val preflightEditions = preflightWraps.map { event ->
+            val opened = ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), preflightKeys)
+            ControlEdition.fromOpened(opened)
+                ?: throw IllegalStateException("A Control Plane edition is not canonical")
+        }
+        if (preflightEditions.isEmpty()) throw IllegalStateException("The current Control Plane could not be read")
+        val preflightState = ConcordCommunityState.fold(
+            preflightEditions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        if (preflightState.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!preflightState.authority.hasPermission(signer.pubKey, ConcordPermissions.CREATE_INVITE)) {
+            throw IllegalStateException("This account is not authorized to create community invites")
+        }
+
         val createdAt = System.currentTimeMillis() / 1000
         val invite = CommunityInvite(
             communityId = membership.id,
@@ -610,8 +645,6 @@ class ConcordCommunityRepository(
             throw IllegalStateException("Invite bundle was not confirmed by a community relay; do not share the link yet")
         }
 
-        val controlRootHex = membership.controlRoot
-            ?: throw IllegalStateException("This account does not hold the current Control Plane write key")
         val controlKeys = ControlPlaneKeys.of(
             communityRoot = membership.root.hexToByteArray(),
             communityId = membership.id.hexToByteArray(),
@@ -648,7 +681,7 @@ class ConcordCommunityRepository(
         val heads = ConcordCommunityState.authorizedHeads(editions, membership.id.hexToByteArray(), membership.owner)
         val head = heads[registryCoordinate]
         val liveLinks = ConcordInviteRegistry.nextLinks(
-            published = state.inviteRegistries[signer.pubKey].orEmpty(),
+            published = state.inviteRegistries[signer.pubKey.lowercase()].orEmpty(),
             list = merged,
             communityIdHex = membership.id,
             nowSecs = createdAt,
