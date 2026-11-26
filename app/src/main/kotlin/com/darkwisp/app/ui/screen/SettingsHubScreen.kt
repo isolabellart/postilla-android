@@ -3,8 +3,10 @@ package com.darkwisp.app.ui.screen
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -23,6 +25,7 @@ import com.darkwisp.app.R
  * Settings landing page. Sub-pages are pushed on the navigation stack so Back
  * returns here; leaving this page returns to the feed.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsHubScreen(
     onBack: () -> Unit,
@@ -51,21 +54,21 @@ fun SettingsHubScreen(
             )
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(padding)) {
             val entries = listOf(
-                Triple(R.string.drawer_interface, R.string.drawer_interface, onInterface),
-                Triple(R.string.drawer_relays, R.string.drawer_relays, onRelays),
-                Triple(R.string.drawer_media_servers, R.string.drawer_media_servers, onMediaServers),
-                Triple(R.string.drawer_keys, R.string.drawer_keys, onKeys),
-                Triple(R.string.drawer_safety, R.string.drawer_safety, onSafety),
-                Triple(R.string.drawer_proof_of_work, R.string.drawer_proof_of_work, onPow),
-                Triple(R.string.drawer_social_graph, R.string.drawer_social_graph, onSocialGraph),
-                Triple(R.string.drawer_custom_emojis, R.string.drawer_custom_emojis, onCustomEmojis),
-                Triple(R.string.drawer_payment_targets, R.string.drawer_payment_targets, onPaymentTargets),
-                Triple(R.string.drawer_relay_health, R.string.drawer_relay_health, onRelayHealth),
-                Triple(R.string.drawer_console, R.string.drawer_console, onConsole)
+                R.string.drawer_interface to onInterface,
+                R.string.drawer_relays to onRelays,
+                R.string.drawer_media_servers to onMediaServers,
+                R.string.drawer_keys to onKeys,
+                R.string.drawer_safety to onSafety,
+                R.string.drawer_proof_of_work to onPow,
+                R.string.drawer_social_graph to onSocialGraph,
+                R.string.drawer_custom_emojis to onCustomEmojis,
+                R.string.drawer_payment_targets to onPaymentTargets,
+                R.string.drawer_relay_health to onRelayHealth,
+                R.string.drawer_console to onConsole
             )
-            entries.forEach { (labelRes, _, action) ->
+            entries.forEach { (labelRes, action) ->
                 ListItem(
                     headlineContent = { Text(stringResource(labelRes)) },
                     modifier = Modifier.clickable(onClick = action)
