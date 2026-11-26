@@ -339,7 +339,7 @@ class ConcordCommunityRepository(
         position: Long,
         permissions: ConcordPermissions,
     ): String {
-        require(name.isNotBlank()) { "Role name cannot be blank" }
+        require(name.isNotBlank() && name.trim().encodeToByteArray().size <= 64) { "Role name must be 1–64 UTF-8 bytes" }
         require(position >= 1L) { "Role position 0 is reserved for the owner" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
@@ -390,7 +390,9 @@ class ConcordCommunityRepository(
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
         }
-        require(!authority.isOwner(target)) { "The owner cannot be assigned or modified through a Grant" }
+        require(authority.canActOn(signer.pubKey, target, ConcordPermissions.MANAGE_ROLES)) {
+            "The actor cannot manage this member's roles"
+        }
         require(!authority.isBanned(target)) { "A banned member cannot receive a role" }
         val role = authority.roles()[roleId]
             ?: throw IllegalArgumentException("Role does not exist in the current Control Plane")
@@ -399,7 +401,13 @@ class ConcordCommunityRepository(
             ?: throw IllegalStateException("The actor has no valid role rank")
         require(actorRank < role.position) { "The actor does not outrank the role being granted" }
 
-        val roleIds = (authority.rolesOf(target) + roleId).distinct()
+        val roleIds = (authority.rolesOf(target) + roleId.lowercase()).distinct()
+        require(roleIds.size > authority.rolesOf(target).size) { "The member already holds this role" }
+        val actorRank = authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        require(roleIds.all { assignedId -> authority.roles()[assignedId]?.let { actorRank < it.position } == true }) {
+            "The actor does not outrank every role in the resulting Grant"
+        }
         val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
             authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
         }
@@ -453,8 +461,16 @@ class ConcordCommunityRepository(
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
         }
-        require(!authority.isOwner(target)) { "The owner cannot be modified through a Grant" }
-        val roleIds = authority.rolesOf(target).filterNot { it == roleId }
+        require(authority.canActOn(signer.pubKey, target, ConcordPermissions.MANAGE_ROLES)) {
+            "The actor cannot manage this member's roles"
+        }
+        val roleIds = authority.rolesOf(target).filterNot { it == roleId.lowercase() }
+        require(roleIds.size < authority.rolesOf(target).size) { "The member does not hold this role" }
+        val actorRank = authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        require(roleIds.all { assignedId -> authority.roles()[assignedId]?.let { actorRank < it.position } == true }) {
+            "The actor does not outrank every role in the resulting Grant"
+        }
         val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
             authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
         }
@@ -505,15 +521,19 @@ class ConcordCommunityRepository(
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
         }
-        val current = control.state.authority.roles()[roleId]
+        val roleIdHex = roleIdBytes.toHexKey()
+        val current = control.state.authority.roles()[roleIdHex]
             ?: throw IllegalArgumentException("Role does not exist")
+        val actorRank = control.state.authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        require(actorRank < current.position) { "The actor does not outrank this role" }
         val deleted = current.copy(deleted = true)
         val heads = ConcordCommunityState.authorizedHeads(
             control.editions,
             membership.id.hexToByteArray(),
             membership.owner,
         )
-        val head = heads[roleId]
+        val head = heads[roleIdHex]
         val content = ConcordJson.encodePreserving(
             RoleEntity.serializer(),
             deleted,
