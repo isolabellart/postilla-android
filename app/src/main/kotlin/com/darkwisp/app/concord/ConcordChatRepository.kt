@@ -10,6 +10,7 @@ import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -79,6 +80,7 @@ class ConcordChatRepository(
      * before REQ is sent, and every received wrap is cryptographically opened and
      * checked against the exact channel/epoch binding before it reaches the UI.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeChannel(
         communityRootHex: String,
         channelIdHex: String,
