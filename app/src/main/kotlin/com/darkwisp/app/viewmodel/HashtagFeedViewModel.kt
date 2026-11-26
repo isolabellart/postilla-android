@@ -111,15 +111,17 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
         val effectiveMuteRepo = muteRepo ?: eventRepo.muteRepo
         val blockedPubkeys = effectiveMuteRepo?.blockedPubkeys ?: flowOf<Set<String>>(emptySet())
         val mutedWords = effectiveMuteRepo?.mutedWords ?: flowOf<Set<String>>(emptySet())
+        val mutedThreads = effectiveMuteRepo?.mutedThreads ?: flowOf<Set<String>>(emptySet())
         val wotEnabled = eventRepo.safetyPrefs?.wotFilterEnabled ?: flowOf(false)
         val networkSnapshot = eventRepo.extendedNetworkRepo?.cachedNetwork
             ?: flowOf<ExtendedNetworkCache?>(null)
         visibilityObserverJob = combine(
             blockedPubkeys,
             mutedWords,
+            mutedThreads,
             wotEnabled,
             networkSnapshot
-        ) { _, _, _, _ ->
+        ) { _, _, _, _, _ ->
             publishVisibleNotes(eventRepo)
         }.launchIn(viewModelScope)
 
