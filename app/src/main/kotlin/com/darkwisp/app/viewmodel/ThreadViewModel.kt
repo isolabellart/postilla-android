@@ -39,9 +39,18 @@ import kotlinx.coroutines.withContext
 
 internal fun filterVisibleThreadEvents(
     events: Iterable<NostrEvent>,
+    anchorEventIds: Set<String> = emptySet(),
     isVisibleToUser: (NostrEvent) -> Boolean
 ): List<NostrEvent> =
-    events.filter(isVisibleToUser)
+    events.filter { event ->
+        // Keep the conversation root and the exact note the user opened as
+        // structural/navigation anchors. Other thread events still obey the
+        // active block, mute, deletion and Web of Trust visibility policy.
+        event.id in anchorEventIds || isVisibleToUser(event)
+    }
+
+internal fun shouldApplyThreadSpamFilter(event: NostrEvent, seedEventId: String?): Boolean =
+    event.id != seedEventId
 
 class ThreadViewModel : ViewModel() {
     private val _rootEvent = MutableStateFlow<NostrEvent?>(null)
@@ -535,7 +544,14 @@ class ThreadViewModel : ViewModel() {
         val spamEvents = mutableListOf<NostrEvent>()
         val pubkeysToScore = mutableSetOf<String>()
 
-        val visibleEvents = filterVisibleThreadEvents(threadEvents.values) { event ->
+        val threadAnchorIds = buildSet {
+            if (rootId.isNotBlank()) add(rootId)
+            seedEventId?.let { add(it) }
+        }
+        val visibleEvents = filterVisibleThreadEvents(
+            events = threadEvents.values,
+            anchorEventIds = threadAnchorIds
+        ) { event ->
             eventRepoRef?.isEventVisibleToUser(event) != false
         }
         val root = visibleEvents.firstOrNull { it.id == rootId }
@@ -551,9 +567,12 @@ class ThreadViewModel : ViewModel() {
             if (event.id == rootId) continue
             if (Nip10.isStandaloneQuote(event)) continue
 
+            // Explicitly opened notification events remain visible even if NSpam
+            // would otherwise move them out of the conversation into the spam tray.
+            val applySpamFilter = shouldApplyThreadSpamFilter(event, seedEventId)
             val noteCount = eventRepoRef?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
             val cached = spamAuthorCache?.get(event.pubkey, noteCount)
-            if (shouldHideSpamAuthor(
+            if (applySpamFilter && shouldHideSpamAuthor(
                     pubkey = event.pubkey,
                     currentUserPubkey = currentUserPubkey,
                     isFollowing = contactRepo?.isFollowing(event.pubkey) == true,
@@ -565,7 +584,7 @@ class ThreadViewModel : ViewModel() {
                 spamEvents.add(event)
                 continue
             }
-            if (spamEnabled && spamClassifier != null &&
+            if (applySpamFilter && spamEnabled && spamClassifier != null &&
                 event.pubkey != currentUserPubkey &&
                 contactRepo?.isFollowing(event.pubkey) != true &&
                 safetyPrefs?.isSpamSafelisted(event.pubkey) != true &&

@@ -2,6 +2,8 @@ package com.darkwisp.app.viewmodel
 
 import com.darkwisp.app.nostr.NostrEvent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThreadVisibilityTest {
@@ -24,4 +26,48 @@ class ThreadVisibilityTest {
         assertEquals(emptyList<String>(), filterVisibleThreadEvents(listOf(note)) { false }.map { it.id })
         assertEquals(listOf(note.id), filterVisibleThreadEvents(listOf(note)) { true }.map { it.id })
     }
+
+    @Test
+    fun threadRootAndOpenedNotificationEventRemainAsAnchors() {
+        val root = event("thread-root")
+        val openedNotificationEvent = event("opened-from-notification")
+        val hiddenReply = event("outside-wot")
+
+        val result = filterVisibleThreadEvents(
+            events = listOf(root, openedNotificationEvent, hiddenReply),
+            anchorEventIds = setOf(root.id, openedNotificationEvent.id)
+        ) { false }
+
+        assertEquals(
+            listOf(root.id, openedNotificationEvent.id),
+            result.map { it.id }
+        )
+    }
+
+    @Test
+    fun nonAnchorThreadRepliesStillFollowSharedVisibilityPolicy() {
+        val root = event("thread-root")
+        val openedNotificationEvent = event("opened-from-notification")
+        val hiddenReply = event("outside-wot")
+
+        val result = filterVisibleThreadEvents(
+            events = listOf(root, openedNotificationEvent, hiddenReply),
+            anchorEventIds = setOf(root.id, openedNotificationEvent.id)
+        ) { it.id != hiddenReply.id }
+
+        assertEquals(
+            listOf(root.id, openedNotificationEvent.id),
+            result.map { it.id }
+        )
+    }
+
+    @Test
+    fun explicitlyOpenedNotificationEventIsNotMovedToSpamTray() {
+        val openedEvent = event("opened-from-notification")
+        val otherReply = event("other-reply")
+
+        assertFalse(shouldApplyThreadSpamFilter(openedEvent, openedEvent.id))
+        assertTrue(shouldApplyThreadSpamFilter(otherReply, openedEvent.id))
+    }
+
 }
