@@ -43,5 +43,13 @@ class ConcordCommunityListEncodingTest {
         assertFalse(fragments.single().contains(ownerSalt))
         assertFalse(fragments.single().contains(root))
         assertFalse(fragments.single().contains(controlRoot))
+
+        val decoded = ConcordListFragments.decodeFragment(fragments.single())
+        val restored = ConcordCommunityList.decodeDocument(decoded.doc).entries.single()
+        assertEquals(communityId, restored.id)
+        assertEquals(owner, restored.owner)
+        assertEquals(ownerSalt, restored.ownerSalt)
+        assertEquals(root, restored.root)
+        assertEquals(controlRoot, restored.controlRoot)
     }
 }
