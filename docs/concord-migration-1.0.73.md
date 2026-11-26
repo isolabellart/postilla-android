@@ -42,3 +42,9 @@ The Coinos repository URL supplied for reference was not accessible from the bui
 This is an initial repository slice, not yet a user-facing Community chat. It does not yet restore the journal into live community state, subscribe to Control/Chat planes, implement channel messaging, or wire a Community UI. Those remain explicit implementation gates; no staging APK from this slice is intended for community testing.
 
 - CI validation request for the repository slice is recorded on the staging branch; this build is compile/test validation only, not a Community-chat test APK.
+
+- Added a first CORD-03 chat transport: public channel keys use Quartz `ConcordChannelKeys.publicChannel`; messages are kind-9 rumors wrapped as encrypted kind-1059 stream events, with channel/epoch binding checked on receive.
+- Added local membership recovery by decrypting and merging the journaled kind-33302 fragments.
+- Added a dedicated Concord tab, community creation/list UI, general-channel screen, and navigation. The existing NIP-29 Rooms tab remains available and unchanged.
+- Added a Vector invite-link flow using `https://vector.chat`, Quartz kind-13303 private Invite List and kind-33301 encrypted bundle. The Invite List is merged from all configured read relays and must be confirmed before the bundle is published; the bundle must also receive relay confirmation before the URL is shared.
+- These flows are implementation work in progress. Remote discovery/join, full control-plane folding, role/invite administration, key rotation and end-to-end Vector device testing remain open.
