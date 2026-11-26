@@ -1,6 +1,10 @@
 package com.darkwisp.app.ui.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
+import android.view.HapticFeedbackConstants
+import com.darkwisp.app.ui.component.horizontalSectionSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
@@ -445,6 +449,7 @@ fun UserProfileScreen(
     val groupsLoading by viewModel.groupsLoading.collectAsState()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val swipeHapticView = LocalView.current
     var galleryFilter by rememberSaveable { mutableIntStateOf(0) }
     var showSortDropdown by remember { mutableStateOf(false) }
 
@@ -751,6 +756,12 @@ fun UserProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .horizontalSectionSwipe(
+                    selectedIndex = selectedTab,
+                    itemCount = tabTitles.size,
+                    onSelectionChanged = { selectedTab = it },
+                    onHaptic = { swipeHapticView.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE) }
+                )
         ) {
             item {
                 @Suppress("UNUSED_EXPRESSION")
