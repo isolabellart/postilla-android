@@ -60,6 +60,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -617,6 +619,98 @@ class ConcordCommunityRepository(
         return event
     }
 
+
+
+    suspend fun kickAndRotate(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        targetPubKey: String,
+    ): RefoundingResult {
+        val target = targetPubKey.lowercase()
+        require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        val authority = control.state.authority
+        if (!authority.canActOn(signer.pubKey, target, ConcordPermissions.KICK)) {
+            throw IllegalStateException("This account cannot kick the selected member")
+        }
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)) {
+            throw IllegalStateException("A kick must be followed by an authorized whole-community rotation")
+        }
+        val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = communityId.hexToByteArray(),
+            epoch = membership.rootEpoch,
+        )
+        val kickRumor = Guestbook.kick(
+            actorPubKey = signer.pubKey,
+            target = target,
+            createdAt = System.currentTimeMillis() / 1000,
+            citation = authority.citationFor(signer.pubKey),
+        )
+        val kickEntry = Guestbook.parse(kickRumor)
+            ?: throw IllegalStateException("Quartz could not parse the generated Kick entry")
+        val kickEvent = NostrEvent.fromJson(
+            ConcordStreamEnvelope.wrap(
+                rumor = kickRumor,
+                stream = guestbookKey,
+                authorSigner = signer,
+                encrypted = true,
+            ).toJson(),
+        )
+        withContext(Dispatchers.IO) { journalEvents(communityId, listOf(kickEvent)) }
+        if (!publishConfirmed(kickEvent, membership.relays)) {
+            throw IllegalStateException("The Kick was not confirmed; no root rotation was attempted")
+        }
+        return refoundCommunity(
+            signer = signer,
+            communityId = communityId,
+            excludedMembers = setOf(target),
+            extraGuestbookEntries = listOf(kickEntry),
+        )
+    }
+
+    suspend fun banAndRotate(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        targetPubKey: String,
+    ): RefoundingResult {
+        val target = targetPubKey.lowercase()
+        require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        val authority = control.state.authority
+        if (!authority.canActOn(signer.pubKey, target, ConcordPermissions.BAN)) {
+            throw IllegalStateException("This account cannot ban the selected member")
+        }
+        val banned = (authority.bannedMembers() + target).distinct().sorted()
+        val banlistId = ConcordKeyDerivation.banlistCoordinate(communityId.hexToByteArray())
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            communityId.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[banlistId.toHexKey()]
+        val content = ConcordJson.instance.encodeToString(ListSerializer(String.serializer()), banned)
+        publishControlEdition(
+            signer = signer,
+            membership = membership,
+            control = control,
+            entityKind = ControlEntityKind.BANLIST,
+            entityId = banlistId,
+            content = content,
+            permission = ConcordPermissions.BAN,
+            previousVersion = head?.version,
+            previousHash = head?.hashHex,
+        )
+        return refoundCommunity(
+            signer = signer,
+            communityId = communityId,
+            excludedMembers = setOf(target),
+        )
+    }
 
     data class RefoundingResult(
         val communityId: String,
