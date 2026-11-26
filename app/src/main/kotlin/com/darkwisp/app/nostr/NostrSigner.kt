@@ -18,6 +18,8 @@ interface NostrSigner {
     suspend fun nip44Decrypt(ciphertext: String, peerPubkeyHex: String): String
     suspend fun nip04Encrypt(plaintext: String, peerPubkeyHex: String): String
     suspend fun nip04Decrypt(ciphertext: String, peerPubkeyHex: String): String
+    /** Quartz signer key derivation. Remote signers must fail closed unless they explicitly support it. */
+    suspend fun deriveKey(nonceHex: String): String
 }
 
 /**
@@ -58,6 +60,13 @@ class LocalSigner(
     override suspend fun nip04Decrypt(ciphertext: String, peerPubkeyHex: String): String {
         val sharedSecret = Nip04.computeSharedSecret(privkey, peerPubkeyHex.hexToByteArray())
         return try { Nip04.decrypt(ciphertext, sharedSecret) } finally { sharedSecret.wipe() }
+    }
+
+    /** Matches Quartz NostrSignerSync.deriveKey exactly (HKDF extract + SHA-256). */
+    override suspend fun deriveKey(nonceHex: String): String {
+        val derived = com.vitorpamplona.quartz.experimental.decoupling.EncryptionKeyDerivation
+            .derivePrivateKey(privkey, nonceHex.hexToByteArray())
+        return try { derived.toHex() } finally { derived.wipe() }
     }
 }
 
@@ -132,6 +141,10 @@ class RemoteSigner(
         return tryContentResolver("NIP04_DECRYPT", ciphertext, peerPubkeyHex)
             ?: nip44ViaIntent("nip04_decrypt", ciphertext, peerPubkeyHex)
     }
+
+    /** NIP-55 does not define Quartz's derive_key operation; never approximate it with NIP-44. */
+    override suspend fun deriveKey(nonceHex: String): String =
+        throw UnsupportedOperationException("The connected NIP-55 signer does not expose Quartz derive_key")
 
     // --- ContentResolver (silent mode) ---
 

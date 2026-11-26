@@ -47,8 +47,7 @@ class PostillaQuartzSigner(
     override suspend fun decryptZapEvent(event: ZapRequestEvent): PrivateZapEvent =
         throw UnsupportedOperationException("Zap decryption is outside the Concord signer bridge")
 
-    override suspend fun deriveKey(nonce: HexKey): HexKey =
-        throw UnsupportedOperationException("Quartz key derivation is not exposed by the active Postilla signer")
+    override suspend fun deriveKey(nonce: HexKey): HexKey = delegate.deriveKey(nonce)
 
     override suspend fun signPsbt(psbtHex: String): String =
         throw UnsupportedOperationException("PSBT signing is outside the Concord signer bridge")
