@@ -543,7 +543,7 @@ class ThreadViewModel : ViewModel() {
 
         val threadAnchorIds = buildSet {
             if (rootId.isNotBlank()) add(rootId)
-            seedEventId?.let(::add)
+            seedEventId?.let { add(it) }
         }
         val visibleEvents = filterVisibleThreadEvents(
             events = threadEvents.values,
