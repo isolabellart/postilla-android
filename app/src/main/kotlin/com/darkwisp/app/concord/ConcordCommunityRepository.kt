@@ -14,6 +14,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocu
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteBundleStatus
 import com.vitorpamplona.quartz.concord.crypto.ControlPlaneKeys
@@ -24,6 +25,7 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteList
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListDocument
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEntry as InviteListEntry
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEvent
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteRegistry
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.Event
@@ -368,6 +370,7 @@ class ConcordCommunityRepository(
                 limit = 5000,
             ),
             label = "control",
+            requireAllResponders = true,
         )
         val editions = controlEvents.mapNotNull { nostrEvent ->
             runCatching {
@@ -456,6 +459,7 @@ class ConcordCommunityRepository(
         relays: List<String>,
         filter: Filter,
         label: String,
+        requireAllResponders: Boolean = false,
     ): List<NostrEvent> {
         val targets = relays.distinct()
         require(targets.isNotEmpty()) { "No bootstrap relays were supplied for $label discovery" }
@@ -492,6 +496,9 @@ class ConcordCommunityRepository(
             relayPool.closeOnAllRelays(subscriptionId)
             if (responded.isEmpty()) {
                 throw IllegalStateException("No bootstrap relay completed $label discovery")
+            }
+            if (requireAllResponders && !responded.containsAll(sent)) {
+                throw IllegalStateException("The $label data is incomplete: not every community relay completed the read")
             }
         }
         return events.values.toList()
@@ -565,6 +572,73 @@ class ConcordCommunityRepository(
         }
         if (!publishConfirmed(bundleEvent, relays)) {
             throw IllegalStateException("Invite bundle was not confirmed by a community relay; do not share the link yet")
+        }
+
+        val controlRootHex = membership.controlRoot
+            ?: throw IllegalStateException("This account does not hold the current Control Plane write key")
+        val controlKeys = ControlPlaneKeys.of(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = membership.id.hexToByteArray(),
+            epoch = membership.rootEpoch,
+            controlPk = membership.controlPk,
+            controlRoot = controlRootHex,
+        )
+        val controlWraps = fetchEventsFromRelays(
+            relays = relays,
+            filter = Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = listOf(controlKeys.address),
+                limit = 5000,
+            ),
+            label = "invite-registry-control",
+            requireAllResponders = true,
+        )
+        val editions = controlWraps.mapNotNull { event ->
+            runCatching {
+                ControlEdition.fromOpened(
+                    ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), controlKeys),
+                )
+            }.getOrNull()
+        }
+        if (editions.isEmpty()) throw IllegalStateException("The current Control Plane could not be folded for invite registration")
+        val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
+        if (state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!state.authority.hasPermission(signer.pubKey, ConcordPermissions.CREATE_INVITE)) {
+            throw IllegalStateException("This account is not authorized to create community invites")
+        }
+        val registryCoordinate = ConcordInviteRegistry.coordinateHex(membership.id.hexToByteArray(), signer.pubKey)
+        val heads = ConcordCommunityState.authorizedHeads(editions, membership.id.hexToByteArray(), membership.owner)
+        val head = heads[registryCoordinate]
+        val liveLinks = ConcordInviteRegistry.nextLinks(
+            published = state.inviteRegistries[signer.pubKey].orEmpty(),
+            list = merged,
+            communityIdHex = membership.id,
+            nowSecs = createdAt,
+            minted = listOf(minted.linkSignerPubKey),
+        )
+        val registryRumor = ConcordInviteRegistry.rumor(
+            creator = signer.pubKey,
+            communityId = membership.id.hexToByteArray(),
+            linkSigners = liveLinks,
+            version = (head?.version ?: 0L) + 1L,
+            prevHash = head?.hashHex?.hexToByteArray(),
+            createdAt = createdAt,
+            authorityCitation = state.authority.citationFor(signer.pubKey),
+        )
+        val registryEvent = NostrEvent.fromJson(
+            ConcordStreamEnvelope.wrap(
+                rumor = registryRumor,
+                keys = controlKeys,
+                authorSigner = signer,
+                encrypted = false,
+                createdAt = createdAt,
+            ).toJson(),
+        )
+        withContext(Dispatchers.IO) {
+            journalEvents(communityId, listOf(registryEvent))
+        }
+        if (!publishConfirmed(registryEvent, relays)) {
+            throw IllegalStateException("The Invite Registry was not confirmed by the Control Plane relay; do not share the link yet")
         }
         return minted.url
     }
