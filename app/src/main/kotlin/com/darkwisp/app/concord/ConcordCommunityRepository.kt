@@ -9,11 +9,27 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
+import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteList
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListDocument
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEntry as InviteListEntry
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEvent
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -155,6 +171,154 @@ class ConcordCommunityRepository(
 
     fun getLocalGeneralChannelId(communityId: String): String? =
         prefs.getString(generalChannelKey(communityId), null)
+
+
+    /**
+     * Mints and publishes a Vector-compatible public invite link.
+     *
+     * The creator's encrypted kind-13303 Invite List is merged and confirmed first;
+     * only then is the public kind-33301 bundle published. This preserves the
+     * per-link token and signer secret needed to refresh or revoke the link later.
+     */
+    suspend fun createInviteLink(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        baseUrl: String = "https://vector.chat",
+        expiresAt: Long? = null,
+    ): String {
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available on this device")
+        val relays = membership.relays.distinct().take(5)
+        require(relays.isNotEmpty()) { "Community has no relay configured for invite discovery" }
+
+        val createdAt = System.currentTimeMillis() / 1000
+        val invite = CommunityInvite(
+            communityId = membership.id,
+            owner = membership.owner,
+            ownerSalt = membership.ownerSalt,
+            communityRoot = membership.root,
+            rootEpoch = membership.rootEpoch,
+            controlPk = membership.controlPk,
+            channels = emptyList(),
+            relays = relays,
+            name = membership.name,
+            expiresAt = expiresAt,
+        )
+        val minted = ConcordInviteBundle.mintLink(
+            base = baseUrl,
+            invite = invite,
+            createdAt = createdAt,
+            relays = relays,
+        )
+
+        // Never replace kind 13303 from a local-only cache: merge all currently readable
+        // relay copies so a second device's links and tombstones are not silently lost.
+        val existing = fetchInviteList(signer)
+        val addition = ConcordInviteListDocument(
+            entries = listOf(
+                InviteListEntry(
+                    token = minted.token.toHexKey(),
+                    signerSk = minted.linkSignerPrivKey.toHexKey(),
+                    communityId = communityId,
+                    url = minted.url,
+                    createdAt = createdAt,
+                    expiresAt = expiresAt,
+                ),
+            ),
+        )
+        val merged = ConcordInviteList.merge(existing, addition)
+        val listEvent = NostrEvent.fromJson(ConcordInviteListEvent.create(signer, merged, createdAt).toJson())
+        withContext(Dispatchers.IO) {
+            journalEvents("invites_${signer.pubKey}", listOf(listEvent))
+        }
+        if (!publishConfirmed(listEvent, emptyList())) {
+            throw IllegalStateException("Invite List was not confirmed by a write relay; the link was not published")
+        }
+
+        val bundleEvent = NostrEvent.fromJson(minted.bundleEvent.toJson())
+        withContext(Dispatchers.IO) {
+            journalEvents(communityId, listOf(bundleEvent))
+        }
+        if (!publishConfirmed(bundleEvent, relays)) {
+            throw IllegalStateException("Invite bundle was not confirmed by a community relay; do not share the link yet")
+        }
+        return minted.url
+    }
+
+    private suspend fun fetchInviteList(signer: PostillaQuartzSigner): ConcordInviteListDocument {
+        val readRelays = relayPool.getReadRelayUrls().distinct()
+        require(readRelays.isNotEmpty()) { "No read relays configured; refusing to overwrite the private Invite List" }
+
+        val subId = "concord-invite-list-${signer.pubKey.take(12)}-${System.nanoTime()}"
+        val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
+        val responded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        val allEose = CompletableDeferred<Unit>()
+
+        coroutineScope {
+            val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEvents
+                    .filter { it.subscriptionId == subId && it.event.kind == ConcordInviteListEvent.KIND }
+                    .collect { relayEvent ->
+                        if (relayEvent.event.pubkey == signer.pubKey) {
+                            events.putIfAbsent(relayEvent.event.id, relayEvent.event)
+                        }
+                    }
+            }
+            val eoseCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEoseSignals
+                    .filter { it.subscriptionId == subId && it.relayUrl in readRelays }
+                    .collect { signal ->
+                        responded.add(signal.relayUrl)
+                        if (responded.containsAll(readRelays)) allEose.complete(Unit)
+                    }
+            }
+            relayPool.sendToReadRelays(
+                ClientMessage.req(
+                    subId,
+                    listOf(Filter(kinds = listOf(ConcordInviteListEvent.KIND), authors = listOf(signer.pubKey), limit = 50)),
+                ),
+            )
+            val complete = withTimeoutOrNull(8_000L) {
+                allEose.await()
+                true
+            } ?: false
+            delay(150)
+            eventCollector.cancelAndJoin()
+            eoseCollector.cancelAndJoin()
+            relayPool.closeOnAllRelays(subId)
+            if (!complete) {
+                throw IllegalStateException("Could not read the Invite List from every configured read relay; refusing a destructive update")
+            }
+        }
+
+        var merged: ConcordInviteListDocument? = null
+        for (event in events.values) {
+            val plaintext = try {
+                signer.nip44Decrypt(event.content, signer.pubKey)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                throw IllegalStateException("An existing Invite List copy could not be decrypted; refusing to overwrite it", error)
+            }
+            val decoded = ConcordInviteList.decodeOrNull(plaintext)
+                ?: throw IllegalStateException("An existing Invite List copy is malformed; refusing to overwrite it")
+            merged = merged?.let { ConcordInviteList.merge(it, decoded) } ?: decoded
+        }
+        return merged ?: ConcordInviteListDocument.EMPTY
+    }
+
+    private suspend fun publishConfirmed(event: NostrEvent, additionalRelays: List<String>): Boolean {
+        val message = ClientMessage.event(event)
+        val personalWriteRelays = relayPool.getWriteRelayUrls().toSet()
+        val outcome = relayPool.publishWithConfirmation(event.id) {
+            var sent = relayPool.sendToWriteRelays(message)
+            for (url in additionalRelays.distinct().filterNot { it in personalWriteRelays }) {
+                if (relayPool.sendToRelayOrEphemeral(url, message, skipBadCheck = true, write = true)) sent++
+            }
+            sent
+        }
+        return outcome.confirmed
+    }
 
     /** Returns the locally journaled, already-signed events for recovery/retry tooling. */
     fun getJournaledEvents(communityId: String): List<NostrEvent> {
