@@ -39,9 +39,15 @@ import kotlinx.coroutines.withContext
 
 internal fun filterVisibleThreadEvents(
     events: Iterable<NostrEvent>,
+    anchorEventIds: Set<String> = emptySet(),
     isVisibleToUser: (NostrEvent) -> Boolean
 ): List<NostrEvent> =
-    events.filter(isVisibleToUser)
+    events.filter { event ->
+        // Keep the conversation root and the exact note the user opened as
+        // structural/navigation anchors. Other thread events still obey the
+        // active block, mute, deletion and Web of Trust visibility policy.
+        event.id in anchorEventIds || isVisibleToUser(event)
+    }
 
 class ThreadViewModel : ViewModel() {
     private val _rootEvent = MutableStateFlow<NostrEvent?>(null)
@@ -535,7 +541,14 @@ class ThreadViewModel : ViewModel() {
         val spamEvents = mutableListOf<NostrEvent>()
         val pubkeysToScore = mutableSetOf<String>()
 
-        val visibleEvents = filterVisibleThreadEvents(threadEvents.values) { event ->
+        val threadAnchorIds = buildSet {
+            if (rootId.isNotBlank()) add(rootId)
+            seedEventId?.let(::add)
+        }
+        val visibleEvents = filterVisibleThreadEvents(
+            events = threadEvents.values,
+            anchorEventIds = threadAnchorIds
+        ) { event ->
             eventRepoRef?.isEventVisibleToUser(event) != false
         }
         val root = visibleEvents.firstOrNull { it.id == rootId }
