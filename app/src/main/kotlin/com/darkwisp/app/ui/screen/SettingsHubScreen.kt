@@ -30,10 +30,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.darkwisp.app.R
 import com.darkwisp.app.ui.component.PostillaSettingsTitle
+
+private const val POSTILLA_PRIVACY_URL =
+    "https://github.com/isolabellart/postilla-android/blob/staging/postilla-indexer-migration-20261121/docs/PRIVACY.md"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,10 +54,13 @@ fun SettingsHubScreen(
     onRelayHealth: () -> Unit,
     onConsole: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { PostillaSettingsTitle(stringResource(R.string.drawer_settings), Icons.Outlined.Settings) },
+                title = {
+                    PostillaSettingsTitle(stringResource(R.string.drawer_settings), Icons.Outlined.Settings)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
@@ -76,12 +82,26 @@ fun SettingsHubScreen(
                 Triple(R.string.drawer_custom_emojis, Icons.Outlined.EmojiEmotions, onCustomEmojis),
                 Triple(R.string.drawer_payment_targets, Icons.Outlined.TrackChanges, onPaymentTargets),
                 Triple(R.string.drawer_relay_health, Icons.Outlined.Router, onRelayHealth),
-                Triple(R.string.drawer_console, Icons.Outlined.BugReport, onConsole)
+                Triple(R.string.drawer_console, Icons.Outlined.BugReport, onConsole),
+                Triple(R.string.drawer_privacy_security, Icons.Outlined.Shield) {
+                    uriHandler.openUri(POSTILLA_PRIVACY_URL)
+                }
             )
             entries.forEach { (labelRes, icon, action) ->
                 ListItem(
-                    leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    headlineContent = { Text(stringResource(labelRes)) },
+                    leadingContent = {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    headlineContent = {
+                        Text(
+                            text = stringResource(labelRes),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    },
                     modifier = Modifier.clickable(onClick = action)
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
