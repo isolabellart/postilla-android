@@ -51,3 +51,7 @@ This is an initial repository slice, not yet a user-facing Community chat. It do
 
 - Added invite redemption: Postilla parses a Vector link, resolves and validates the kind-33301 bundle, verifies the read-only Control Plane through Quartz, discovers the live `general` channel, and merges the membership into the user's fragmented kind-33302 list.
 - Community creation now reads and merges the existing list before publishing, using Quartz `ConcordListFragmentSet.planWrites` so incomplete fragment sets are updated safely without overwriting memberships that were not fetched.
+
+- Added member Guestbook discovery, Quartz role/grant creation and assignment, and Control Root delivery to staff grants. Staff invite redemption opens and verifies the delivered Control Root against the invite's `control_pk`.
+- Added moderation paths: public-community kicks remain Guestbook moderation; private kicks are coupled to CORD-06 refounding. Bans follow Quartz's public/private rule, and staff demotion/role deletion triggers a whole-community refounding when staff write authority is removed.
+- Added retry-safe refounding: the pending root/control-root pair is stored in encrypted preferences; signed control, registry, invite, rekey, membership, kick and new-Guestbook events are journaled before publication and replayed with the same IDs after failure. Private-channel rotations are explicitly refused until their independent channel keys can be rekeyed.
