@@ -12,16 +12,27 @@ import com.darkwisp.app.relay.OutboxRouter
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.relay.RelayScoreBoard
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.ExtendedNetworkCache
 import com.darkwisp.app.repo.MuteRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+
+internal fun filterVisibleHashtagEvents(
+    events: Iterable<NostrEvent>,
+    isVisibleToUser: (NostrEvent) -> Boolean
+): List<NostrEvent> =
+    events.asSequence()
+        .filter { it.kind == 1 && isVisibleToUser(it) }
+        .sortedByDescending { it.created_at }
+        .toList()
 
 class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
     private val _notes = MutableStateFlow<List<NostrEvent>>(emptyList())
@@ -41,8 +52,9 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
     private var outboxRouterRef: OutboxRouter? = null
     private var relayScoreBoardRef: RelayScoreBoard? = null
     private var loadJob: Job? = null
-    private var muteObserverJob: Job? = null
+    private var visibilityObserverJob: Job? = null
     private val activeSubIds = mutableListOf<String>()
+    private val allNotes = mutableListOf<NostrEvent>()
     private var loadCounter = 0
     private var noteSub = "hashtag-notes-0"
     private var engagePrefix = "hashtag-engage-0"
@@ -88,20 +100,30 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
 
         _hashtag.value = displayTag
         _notes.value = emptyList()
+        allNotes.clear()
         _isLoading.value = true
         relayPoolRef = relayPool
         eventRepoRef = eventRepo
         outboxRouterRef = outboxRouter
         relayScoreBoardRef = relayScoreBoard
 
-        muteObserverJob?.cancel()
-        if (muteRepo != null) {
-            muteObserverJob = muteRepo.blockedPubkeys
-                .onEach { blocked ->
-                    _notes.value = _notes.value.filter { it.pubkey !in blocked }
-                }
-                .launchIn(viewModelScope)
-        }
+        visibilityObserverJob?.cancel()
+        val effectiveMuteRepo = muteRepo ?: eventRepo.muteRepo
+        val blockedPubkeys = effectiveMuteRepo?.blockedPubkeys ?: flowOf<Set<String>>(emptySet())
+        val mutedWords = effectiveMuteRepo?.mutedWords ?: flowOf<Set<String>>(emptySet())
+        val mutedThreads = effectiveMuteRepo?.mutedThreads ?: flowOf<Set<String>>(emptySet())
+        val wotEnabled = eventRepo.safetyPrefs?.wotFilterEnabled ?: flowOf(false)
+        val networkSnapshot = eventRepo.extendedNetworkRepo?.cachedNetwork
+            ?: flowOf<ExtendedNetworkCache?>(null)
+        visibilityObserverJob = combine(
+            blockedPubkeys,
+            mutedWords,
+            mutedThreads,
+            wotEnabled,
+            networkSnapshot
+        ) { _, _, _, _, _ ->
+            publishVisibleNotes(eventRepo)
+        }.launchIn(viewModelScope)
 
         loadCounter++
         noteSub = "hashtag-notes-$loadCounter"
@@ -116,16 +138,9 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
                 relayPool.relayEvents.collect { relayEvent ->
                     if (relayEvent.subscriptionId == currentNoteSub) {
                         val event = relayEvent.event
-                        if (event.kind == 1 && event.id !in seenIds) {
-                            if (muteRepo?.isBlocked(event.pubkey) == true) return@collect
-                            if (muteRepo?.isEventMuted(event) == true) return@collect
-                            seenIds.add(event.id)
-                            eventRepo.cacheEvent(event)
-                            eventRepo.requestProfileIfMissing(event.pubkey)
-                            val current = _notes.value.toMutableList()
-                            current.add(event)
-                            current.sortByDescending { it.created_at }
-                            _notes.value = current
+                        if (event.kind == 1 && seenIds.add(event.id)) {
+                            allNotes.add(event)
+                            publishVisibleNotes(eventRepo)
                         }
                     }
                     if (relayEvent.subscriptionId.startsWith(engagePrefix)) {
@@ -169,6 +184,16 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun publishVisibleNotes(eventRepo: EventRepository) {
+        val visible = filterVisibleHashtagEvents(allNotes, eventRepo::isEventVisibleToUser)
+        val previousIds = _notes.value.mapTo(HashSet()) { it.id }
+        visible.filter { it.id !in previousIds }.forEach { event ->
+            eventRepo.cacheEvent(event)
+            eventRepo.requestProfileIfMissing(event.pubkey)
+        }
+        _notes.value = visible
+    }
+
     private fun subscribeEngagement(relayPool: RelayPool, eventRepo: EventRepository) {
         val notes = _notes.value
         if (notes.isEmpty()) return
@@ -203,7 +228,7 @@ class HashtagFeedViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         super.onCleared()
         loadJob?.cancel()
-        muteObserverJob?.cancel()
+        visibilityObserverJob?.cancel()
         relayPoolRef?.let { closeAllSubs(it) }
     }
 }

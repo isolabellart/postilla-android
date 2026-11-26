@@ -1516,4 +1516,19 @@
     <string name="settings_update_check_available">È disponibile Postilla %1$s. L\'avviso di aggiornamento apparirà nella parte superiore dell\'app.</string>
     <string name="settings_update_check_preview">Versione Preview: è attiva l\'offerta di prova %1$s; gli aggiornamenti stabili sono disabilitati in Preview.</string>
     <string name="settings_update_check_failed">Impossibile controllare gli aggiornamenti. Verifica la connessione Internet e riprova.</string>
+
+    <string name="btn_broadcast">Broadcast</string>
+    <string name="broadcast_result_title">Esito Broadcast</string>
+    <string name="broadcast_in_progress">Invio dell’evento originale ai relay di scrittura…</string>
+    <string name="broadcast_summary">%1$d confermati, %2$d già presenti, %3$d senza conferma (su %4$d relay di scrittura)</string>
+    <string name="broadcast_status_accepted">Confermato</string>
+    <string name="broadcast_status_already_present">Già presente</string>
+    <string name="broadcast_status_rejected">Rifiutato: %1$s</string>
+    <string name="broadcast_status_not_sent">Non inviato (relay non disponibile)</string>
+    <string name="broadcast_status_no_ack">Nessuna conferma ricevuta</string>
+    <string name="broadcast_no_write_relays">Non ci sono altri relay di scrittura configurati. Il relay locale non viene contattato di nuovo.</string>
+    <string name="broadcast_private_event">I messaggi privati non possono essere trasmessi ai relay pubblici.</string>
+    <string name="broadcast_invalid_signature">La firma dell’evento originale non è valida.</string>
+    <string name="broadcast_unavailable">Il Broadcast non è disponibile in questo momento.</string>
+    <string name="broadcast_failed">Broadcast non riuscito. Riprova.</string>
 </resources>

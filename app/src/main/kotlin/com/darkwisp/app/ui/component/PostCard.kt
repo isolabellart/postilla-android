@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -43,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,6 +88,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import com.darkwisp.app.nostr.Nip69
 import com.darkwisp.app.nostr.Nip88
 import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.relay.EventBroadcastFailure
+import com.darkwisp.app.relay.EventBroadcastReport
+import com.darkwisp.app.relay.EventBroadcastStatus
+import kotlinx.coroutines.launch
 import com.darkwisp.app.repo.Nip05Repository
 import com.darkwisp.app.repo.ZapDetail
 import com.darkwisp.app.repo.Nip05Status
@@ -212,6 +219,13 @@ fun PostCard(
     val hasReactionDetails = reactionDetails.isNotEmpty() || zapDetails.isNotEmpty() || repostDetails.isNotEmpty()
     var expandedDetails by remember { mutableStateOf(false) }
     var showTranslation by remember(event.id) { mutableStateOf(true) }
+    val broadcastScope = rememberCoroutineScope()
+    var broadcastInProgress by remember(event.id) { mutableStateOf(false) }
+    var broadcastReport by remember(event.id) { mutableStateOf<EventBroadcastReport?>(null) }
+    var broadcastFailed by remember(event.id) { mutableStateOf(false) }
+    val isPublicBroadcastEvent = !isPrivate && event.kind !in setOf(4, 13, 14, 15, 1059) &&
+        eventRepo?.isPrivate(event.id) != true
+    val canBroadcast = isPublicBroadcastEvent && eventRepo?.isBroadcastAvailable == true
     val isTranslating =
         translationState.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
         translationState.status == TranslationStatus.DOWNLOADING_MODEL ||
@@ -506,8 +520,34 @@ fun PostCard(
                             }
                         )
                     }
+                    if (isPublicBroadcastEvent) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.btn_share)) },
+                            text = { Text(stringResource(R.string.btn_broadcast)) },
+                            enabled = canBroadcast && !broadcastInProgress,
+                            onClick = {
+                                menuExpanded = false
+                                val repository = eventRepo
+                                if (repository != null && repository.isBroadcastAvailable) {
+                                    broadcastReport = null
+                                    broadcastFailed = false
+                                    broadcastInProgress = true
+                                    broadcastScope.launch {
+                                        try {
+                                            broadcastReport = repository.broadcastEvent(event)
+                                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                            throw cancelled
+                                        } catch (_: Exception) {
+                                            broadcastFailed = true
+                                        } finally {
+                                            broadcastInProgress = false
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.btn_share)) },
                         onClick = {
                             menuExpanded = false
                             try {
@@ -571,6 +611,87 @@ fun PostCard(
                                 showTranslation = !showTranslation
                             } else {
                                 onTranslate()
+                            }
+                        }
+                    )
+                }
+                if (broadcastInProgress) {
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text(stringResource(R.string.broadcast_result_title)) },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Text(stringResource(R.string.broadcast_in_progress))
+                            }
+                        },
+                        confirmButton = {}
+                    )
+                }
+                val completedBroadcast = broadcastReport
+                if (completedBroadcast != null || broadcastFailed) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            broadcastReport = null
+                            broadcastFailed = false
+                        },
+                        title = { Text(stringResource(R.string.broadcast_result_title)) },
+                        text = {
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 340.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                if (broadcastFailed) {
+                                    Text(stringResource(R.string.broadcast_failed))
+                                } else if (completedBroadcast?.failureReason != null) {
+                                    Text(
+                                        when (completedBroadcast.failureReason) {
+                                            EventBroadcastFailure.NO_WRITE_RELAYS -> stringResource(R.string.broadcast_no_write_relays)
+                                            EventBroadcastFailure.PRIVATE_EVENT -> stringResource(R.string.broadcast_private_event)
+                                            EventBroadcastFailure.INVALID_SIGNATURE -> stringResource(R.string.broadcast_invalid_signature)
+                                            EventBroadcastFailure.UNAVAILABLE -> stringResource(R.string.broadcast_unavailable)
+                                            null -> stringResource(R.string.broadcast_failed)
+                                        }
+                                    )
+                                } else if (completedBroadcast != null) {
+                                    val notConfirmed = completedBroadcast.relayResults.size -
+                                        completedBroadcast.acceptedCount - completedBroadcast.alreadyPresentCount
+                                    Text(
+                                        stringResource(
+                                            R.string.broadcast_summary,
+                                            completedBroadcast.acceptedCount,
+                                            completedBroadcast.alreadyPresentCount,
+                                            notConfirmed,
+                                            completedBroadcast.relayResults.size
+                                        )
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    completedBroadcast.relayResults.forEach { result ->
+                                        Text(result.relayUrl, style = MaterialTheme.typography.labelLarge)
+                                        val statusText = when (result.status) {
+                                            EventBroadcastStatus.ACCEPTED -> stringResource(R.string.broadcast_status_accepted)
+                                            EventBroadcastStatus.ALREADY_PRESENT -> stringResource(R.string.broadcast_status_already_present)
+                                            EventBroadcastStatus.REJECTED -> stringResource(
+                                                R.string.broadcast_status_rejected,
+                                                result.detail.ifBlank { "No reason supplied" }
+                                            )
+                                            EventBroadcastStatus.NOT_SENT -> stringResource(R.string.broadcast_status_not_sent)
+                                            EventBroadcastStatus.NO_ACK -> stringResource(R.string.broadcast_status_no_ack)
+                                        }
+                                        Text(statusText, style = MaterialTheme.typography.bodySmall)
+                                        Spacer(Modifier.height(8.dp))
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                broadcastReport = null
+                                broadcastFailed = false
+                            }) {
+                                Text(stringResource(R.string.btn_close))
                             }
                         }
                     )

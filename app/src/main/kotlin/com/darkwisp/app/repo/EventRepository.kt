@@ -16,6 +16,8 @@ import com.darkwisp.app.nostr.Nip99
 import com.darkwisp.app.nostr.Nip01EventOrder
 import com.darkwisp.app.nostr.Nip23
 import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.relay.EventBroadcastFailure
+import com.darkwisp.app.relay.EventBroadcastReport
 import com.darkwisp.app.nostr.NostrEvent.Companion.fromJson
 import com.darkwisp.app.nostr.ProfileData
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +71,13 @@ data class ZapDetail(
     val receiptEventId: String? = null
 )
 
+internal fun passesRelayFeedVisibility(
+    event: NostrEvent,
+    nowEpochSeconds: Long,
+    isVisibleToUser: (NostrEvent) -> Boolean
+): Boolean =
+    event.created_at <= nowEpochSeconds + 30 && isVisibleToUser(event)
+
 class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: MuteRepository? = null, val relayHintStore: RelayHintStore? = null) {
     var metadataFetcher: MetadataFetcher? = null
     var deletedEventsRepo: DeletedEventsRepository? = null
@@ -106,6 +115,19 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
 
     fun markPrivate(eventId: String) { privateEventIds.add(eventId) }
     fun isPrivate(eventId: String): Boolean = eventId in privateEventIds
+
+    /** The active account's RelayPool is injected here to keep UI cards independent of relay ownership. */
+    @Volatile var eventBroadcastHandler: (suspend (NostrEvent) -> EventBroadcastReport)? = null
+    val isBroadcastAvailable: Boolean get() = eventBroadcastHandler != null
+
+    suspend fun broadcastEvent(event: NostrEvent): EventBroadcastReport {
+        if (isPrivate(event.id) || event.kind in setOf(4, 13, 14, 15, 1059)) {
+            return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.PRIVATE_EVENT)
+        }
+        val handler = eventBroadcastHandler
+            ?: return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.UNAVAILABLE)
+        return handler(event)
+    }
 
     /** Emits event IDs that were removed (e.g. via NIP-09 deletion). Screens like ThreadScreen
      *  observe this to prune their local state when a deletion arrives on any subscription. */
@@ -653,6 +675,13 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         if (muteRepo?.isBlocked(event.pubkey) == true) return false
         if (muteRepo?.isEventMuted(event) == true) return false
         if (deletedEventsRepo?.isEventDeleted(event) == true) return false
+        if (event.kind == 1 || event.kind == Nip22.KIND_COMMENT) {
+            val threadRoot = Nip22.getRootScopeId(event)
+                ?: Nip10.getRootId(event)
+                ?: Nip10.getReplyTarget(event)
+                ?: event.id
+            if (muteRepo?.isThreadMuted(threadRoot) == true) return false
+        }
         return !isWotFiltered(event.pubkey, event.kind)
     }
 
@@ -2416,9 +2445,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun addRelayFeedEvent(event: NostrEvent) {
-        if (event.created_at > System.currentTimeMillis() / 1000 + 30) return
-        if (muteRepo?.isBlocked(event.pubkey) == true) return
-        if (deletedEventsRepo?.isDeleted(event.id) == true) return
+        if (!passesRelayFeedVisibility(event, System.currentTimeMillis() / 1000, ::isEventVisibleToUser)) return
 
         when (event.kind) {
             1 -> {
@@ -2451,8 +2478,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 if (event.content.isNotBlank()) {
                     try {
                         val inner = NostrEvent.fromJson(event.content)
-                        if (muteRepo?.isBlocked(inner.pubkey) == true) return
-                        if (muteRepo?.isEventMuted(inner) == true) return
+                        if (!isEventVisibleToUser(inner)) return
                         // Track repost metadata for badges
                         recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
@@ -2469,9 +2495,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     }
 
     fun addTrendingFeedEvent(event: NostrEvent) {
-        if (event.created_at > System.currentTimeMillis() / 1000 + 30) return
-        if (muteRepo?.isBlocked(event.pubkey) == true) return
-        if (deletedEventsRepo?.isDeleted(event.id) == true) return
+        if (!passesRelayFeedVisibility(event, System.currentTimeMillis() / 1000, ::isEventVisibleToUser)) return
 
         when (event.kind) {
             1 -> {
@@ -2504,8 +2528,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
                 if (event.content.isNotBlank()) {
                     try {
                         val inner = NostrEvent.fromJson(event.content)
-                        if (muteRepo?.isBlocked(inner.pubkey) == true) return
-                        if (muteRepo?.isEventMuted(inner) == true) return
+                        if (!isEventVisibleToUser(inner)) return
                         recordRepost(event, inner)
                         val isReply = Nip10.isReply(inner)
                         if (!isReply) {
