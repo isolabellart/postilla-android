@@ -644,7 +644,10 @@ class ConcordCommunityRepository(
 
 
 
-    data class KickResult(val communityId: String, val targetPubKey: String, val didRefound: Boolean, val newEpoch: Long)\n\n    suspend fun kickAndRotate(\n        signer: PostillaQuartzSigner,\n        communityId: String,\n        targetPubKey: String,\n    ): KickResult {
+    data class KickResult(val communityId: String, val targetPubKey: String, val didRefound: Boolean, val newEpoch: Long)
+
+    suspend fun kickAndRotate(
+        signer: PostillaQuartzSigner,\n        communityId: String,\n        targetPubKey: String,\n    ): KickResult {
         val target = targetPubKey.lowercase()
         require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
