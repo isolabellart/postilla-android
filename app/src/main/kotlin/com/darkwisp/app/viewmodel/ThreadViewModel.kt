@@ -49,6 +49,9 @@ internal fun filterVisibleThreadEvents(
         event.id in anchorEventIds || isVisibleToUser(event)
     }
 
+internal fun shouldApplyThreadSpamFilter(event: NostrEvent, seedEventId: String?): Boolean =
+    event.id != seedEventId
+
 class ThreadViewModel : ViewModel() {
     private val _rootEvent = MutableStateFlow<NostrEvent?>(null)
     val rootEvent: StateFlow<NostrEvent?> = _rootEvent
@@ -564,9 +567,12 @@ class ThreadViewModel : ViewModel() {
             if (event.id == rootId) continue
             if (Nip10.isStandaloneQuote(event)) continue
 
+            // Explicitly opened notification events remain visible even if NSpam
+            // would otherwise move them out of the conversation into the spam tray.
+            val applySpamFilter = shouldApplyThreadSpamFilter(event, seedEventId)
             val noteCount = eventRepoRef?.getCachedEventsByAuthor(event.pubkey, 1, 10)?.size ?: 0
             val cached = spamAuthorCache?.get(event.pubkey, noteCount)
-            if (shouldHideSpamAuthor(
+            if (applySpamFilter && shouldHideSpamAuthor(
                     pubkey = event.pubkey,
                     currentUserPubkey = currentUserPubkey,
                     isFollowing = contactRepo?.isFollowing(event.pubkey) == true,
@@ -578,7 +584,7 @@ class ThreadViewModel : ViewModel() {
                 spamEvents.add(event)
                 continue
             }
-            if (spamEnabled && spamClassifier != null &&
+            if (applySpamFilter && spamEnabled && spamClassifier != null &&
                 event.pubkey != currentUserPubkey &&
                 contactRepo?.isFollowing(event.pubkey) != true &&
                 safetyPrefs?.isSpamSafelisted(event.pubkey) != true &&
