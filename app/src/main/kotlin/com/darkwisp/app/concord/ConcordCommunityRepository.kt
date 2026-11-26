@@ -791,6 +791,9 @@ class ConcordCommunityRepository(
             throw IllegalStateException("A refounding plan exists but its encrypted key reservation is unavailable; refusing to create a second rotation")
         }
         if (pending != null && savedPlanReady) {
+            if (excludedMembers.isNotEmpty() || extraGuestbookEvents.isNotEmpty() || extraControlEvents.isNotEmpty()) {
+                throw IllegalStateException("A different refounding is already pending; resume it before starting another moderation action")
+            }
             val stillOnOldEpoch = pending.matches(communityId, membership.rootEpoch, membership.root.hexToByteArray())
             val alreadyAdopted = membership.rootEpoch == pending.rootEpoch + 1 &&
                 membership.root == pending.newRoot.toHexKey()
