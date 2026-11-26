@@ -5,8 +5,7 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
-import com.vitorpamplona.quartz.concord.crypto.ConcordKeyDerivation
-import com.vitorpamplona.quartz.concord.crypto.ConcordLabels
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
@@ -37,7 +36,6 @@ class ConcordChatRepository(
     suspend fun sendMessage(
         signer: PostillaQuartzSigner,
         communityRootHex: String,
-        communityIdHex: String,
         channelIdHex: String,
         epoch: Long,
         text: String,
@@ -46,7 +44,7 @@ class ConcordChatRepository(
         val message = text.trim()
         require(message.isNotEmpty()) { "Message cannot be empty" }
 
-        val channelKey = channelKey(communityRootHex, communityIdHex, channelIdHex, epoch)
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
         val rumor = ChannelChat.message(
             authorPubKey = signer.pubKey,
             channelId = channelIdHex,
@@ -76,7 +74,6 @@ class ConcordChatRepository(
      */
     fun observeChannel(
         communityRootHex: String,
-        communityIdHex: String,
         channelIdHex: String,
         epoch: Long,
         since: Long? = null,
@@ -132,13 +129,11 @@ class ConcordChatRepository(
 
     private fun channelKey(
         communityRootHex: String,
-        communityIdHex: String,
         channelIdHex: String,
         epoch: Long,
-    ) = ConcordKeyDerivation.groupKey(
-        label = ConcordLabels.CHANNEL,
-        secret = communityRootHex.hexToByteArray(),
-        id = channelIdHex.hexToByteArray(),
-        epoch = epoch,
+    ) = ConcordChannelKeys.publicChannel(
+        communityRoot = communityRootHex.hexToByteArray(),
+        channelId = channelIdHex.hexToByteArray(),
+        rootEpoch = epoch,
     )
 }
