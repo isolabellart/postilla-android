@@ -47,6 +47,21 @@ jobs:
 
       # Use the bounded Gradle configuration used by staging validation.
       # In-process Kotlin compilation avoids a second JVM exhausting runner memory.
+      - name: Install Android API 37 Preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT" -type f -name sdkmanager -print -quit)"
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "::error::Android sdkmanager was not found below $SDK_ROOT"
+            exit 1
+          fi
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" --channel=3 "platforms;android-37" "build-tools;37.0.0"
+
       - name: Build for CodeQL
         run: |
           ./gradlew --no-daemon --max-workers=2 \
