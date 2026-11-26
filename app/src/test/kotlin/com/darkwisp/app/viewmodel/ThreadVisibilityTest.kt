@@ -2,6 +2,8 @@ package com.darkwisp.app.viewmodel
 
 import com.darkwisp.app.nostr.NostrEvent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThreadVisibilityTest {
@@ -57,6 +59,15 @@ class ThreadVisibilityTest {
             listOf(root.id, openedNotificationEvent.id),
             result.map { it.id }
         )
+    }
+
+    @Test
+    fun explicitlyOpenedNotificationEventIsNotMovedToSpamTray() {
+        val openedEvent = event("opened-from-notification")
+        val otherReply = event("other-reply")
+
+        assertFalse(shouldApplyThreadSpamFilter(openedEvent, openedEvent.id))
+        assertTrue(shouldApplyThreadSpamFilter(otherReply, openedEvent.id))
     }
 
 }
