@@ -395,6 +395,7 @@ class ConcordCommunityRepository(
                     controlKeys.readKey.conversationKey,
                 )
                 ControlEdition.fromOpened(opened)
+                    ?: throw IllegalStateException("The decrypted wrap is not a canonical Control Plane edition")
             } catch (error: Exception) {
                 throw IllegalStateException("A Control Plane edition failed cryptographic validation", error)
             }
@@ -632,7 +633,7 @@ class ConcordCommunityRepository(
             try {
                 ControlEdition.fromOpened(
                     ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), controlKeys),
-                )
+                ) ?: throw IllegalStateException("The decrypted wrap is not a canonical Control Plane edition")
             } catch (error: Exception) {
                 throw IllegalStateException("A Control Plane edition failed cryptographic validation", error)
             }
