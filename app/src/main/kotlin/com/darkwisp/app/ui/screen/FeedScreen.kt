@@ -1227,31 +1227,11 @@ fun FeedScreen(
                     }
 
                     AnimatedVisibility(visible = !autoHideFeedChrome || feedChromeVisible) {
-                    val feedSectionIndex = if (showFeedTypeDropdown) 3 else when (feedType) {
-                        FeedType.FOR_YOU -> 0
-                        FeedType.FOLLOWS -> 1
-                        FeedType.WITH_REPLIES -> 2
-                        else -> 3
-                    }
-                    val hapticView = LocalView.current
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(76.dp)
-                            .padding(horizontal = 8.dp)
-                            .horizontalSectionSwipe(
-                                selectedIndex = feedSectionIndex,
-                                itemCount = 4,
-                                onSelectionChanged = { index ->
-                                    when (index) {
-                                        0 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.FOR_YOU) }
-                                        1 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.FOLLOWS) }
-                                        2 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.WITH_REPLIES) }
-                                        3 -> { showFeedTypeDropdown = true }
-                                    }
-                                },
-                                onHaptic = { hapticView.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE) }
-                            ),
+                            .padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(0.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1372,10 +1352,30 @@ fun FeedScreen(
                 }
             }
         ) { padding ->
+            val feedSectionIndex = if (showFeedTypeDropdown) 3 else when (feedType) {
+                FeedType.FOR_YOU -> 0
+                FeedType.FOLLOWS -> 1
+                FeedType.WITH_REPLIES -> 2
+                else -> 3
+            }
+            val hapticView = LocalView.current
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
+                    .horizontalSectionSwipe(
+                        selectedIndex = feedSectionIndex,
+                        itemCount = 4,
+                        onSelectionChanged = { index ->
+                            when (index) {
+                                0 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.FOR_YOU) }
+                                1 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.FOLLOWS) }
+                                2 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.WITH_REPLIES) }
+                                3 -> { showFeedTypeDropdown = true }
+                            }
+                        },
+                        onHaptic = { hapticView.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE) }
+                    )
             ) {
             // Relay feed header bar
             if (feedType == FeedType.RELAY && selectedRelay != null) {
