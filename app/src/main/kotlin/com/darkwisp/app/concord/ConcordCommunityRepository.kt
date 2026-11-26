@@ -14,6 +14,8 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocu
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
 import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
+import com.vitorpamplona.quartz.concord.cord02Community.GuestbookAction
+import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
@@ -319,6 +321,97 @@ class ConcordCommunityRepository(
     fun getLocalGeneralChannelId(communityId: String): String? =
         prefs.getString(generalChannelKey(communityId), null)
 
+
+
+    data class CommunityMember(
+        val pubkey: String,
+        val joinedAt: Long,
+        val inviteCreator: String? = null,
+        val inviteLabel: String? = null,
+    )
+
+    private data class ControlPlaneSnapshot(
+        val keys: ControlPlaneKeys,
+        val wraps: List<Event>,
+        val editions: List<ControlEdition>,
+        val state: ConcordCommunityState,
+    )
+
+    private suspend fun loadControlPlaneSnapshot(
+        membership: ConcordCommunityListEntry,
+    ): ControlPlaneSnapshot {
+        val keys = ControlPlaneKeys.of(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = membership.id.hexToByteArray(),
+            epoch = membership.rootEpoch,
+            controlPk = membership.controlPk,
+            controlRoot = membership.controlRoot,
+        )
+        val events = fetchEventsFromRelays(
+            relays = membership.relays,
+            filter = Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = listOf(keys.address),
+                limit = 5000,
+            ),
+            label = "control-state",
+            requireAllResponders = true,
+        )
+        val wraps = events.map { Event.fromJson(it.toJson()) }
+        val editions = wraps.map { wrap ->
+            val opened = ConcordStreamEnvelope.open(wrap, keys)
+            ControlEdition.fromOpened(opened)
+                ?: throw IllegalStateException("A Control Plane edition is not canonical")
+        }
+        if (editions.isEmpty()) throw IllegalStateException("The community Control Plane is empty or unavailable")
+        val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
+        return ControlPlaneSnapshot(keys, wraps, editions, state)
+    }
+
+    /** Reads and coalesces the Guestbook against the currently folded authority roster. */
+    suspend fun loadMembers(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+    ): List<CommunityMember> {
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = membership.id.hexToByteArray(),
+            epoch = membership.rootEpoch,
+        )
+        val events = fetchEventsFromRelays(
+            relays = membership.relays,
+            filter = Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = listOf(guestbookKey.publicKeyHex),
+                limit = 5000,
+            ),
+            label = "guestbook",
+            requireAllResponders = true,
+        )
+        val entries = events.mapNotNull { event ->
+            try {
+                val opened = ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), guestbookKey)
+                Guestbook.parse(opened.rumor)
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return Guestbook.coalesce(entries, System.currentTimeMillis(), control.state.authority)
+            .values
+            .filter { it.action == GuestbookAction.JOIN }
+            .sortedBy { it.createdAt }
+            .map {
+                CommunityMember(
+                    pubkey = it.member,
+                    joinedAt = it.createdAt,
+                    inviteCreator = it.inviteCreator,
+                    inviteLabel = it.inviteLabel,
+                )
+            }
+    }
 
     data class JoinResult(
         val communityId: String,
