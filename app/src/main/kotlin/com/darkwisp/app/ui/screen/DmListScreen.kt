@@ -83,6 +83,8 @@ import com.darkwisp.app.ui.component.ProfilePicture
 import com.darkwisp.app.viewmodel.DmListViewModel
 import com.darkwisp.app.ui.theme.wispSwitchColors
 import com.darkwisp.app.viewmodel.GroupListViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
+import com.darkwisp.app.relay.RelayPool
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -92,6 +94,8 @@ import java.util.Locale
 fun DmListScreen(
     viewModel: DmListViewModel,
     groupListViewModel: GroupListViewModel,
+    concordCommunityViewModel: ConcordCommunityViewModel,
+    relayPool: RelayPool,
     eventRepo: EventRepository,
     userPubkey: String? = null,
     signer: NostrSigner? = null,
@@ -99,6 +103,7 @@ fun DmListScreen(
     onConversation: (DmConversation) -> Unit,
     onNewGroupDm: () -> Unit = {},
     onGroupRoom: (relayUrl: String, groupId: String) -> Unit = { _, _ -> },
+    onConcordCommunity: (communityId: String) -> Unit = {},
     legacyDmEnabled: Boolean = true,
     onNewLegacyDm: () -> Unit = {}
 ) {
@@ -148,6 +153,7 @@ fun DmListScreen(
     }
     // Ensure the public Postilla community is present for the active account.
     LaunchedEffect(userPubkey, signer) {
+        concordCommunityViewModel.init(relayPool, signer)
         if (!userPubkey.isNullOrBlank()) {
             groupListViewModel.ensureDefaultCommunityGroup(signer)
         }
@@ -217,7 +223,7 @@ fun DmListScreen(
             )
         },
         floatingActionButton = {
-            Box {
+            if (selectedTab != "concord") Box {
                 FloatingActionButton(
                     onClick = {
                         when (selectedTab) {
@@ -265,7 +271,7 @@ fun DmListScreen(
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { _, amount -> drag += amount },
                         onDragEnd = {
-                            val tabs = if (legacyDmEnabled) listOf("private", "classic", "rooms") else listOf("private", "rooms")
+                            val tabs = if (legacyDmEnabled) listOf("private", "classic", "rooms", "concord") else listOf("private", "rooms", "concord")
                             val index = tabs.indexOf(selectedTab).coerceAtLeast(0)
                             if (drag < -70f && index < tabs.lastIndex) selectedTab = tabs[index + 1]
                             if (drag > 70f && index > 0) selectedTab = tabs[index - 1]
@@ -278,7 +284,8 @@ fun DmListScreen(
             val selectedTabIndex = when (selectedTab) {
                 "private" -> 0
                 "classic" -> 1
-                else -> if (legacyDmEnabled) 2 else 1
+                "rooms" -> if (legacyDmEnabled) 2 else 1
+                else -> if (legacyDmEnabled) 3 else 2
             }
             TabRow(selectedTabIndex = selectedTabIndex) {
                 Tab(
@@ -313,6 +320,16 @@ fun DmListScreen(
                         }
                     }
                 )
+                Tab(
+                    selected = selectedTab == "concord",
+                    onClick = { selectedTab = "concord" },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Icon(Icons.Outlined.Groups, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Text(stringResource(R.string.tab_concord_communities), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                )
             }
 
             val unreadGroups by groupListViewModel.unreadGroups.collectAsState()
@@ -344,6 +361,13 @@ fun DmListScreen(
                     onToggleNotify = { relayUrl, groupId, enabled ->
                         groupListViewModel.setGroupNotified(relayUrl, groupId, enabled)
                     }
+                )
+                "concord" -> ConcordCommunitiesScreen(
+                    viewModel = concordCommunityViewModel,
+                    relayPool = relayPool,
+                    signer = signer,
+                    onOpenCommunity = onConcordCommunity,
+                    embedded = true,
                 )
             }
         }
