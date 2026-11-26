@@ -155,6 +155,7 @@ fun WispDrawerContent(
     onConsole: () -> Unit = {},
     onRelayHealth: () -> Unit = {},
     onRelaySettings: () -> Unit,
+    onSettings: () -> Unit = {},
     onInterfaceSettings: () -> Unit = {},
     onLogout: () -> Unit,
     torState: TorManager.State = TorManager.State.Off,
@@ -692,15 +693,9 @@ fun WispDrawerContent(
         NavigationDrawerItem(
             icon = { PostillaDrawerIcon(Icons.Outlined.Settings) },
             label = { Text(stringResource(R.string.drawer_settings)) },
-            badge = {
-                Icon(
-                    if (settingsExpanded) Icons.Outlined.KeyboardArrowDown
-                    else Icons.Outlined.KeyboardArrowRight,
-                    contentDescription = null
-                )
-            },
+            badge = {},
             selected = false,
-            onClick = { onSettingsExpandedChange(!settingsExpanded) },
+            onClick = onSettings,
             modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
         )
         AnimatedVisibility(visible = settingsExpanded) {
