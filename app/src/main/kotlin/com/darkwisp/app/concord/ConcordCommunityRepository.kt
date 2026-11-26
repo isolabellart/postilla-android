@@ -1261,8 +1261,16 @@ class ConcordCommunityRepository(
         val currentList = fetchCommunityList(signer)
         val existingMembership = currentList.document.entries.firstOrNull { it.id == invite.communityId }
         val memberControlRoot = when {
-            state.authority.isOwner(signer.pubKey) -> existingMembership?.controlRoot
-                ?: throw IllegalStateException("The owner must restore the original private membership list; an invite link does not disclose the owner's Control Root")
+            state.authority.isOwner(signer.pubKey) -> {
+                if (existingMembership == null ||
+                    existingMembership.root != invite.communityRoot ||
+                    existingMembership.rootEpoch != invite.rootEpoch
+                ) {
+                    throw IllegalStateException("The owner must restore a matching private membership list; an invite link does not disclose the owner's Control Root")
+                }
+                existingMembership.controlRoot
+                    ?: throw IllegalStateException("The owner's Control Root is missing from the private membership list")
+            }
             state.authority.effectivePermissions(signer.pubKey).hasAny(ConcordPermissions.STAFF_BITS) -> {
                 val grantHead = state.authority.grantHead(signer.pubKey)
                     ?: throw IllegalStateException("A staff member has no honored Grant head")
@@ -1279,7 +1287,7 @@ class ConcordCommunityRepository(
                 val grant = ConcordJson.instance.decodeFromString(GrantEntity.serializer(), grantEdition.content)
                 val wrappedRoot = grant.controlWrap
                     ?: throw IllegalStateException("The staff Grant does not carry a Control Root")
-                val delivered = ControlRootWrap.openOrNull(wrappedRoot, signer, grantEdition.authorPubKey)
+                val delivered = ControlRootWrap.openOrNull(wrappedRoot, signer, grantEdition.author)
                     ?: throw IllegalStateException("The Control Root could not be opened from the staff Grant")
                 val controlPk = invite.controlPk
                     ?: throw IllegalStateException("This legacy invite has no split Control Plane public key")
