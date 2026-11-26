@@ -171,6 +171,7 @@ object Routes {
     const val CONTACT_PICKER = "contact_picker?legacyDm={legacyDm}"
     const val GROUP_ROOM = "group_room/{encodedRelay}/{groupId}?scrollTo={scrollTo}"
     const val GROUP_DETAIL = "group_detail/{encodedRelay}/{groupId}"
+    const val CONCORD_ROOM = "concord_room/{communityId}"
     const val NOTIFICATIONS = "notifications"
     const val BLOSSOM_SERVERS = "blossom_servers"
     const val WALLET = "wallet"
@@ -285,6 +286,7 @@ fun WispNavHost(
     val profileViewModel: ProfileViewModel = viewModel()
     val dmListViewModel: DmListViewModel = viewModel()
     val groupListViewModel: com.darkwisp.app.viewmodel.GroupListViewModel = viewModel()
+    val concordCommunityViewModel: ConcordCommunityViewModel = viewModel()
     val blossomServersViewModel: BlossomServersViewModel = viewModel()
     val appContext = LocalContext.current.applicationContext
     val walletViewModel: WalletViewModel = viewModel(
@@ -2133,6 +2135,8 @@ fun WispNavHost(
             DmListScreen(
                 viewModel = dmListViewModel,
                 groupListViewModel = groupListViewModel,
+                concordCommunityViewModel = concordCommunityViewModel,
+                relayPool = feedViewModel.relayPool,
                 eventRepo = feedViewModel.eventRepo,
                 userPubkey = feedViewModel.getUserPubkey(),
                 signer = activeSigner,
@@ -2155,7 +2159,23 @@ fun WispNavHost(
                         android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
                     )
                     navController.navigate("group_room/$encoded/${android.net.Uri.encode(groupId)}")
+                },
+                onConcordCommunity = { communityId ->
+                    navController.navigate("concord_room/${android.net.Uri.encode(communityId)}")
                 }
+            )
+        }
+
+        composable(
+            Routes.CONCORD_ROOM,
+            arguments = listOf(navArgument("communityId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val communityId = backStackEntry.arguments?.getString("communityId") ?: return@composable
+            com.darkwisp.app.ui.screen.ConcordRoomScreen(
+                communityId = communityId,
+                viewModel = concordCommunityViewModel,
+                signer = activeSigner,
+                onBack = { navController.popBackStack() },
             )
         }
 
