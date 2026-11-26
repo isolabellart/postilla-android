@@ -7,6 +7,7 @@ import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -53,6 +54,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     description = description,
                 )
                 _creation.value = CreationState(result = result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 _creation.value = CreationState(error = error.message ?: "Community creation failed")
             }
