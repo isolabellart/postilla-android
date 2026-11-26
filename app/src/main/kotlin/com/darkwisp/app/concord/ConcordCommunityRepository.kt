@@ -11,6 +11,13 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntr
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
+import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
+import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
+import com.vitorpamplona.quartz.concord.cord05Invites.InviteBundleStatus
+import com.vitorpamplona.quartz.concord.crypto.ControlPlaneKeys
+import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteList
@@ -18,6 +25,8 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListDocument
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEntry as InviteListEntry
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEvent
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
+import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -28,6 +37,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -291,6 +301,196 @@ class ConcordCommunityRepository(
 
     fun getLocalGeneralChannelId(communityId: String): String? =
         prefs.getString(generalChannelKey(communityId), null)
+
+
+    data class JoinResult(
+        val communityId: String,
+        val name: String,
+        val generalChannelId: String,
+        val publishedCount: Int,
+        val totalCount: Int,
+        val pendingEventIds: List<String>,
+    ) {
+        val isFullyPublished: Boolean get() = pendingEventIds.isEmpty() && publishedCount == totalCount
+    }
+
+    /**
+     * Redeems a CORD-05 invite exactly as Quartz/Vector does: resolve the addressable
+     * bundle, validate its token and self-certifying identity, fold the read-only
+     * Control Plane, then merge a new member entry into the fragmented private list.
+     */
+    suspend fun joinCommunityFromInvite(
+        signer: PostillaQuartzSigner,
+        inviteUrl: String,
+    ): JoinResult {
+        val parsed = ConcordInviteLink.parseUrl(inviteUrl.trim())
+            ?: throw IllegalArgumentException("This is not a valid Concord invite link")
+
+        val bundleEvents = fetchEventsFromRelays(
+            relays = parsed.fragment.relays,
+            filter = Filter(
+                kinds = listOf(ConcordInviteBundle.KIND),
+                authors = listOf(parsed.linkSignerPubKey),
+                limit = 20,
+            ),
+            label = "invite",
+        )
+        val bundleStatus = ConcordInviteBundle.classify(
+            wraps = bundleEvents.map { Event.fromJson(it.toJson()) },
+            linkSignerPubKey = parsed.linkSignerPubKey,
+            token = parsed.fragment.token,
+        )
+        val invite = (bundleStatus as? InviteBundleStatus.Live)?.invite
+            ?: throw IllegalStateException(
+                when (bundleStatus) {
+                    InviteBundleStatus.Revoked -> "This invite has been revoked"
+                    is InviteBundleStatus.Expired -> "This invite has expired"
+                    InviteBundleStatus.Absent -> "Invite bundle not found on its bootstrap relays"
+                    InviteBundleStatus.Unreadable -> "Invite bundle could not be opened with this link"
+                    is InviteBundleStatus.Live -> "Invite is valid"
+                },
+            )
+
+        val communityIdBytes = invite.communityId.hexToByteArray()
+        val communityRootBytes = invite.communityRoot.hexToByteArray()
+        val controlKeys = ControlPlaneKeys.of(
+            communityRoot = communityRootBytes,
+            communityId = communityIdBytes,
+            epoch = invite.rootEpoch,
+            controlPk = invite.controlPk,
+        )
+        val communityRelays = invite.relays.distinct().take(5).ifEmpty { parsed.fragment.relays }
+        val controlEvents = fetchEventsFromRelays(
+            relays = communityRelays,
+            filter = Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = listOf(controlKeys.address),
+                limit = 5000,
+            ),
+            label = "control",
+        )
+        val editions = controlEvents.mapNotNull { nostrEvent ->
+            runCatching {
+                val opened = ConcordStreamEnvelope.open(
+                    Event.fromJson(nostrEvent.toJson()),
+                    controlKeys.address,
+                    controlKeys.readKey.conversationKey,
+                )
+                ControlEdition.fromOpened(opened)
+            }.getOrNull()
+        }
+        if (editions.isEmpty()) {
+            throw IllegalStateException("The community Control Plane could not be read or verified")
+        }
+        val state = ConcordCommunityState.fold(editions, communityIdBytes, invite.owner)
+        if (state.dissolved) throw IllegalStateException("This community has been dissolved")
+        val metadata = state.metadata ?: throw IllegalStateException("The community has no valid metadata edition")
+        val generalChannel = state.channels.values.firstOrNull {
+            it.definition.name.equals("general", ignoreCase = true)
+        } ?: throw IllegalStateException("The community has no live #general channel")
+
+        val savedRelays = metadata.relays.distinct().take(5).ifEmpty { communityRelays }
+        val newEntry = ConcordCommunityListEntry(
+            id = invite.communityId,
+            owner = invite.owner,
+            ownerSalt = invite.ownerSalt,
+            root = invite.communityRoot,
+            rootEpoch = invite.rootEpoch,
+            controlPk = invite.controlPk,
+            privateChannels = invite.channels
+                .filter { it.key.isNotBlank() }
+                .map { PrivateChannelKey(it.id, it.key, it.epoch, it.name) },
+            relays = savedRelays,
+            name = metadata.name.ifBlank { invite.name },
+            addedAt = System.currentTimeMillis(),
+            inviteRef = ConcordInviteLink.bareForm(inviteUrl),
+        )
+
+        val currentList = fetchCommunityList(signer)
+        val mergedEntries = ConcordCommunityList.merge(currentList.document.entries, listOf(newEntry))
+        val winner = mergedEntries.firstOrNull { it.id == invite.communityId }
+            ?: throw IllegalStateException("The membership could not be merged")
+        if (winner.rootEpoch > invite.rootEpoch) {
+            throw IllegalStateException("A newer membership epoch already exists; refresh the community list before joining this older invite")
+        }
+        val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, currentList.document.residue)
+        val writes = currentList.fragments.planWrites(nextDocument, System.currentTimeMillis() / 1000)
+        val listEvents = writes.map { write ->
+            ConcordCommunityListFragmentEvent.create(
+                signer = signer,
+                index = write.index,
+                plaintext = write.plaintext,
+                createdAt = write.createdAt,
+            )
+        }.map { NostrEvent.fromJson(it.toJson()) }
+
+        withContext(Dispatchers.IO) {
+            if (listEvents.isNotEmpty()) journalEvents(invite.communityId, listEvents)
+            if (winner.rootEpoch == invite.rootEpoch) {
+                prefs.edit().putString(generalChannelKey(invite.communityId), generalChannel.channelIdHex).commit()
+            }
+        }
+
+        var published = 0
+        val pending = mutableListOf<String>()
+        for (event in listEvents) {
+            if (publishConfirmed(event, emptyList())) published++ else pending += event.id
+        }
+        val channelId = getLocalGeneralChannelId(invite.communityId) ?: generalChannel.channelIdHex
+        return JoinResult(
+            communityId = invite.communityId,
+            name = winner.name,
+            generalChannelId = channelId,
+            publishedCount = published,
+            totalCount = listEvents.size,
+            pendingEventIds = pending,
+        )
+    }
+
+    private suspend fun fetchEventsFromRelays(
+        relays: List<String>,
+        filter: Filter,
+        label: String,
+    ): List<NostrEvent> {
+        val targets = relays.distinct()
+        require(targets.isNotEmpty()) { "No bootstrap relays were supplied for $label discovery" }
+        val subscriptionId = "concord-$label-${UUID.randomUUID().toString().take(12)}"
+        val request = ClientMessage.req(subscriptionId, listOf(filter))
+        val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
+        val responded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+        coroutineScope {
+            val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEvents
+                    .filter { it.subscriptionId == subscriptionId }
+                    .collect { relayEvent -> events.putIfAbsent(relayEvent.event.id, relayEvent.event) }
+            }
+            val eoseCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEoseSignals
+                    .filter { it.subscriptionId == subscriptionId && it.relayUrl in targets }
+                    .collect { responded.add(it.relayUrl) }
+            }
+            val sent = targets.filter {
+                relayPool.sendToRelayOrEphemeral(it, request, skipBadCheck = true, write = false)
+            }
+            if (sent.isEmpty()) {
+                eventCollector.cancelAndJoin()
+                eoseCollector.cancelAndJoin()
+                throw IllegalStateException("Could not connect to any bootstrap relay for $label discovery")
+            }
+            withTimeoutOrNull(8_000L) {
+                while (!responded.containsAll(sent)) delay(50)
+            }
+            delay(150)
+            eventCollector.cancelAndJoin()
+            eoseCollector.cancelAndJoin()
+            relayPool.closeOnAllRelays(subscriptionId)
+            if (responded.isEmpty()) {
+                throw IllegalStateException("No bootstrap relay completed $label discovery")
+            }
+        }
+        return events.values.toList()
+    }
 
     /**
      * Mints and publishes a Vector-compatible public invite link.
