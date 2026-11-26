@@ -1,0 +1,144 @@
+package com.darkwisp.app.concord
+
+import com.darkwisp.app.nostr.ClientMessage
+import com.darkwisp.app.nostr.Filter
+import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.relay.RelayPool
+import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
+import com.vitorpamplona.quartz.concord.crypto.ConcordKeyDerivation
+import com.vitorpamplona.quartz.concord.crypto.ConcordLabels
+import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+
+data class ConcordChatMessage(
+    val id: String,
+    val authorPubkey: String,
+    val content: String,
+    val createdAt: Long,
+)
+
+/**
+ * CORD-03 channel transport. All cryptographic derivation, rumor construction,
+ * wrapping and validation are delegated to Quartz 2.15.1.
+ */
+class ConcordChatRepository(
+    private val relayPool: RelayPool,
+) {
+    private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
+
+    suspend fun sendMessage(
+        signer: PostillaQuartzSigner,
+        communityRootHex: String,
+        communityIdHex: String,
+        channelIdHex: String,
+        epoch: Long,
+        text: String,
+        createdAt: Long = System.currentTimeMillis() / 1000,
+    ): Boolean {
+        val message = text.trim()
+        require(message.isNotEmpty()) { "Message cannot be empty" }
+
+        val channelKey = channelKey(communityRootHex, communityIdHex, channelIdHex, epoch)
+        val rumor = ChannelChat.message(
+            authorPubKey = signer.pubKey,
+            channelId = channelIdHex,
+            epoch = epoch,
+            text = message,
+            createdAt = createdAt,
+        )
+        val wrap = ConcordStreamEnvelope.wrap(
+            rumor = rumor,
+            stream = channelKey,
+            authorSigner = signer,
+            encrypted = true,
+            createdAt = createdAt,
+        )
+        val event = NostrEvent.fromJson(wrap.toJson())
+        val outcome = relayPool.publishWithConfirmation(event.id) {
+            relayPool.sendToWriteRelays(ClientMessage.event(event))
+        }
+        if (outcome.confirmed) seenMessageIds.add(rumor.id)
+        return outcome.confirmed
+    }
+
+    /**
+     * Observes one channel's write-restricted stream. The subscription is opened
+     * before REQ is sent, and every received wrap is cryptographically opened and
+     * checked against the exact channel/epoch binding before it reaches the UI.
+     */
+    fun observeChannel(
+        communityRootHex: String,
+        communityIdHex: String,
+        channelIdHex: String,
+        epoch: Long,
+        since: Long? = null,
+    ): Flow<ConcordChatMessage> = channelFlow {
+        val channelKey = channelKey(communityRootHex, communityIdHex, channelIdHex, epoch)
+        val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch"
+
+        val collector = launch {
+            relayPool.relayEvents
+                .filter { it.subscriptionId == subscriptionId && it.event.kind == ConcordStreamEnvelope.KIND_WRAP }
+                .collect { relayEvent ->
+                    try {
+                        val wrap = Event.fromJson(relayEvent.event.toJson())
+                        val opened = ConcordStreamEnvelope.open(wrap, channelKey)
+                        val rumor = opened.rumor
+                        if (rumor.kind !in ChannelChat.CHAT_KINDS) return@collect
+                        if (!ChannelChat.isBoundTo(rumor, channelIdHex, epoch)) return@collect
+                        if (rumor.kind != 9 || !seenMessageIds.add(rumor.id)) return@collect
+
+                        send(
+                            ConcordChatMessage(
+                                id = rumor.id,
+                                authorPubkey = rumor.pubKey,
+                                content = rumor.content,
+                                createdAt = rumor.createdAt,
+                            )
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // Unopenable, misbound or malformed wraps are ignored fail-closed.
+                    }
+                }
+        }
+
+        relayPool.sendToReadRelays(
+            ClientMessage.req(
+                subscriptionId,
+                Filter(
+                    kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                    authors = listOf(channelKey.publicKeyHex),
+                    since = since,
+                    limit = 500,
+                ),
+            ),
+        )
+
+        awaitClose {
+            collector.cancel()
+            relayPool.closeOnAllRelays(subscriptionId)
+        }
+    }
+
+    private fun channelKey(
+        communityRootHex: String,
+        communityIdHex: String,
+        channelIdHex: String,
+        epoch: Long,
+    ) = ConcordKeyDerivation.groupKey(
+        label = ConcordLabels.CHANNEL,
+        secret = communityRootHex.hexToByteArray(),
+        id = channelIdHex.hexToByteArray(),
+        epoch = epoch,
+    )
+}
