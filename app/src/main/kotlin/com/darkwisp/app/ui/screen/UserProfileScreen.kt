@@ -1,7 +1,6 @@
 package com.darkwisp.app.ui.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import android.view.HapticFeedbackConstants
 import com.darkwisp.app.ui.component.horizontalSectionSwipe
