@@ -1059,8 +1059,8 @@ class ConcordCommunityRepository(
             addedAt = oldEntry.addedAt,
             heldRoots = heldRoots,
             inviteRef = oldEntry.inviteRef,
+            excludedAtEpoch = oldEntry.excludedAtEpoch,
             residue = oldEntry.residue,
-            extras = oldEntry.extras,
         )
         val mergedEntries = ConcordCommunityList.merge(currentList.document.entries, listOf(rotatedEntry))
         val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, currentList.document.residue)
