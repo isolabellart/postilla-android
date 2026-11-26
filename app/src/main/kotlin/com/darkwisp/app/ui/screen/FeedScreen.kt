@@ -911,6 +911,11 @@ fun FeedScreen(
             ) {}
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             WispDrawerContent(
+                onSettings = {
+                    settingsExpanded = false
+                    scope.launch { drawerState.close() }
+                    onSettings()
+                },
                 settingsExpanded = settingsExpanded,
                 onSettingsExpandedChange = { settingsExpanded = it },
                 profile = userProfile,
