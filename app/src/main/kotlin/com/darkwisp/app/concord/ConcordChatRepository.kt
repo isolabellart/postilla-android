@@ -86,7 +86,7 @@ class ConcordChatRepository(
         since: Long? = null,
     ): Flow<ConcordChatMessage> = channelFlow {
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
-        val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch"
+        val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch-${UUID.randomUUID().toString().take(8)}"
 
         val collector = launch {
             relayPool.relayEvents
