@@ -644,11 +644,7 @@ class ConcordCommunityRepository(
 
 
 
-    suspend fun kickAndRotate(
-        signer: PostillaQuartzSigner,
-        communityId: String,
-        targetPubKey: String,
-    ): RefoundingResult {
+    data class KickResult(val communityId: String, val targetPubKey: String, val didRefound: Boolean, val newEpoch: Long)\n\n    suspend fun kickAndRotate(\n        signer: PostillaQuartzSigner,\n        communityId: String,\n        targetPubKey: String,\n    ): KickResult {
         val target = targetPubKey.lowercase()
         require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
@@ -658,8 +654,29 @@ class ConcordCommunityRepository(
         if (!authority.canActOn(signer.pubKey, target, ConcordPermissions.KICK)) {
             throw IllegalStateException("This account cannot kick the selected member")
         }
+        if (control.state.isPublic) {
+            val publicKickKey = ConcordKeyDerivation.guestbookPlaneKey(
+                communityRoot = membership.root.hexToByteArray(),
+                communityId = communityId.hexToByteArray(),
+                epoch = membership.rootEpoch,
+            )
+            val publicKick = Guestbook.kick(
+                actorPubKey = signer.pubKey,
+                target = target,
+                createdAt = System.currentTimeMillis() / 1000,
+                citation = authority.citationFor(signer.pubKey),
+            )
+            val publicKickEvent = NostrEvent.fromJson(
+                ConcordStreamEnvelope.wrap(publicKick, publicKickKey, signer, encrypted = true).toJson(),
+            )
+            withContext(Dispatchers.IO) { journalEvents(communityId, listOf(publicKickEvent)) }
+            if (!publishConfirmed(publicKickEvent, membership.relays)) {
+                throw IllegalStateException("The public-community Kick was not confirmed")
+            }
+            return KickResult(communityId, target, false, membership.rootEpoch)
+        }
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)) {
-            throw IllegalStateException("A kick must be followed by an authorized whole-community rotation")
+            throw IllegalStateException("A private-community kick requires authority to rotate the community root")
         }
         val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
             communityRoot = membership.root.hexToByteArray(),
@@ -682,20 +699,23 @@ class ConcordCommunityRepository(
                 encrypted = true,
             ).toJson(),
         )
-        return refoundCommunity(
+        val result = refoundCommunity(
             signer = signer,
             communityId = communityId,
             excludedMembers = setOf(target),
             extraGuestbookEntries = listOf(kickEntry),
             extraGuestbookEvents = listOf(kickEvent),
         )
+        return KickResult(communityId, target, true, result.newEpoch)
     }
+
+    data class BanResult(val communityId: String, val targetPubKey: String, val didRefound: Boolean, val epoch: Long)
 
     suspend fun banAndRotate(
         signer: PostillaQuartzSigner,
         communityId: String,
         targetPubKey: String,
-    ): RefoundingResult {
+    ): BanResult {
         val target = targetPubKey.lowercase()
         require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
@@ -714,16 +734,25 @@ class ConcordCommunityRepository(
         )
         val head = heads[banlistId.toHexKey()]
         val content = ConcordJson.instance.encodeToString(ListSerializer(String.serializer()), banned)
+        val requiresRefounding = control.state.banRequiresRefounding(listOf(target))
+        if (!requiresRefounding) {
+            publishControlEdition(
+                signer, membership, control, ControlEntityKind.BANLIST, banlistId, content,
+                ConcordPermissions.BAN, head?.version, head?.hashHex,
+            )
+            return BanResult(communityId, target, false, membership.rootEpoch)
+        }
         val banEvent = buildControlEdition(
             signer, membership, control, ControlEntityKind.BANLIST, banlistId, content,
             ConcordPermissions.BAN, head?.version, head?.hashHex,
         )
-        return refoundCommunity(
+        val result = refoundCommunity(
             signer = signer,
             communityId = communityId,
             excludedMembers = setOf(target),
             extraControlEvents = listOf(banEvent),
         )
+        return BanResult(communityId, target, true, result.newEpoch)
     }
 
     data class RefoundingResult(
@@ -807,10 +836,8 @@ class ConcordCommunityRepository(
         if (membership.controlRoot == null) {
             throw IllegalStateException("The current Control Plane write key is unavailable on this device")
         }
-        val foreignInviteCreators = control.state.inviteRegistries.keys
-            .filter { it.isNotBlank() && it != signer.pubKey.lowercase() }
-        if (foreignInviteCreators.isNotEmpty()) {
-            throw IllegalStateException("Other members own live invite links; those creators must refresh or revoke their links before this community can rotate")
+        if (control.state.hasForeignLiveLinks(signer.pubKey)) {
+            throw IllegalStateException("Other members still own live invite links; those creators must refresh or revoke their links before this community can rotate")
         }
 
         val nowSecs = System.currentTimeMillis() / 1000
