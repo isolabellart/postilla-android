@@ -24,6 +24,12 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
 
+    data class InviteState(
+        val isCreating: Boolean = false,
+        val url: String? = null,
+        val error: String? = null,
+    )
+
     data class CommunityItem(
         val id: String,
         val name: String,
@@ -42,6 +48,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _creation = MutableStateFlow(CreationState())
     val creation: StateFlow<CreationState> = _creation
+
+    private val _invite = MutableStateFlow(InviteState())
+    val invite: StateFlow<InviteState> = _invite
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -160,6 +169,35 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             epoch = entry.rootEpoch,
             text = text,
         )
+    }
+
+
+    fun createInviteLink(communityId: String, signer: NostrSigner?) {
+        if (_invite.value.isCreating) return
+        if (signer == null) {
+            _invite.value = InviteState(error = "A writable Nostr signer is required")
+            return
+        }
+        val repo = repository
+        if (repo == null) {
+            _invite.value = InviteState(error = "Community service is not initialized")
+            return
+        }
+        _invite.value = InviteState(isCreating = true)
+        viewModelScope.launch {
+            try {
+                val url = repo.createInviteLink(PostillaQuartzSigner(signer), communityId)
+                _invite.value = InviteState(url = url)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _invite.value = InviteState(error = error.message ?: "Invite creation failed")
+            }
+        }
+    }
+
+    fun clearInviteResult() {
+        if (!_invite.value.isCreating) _invite.value = InviteState()
     }
 
     fun clearResult() {
