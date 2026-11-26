@@ -412,14 +412,15 @@ class ConcordCommunityRepository(
             "The actor cannot manage this member's roles"
         }
         require(!authority.isBanned(target)) { "A banned member cannot receive a role" }
-        val role = authority.roles()[roleId]
+        val roleIdHex = roleId.lowercase()
+        val role = authority.roles()[roleIdHex]
             ?: throw IllegalArgumentException("Role does not exist in the current Control Plane")
-        require(!role.deleted && role.isWellFormedAt(roleId)) { "Role is not assignable" }
+        require(!role.deleted && role.isWellFormedAt(roleIdHex)) { "Role is not assignable" }
         val actorRank = authority.rank(signer.pubKey)
             ?: throw IllegalStateException("The actor has no valid role rank")
         require(actorRank < role.position) { "The actor does not outrank the role being granted" }
 
-        val roleIds = (authority.rolesOf(target) + roleId.lowercase()).distinct()
+        val roleIds = (authority.rolesOf(target) + roleIdHex).distinct()
         require(roleIds.size > authority.rolesOf(target).size) { "The member already holds this role" }
         require(roleIds.all { assignedId -> authority.roles()[assignedId]?.let { actorRank < it.position } == true }) {
             "The actor does not outrank every role in the resulting Grant"
@@ -749,8 +750,17 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val pending = pendingRefounding(communityId)
-
-        if (pending != null && prefs.getBoolean(refoundingReadyKey(communityId), false)) {
+        val savedPlanReady = prefs.getBoolean(refoundingReadyKey(communityId), false)
+        if (savedPlanReady && pending == null) {
+            throw IllegalStateException("A refounding plan exists but its encrypted key reservation is unavailable; refusing to create a second rotation")
+        }
+        if (pending != null && savedPlanReady) {
+            val stillOnOldEpoch = pending.matches(communityId, membership.rootEpoch, membership.root.hexToByteArray())
+            val alreadyAdopted = membership.rootEpoch == pending.rootEpoch + 1 &&
+                membership.root == pending.newRoot.toHexKey()
+            if (!stillOnOldEpoch && !alreadyAdopted) {
+                throw IllegalStateException("The community has moved to a different epoch while a refounding is pending")
+            }
             val plan = loadPendingRefoundingPlan(communityId)
             publishRefoundingPlan(communityId, membership.relays, plan)
             clearPendingRefounding(communityId)
