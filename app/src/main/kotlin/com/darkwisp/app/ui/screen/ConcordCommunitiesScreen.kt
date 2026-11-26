@@ -65,10 +65,13 @@ fun ConcordCommunitiesScreen(
 ) {
     val communities by viewModel.communities.collectAsState()
     val creation by viewModel.creation.collectAsState()
+    val join by viewModel.join.collectAsState()
     val invite by viewModel.invite.collectAsState()
     val context = LocalContext.current
     val isLoading by viewModel.isLoading.collectAsState()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+    var showJoinDialog by rememberSaveable { mutableStateOf(false) }
+    var inviteUrl by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
 
@@ -115,6 +118,9 @@ fun ConcordCommunitiesScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { showJoinDialog = true }) { Text("Join with invite link") }
+            }
             creation.result?.let { result ->
                 val status = if (result.isFullyPublished) {
                     "Community created and acknowledged by relays"
@@ -127,6 +133,15 @@ fun ConcordCommunitiesScreen(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
+            }
+            join.result?.let { result ->
+                val status = if (result.isFullyPublished) "Joined ${result.name}" else "Joined locally; ${result.pendingEventIds.size} list event(s) still need confirmation"
+                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+            join.error?.let { error ->
+                Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
             }
             invite.error?.let { error ->
                 Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
@@ -211,6 +226,49 @@ fun ConcordCommunitiesScreen(
                 }
             }
         }
+    }
+
+    if (showJoinDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!join.isJoining) showJoinDialog = false },
+            title = { Text("Join a community") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Paste a Concord invite link from Vector or another member.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = inviteUrl,
+                        onValueChange = { inviteUrl = it },
+                        label = { Text("Invite link") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                    )
+                    if (join.error != null) {
+                        Text(join.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = inviteUrl.isNotBlank() && !join.isJoining && signer != null,
+                    onClick = {
+                        viewModel.clearJoinResult()
+                        viewModel.joinCommunityFromInvite(inviteUrl.trim(), signer)
+                        showJoinDialog = false
+                        inviteUrl = ""
+                    },
+                ) {
+                    if (join.isJoining) CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    else Text("Join")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!join.isJoining) showJoinDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (showCreateDialog) {
