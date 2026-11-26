@@ -78,7 +78,7 @@ class ConcordChatRepository(
         epoch: Long,
         since: Long? = null,
     ): Flow<ConcordChatMessage> = channelFlow {
-        val channelKey = channelKey(communityRootHex, communityIdHex, channelIdHex, epoch)
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
         val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch"
 
         val collector = launch {
