@@ -9,7 +9,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -190,17 +189,6 @@ fun WispDrawerContent(
             .statusBarsPadding()
             .verticalScroll(scrollState)
         ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PostillaBrandMark(size = 32.dp)
-            Spacer(Modifier.width(10.dp))
-            PostillaWordmark(fontSize = 22.sp)
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         var showProfileQr by remember { mutableStateOf(false) }
         var showAccountSwitcher by remember { mutableStateOf(false) }
 
