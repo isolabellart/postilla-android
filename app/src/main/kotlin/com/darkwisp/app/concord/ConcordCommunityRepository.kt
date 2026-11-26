@@ -361,24 +361,7 @@ class ConcordCommunityRepository(
         require(position >= 1L) { "Role position 0 is reserved for the owner" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val fetchedControl = loadControlPlaneSnapshot(membership)
-        val control = if (extraControlEvents.isEmpty()) {
-            fetchedControl
-        } else {
-            val extraWraps = extraControlEvents.map { Event.fromJson(it.toJson()) }
-            val extraEditions = extraWraps.map { wrap ->
-                val opened = ConcordStreamEnvelope.open(wrap, fetchedControl.keys)
-                ControlEdition.fromOpened(opened)
-                    ?: throw IllegalStateException("A newly published Control Plane edition is not canonical")
-            }
-            val allEditions = fetchedControl.editions + extraEditions
-            ControlPlaneSnapshot(
-                keys = fetchedControl.keys,
-                wraps = fetchedControl.wraps + extraWraps,
-                editions = allEditions,
-                state = ConcordCommunityState.fold(allEditions, membership.id.hexToByteArray(), membership.owner),
-            )
-        }
+        val control = loadControlPlaneSnapshot(membership)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
@@ -773,7 +756,24 @@ class ConcordCommunityRepository(
         if (membership.privateChannels.isNotEmpty()) {
             throw IllegalStateException("This community has private channels; their independent keys must be rekeyed before a whole-community rotation")
         }
-        val control = loadControlPlaneSnapshot(membership)
+        val fetchedControl = loadControlPlaneSnapshot(membership)
+        val control = if (extraControlEvents.isEmpty()) {
+            fetchedControl
+        } else {
+            val extraWraps = extraControlEvents.map { Event.fromJson(it.toJson()) }
+            val extraEditions = extraWraps.map { wrap ->
+                val opened = ConcordStreamEnvelope.open(wrap, fetchedControl.keys)
+                ControlEdition.fromOpened(opened)
+                    ?: throw IllegalStateException("A newly published Control Plane edition is not canonical")
+            }
+            val allEditions = fetchedControl.editions + extraEditions
+            ControlPlaneSnapshot(
+                keys = fetchedControl.keys,
+                wraps = fetchedControl.wraps + extraWraps,
+                editions = allEditions,
+                state = ConcordCommunityState.fold(allEditions, membership.id.hexToByteArray(), membership.owner),
+            )
+        }
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)) {
             throw IllegalStateException("This account is not authorized to refound the community")
