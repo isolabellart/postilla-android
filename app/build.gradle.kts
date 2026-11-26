@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    // AGP 9 built-in Kotlin replaces kotlin-kapt with the Android legacy-kapt bridge.
+    alias(libs.plugins.android.legacy.kapt)
     alias(libs.plugins.objectbox)
 }
 

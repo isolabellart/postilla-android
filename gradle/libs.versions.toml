@@ -83,6 +83,7 @@ kmp-tor-resource-exec = { group = "io.matthewnelson.kmp-tor", name = "resource-e
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-legacy-kapt = { id = "com.android.legacy-kapt", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 objectbox = { id = "io.objectbox", version.ref = "objectbox" }
