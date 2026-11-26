@@ -743,6 +743,7 @@ class ConcordCommunityRepository(
         communityId: String,
         excludedMembers: Set<String> = emptySet(),
         extraGuestbookEntries: List<GuestbookEntry> = emptyList(),
+        extraGuestbookEvents: List<NostrEvent> = emptyList(),
         extraControlEvents: List<NostrEvent> = emptyList(),
     ): RefoundingResult {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
@@ -1049,6 +1050,7 @@ class ConcordCommunityRepository(
             inviteList = inviteListEvents,
             registry = registryEvents,
             inviteBundles = refreshedBundles,
+            kick = extraGuestbookEvents,
             rekey = refounding.rekeyWraps.map { NostrEvent.fromJson(it.toJson()) },
             membership = membershipEvents,
             guestbook = guestbookEventsNew,
@@ -1673,11 +1675,12 @@ class ConcordCommunityRepository(
         val inviteList: List<NostrEvent>,
         val registry: List<NostrEvent>,
         val inviteBundles: List<NostrEvent>,
+        val kick: List<NostrEvent>,
         val rekey: List<NostrEvent>,
         val membership: List<NostrEvent>,
         val guestbook: List<NostrEvent>,
     ) {
-        fun all(): List<NostrEvent> = control + inviteList + registry + inviteBundles + rekey + membership + guestbook
+        fun all(): List<NostrEvent> = control + inviteList + registry + inviteBundles + kick + rekey + membership + guestbook
     }
 
     private fun pendingRefounding(communityId: String): PendingRefounding? {
@@ -1724,6 +1727,7 @@ class ConcordCommunityRepository(
             "invite_list" to plan.inviteList,
             "registry" to plan.registry,
             "invite_bundles" to plan.inviteBundles,
+            "kick" to plan.kick,
             "rekey" to plan.rekey,
             "membership" to plan.membership,
             "guestbook" to plan.guestbook,
@@ -1748,6 +1752,7 @@ class ConcordCommunityRepository(
             inviteList = group("invite_list"),
             registry = group("registry"),
             inviteBundles = group("invite_bundles"),
+            kick = group("kick"),
             rekey = group("rekey"),
             membership = group("membership"),
             guestbook = group("guestbook"),
@@ -1770,6 +1775,7 @@ class ConcordCommunityRepository(
         publishGroup(plan.inviteList, emptyList(), "Private Invite List")
         publishGroup(plan.registry, relays, "Invite Registry")
         publishGroup(plan.inviteBundles, relays, "Refreshed invite bundles")
+        publishGroup(plan.kick, relays, "Guestbook kick")
         publishGroup(plan.rekey, relays, "Base rekey")
         publishGroup(plan.membership, emptyList(), "Rotated membership list")
         publishGroup(plan.guestbook, relays, "New Guestbook")
@@ -1783,7 +1789,7 @@ class ConcordCommunityRepository(
 
     private companion object {
         const val PREFS_NAME = "concord_community_journal"
-        val REFUNDING_CATEGORIES = listOf("control", "invite_list", "registry", "invite_bundles", "rekey", "membership", "guestbook")
+        val REFUNDING_CATEGORIES = listOf("control", "invite_list", "registry", "invite_bundles", "kick", "rekey", "membership", "guestbook")
         val journalLock = Any()
     }
 }
