@@ -900,7 +900,7 @@ fun FeedScreen(
     ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = false,
+        gesturesEnabled = true,
         drawerContent = {
             val torState by TorManager.state.collectAsState()
             val torContext = LocalContext.current
