@@ -9,7 +9,6 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityFactory
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
-import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
@@ -19,9 +18,6 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListDocument
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEntry as InviteListEntry
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEvent
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -47,7 +43,6 @@ class ConcordCommunityRepository(
     private val relayPool: RelayPool,
 ) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true }
 
     data class CreationResult(
         val communityId: String,
