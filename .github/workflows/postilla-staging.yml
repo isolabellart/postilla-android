@@ -95,7 +95,9 @@ jobs:
           set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null
           set -o pipefail
-          "$SDKMANAGER" --channel=3 "platforms;android-37" "build-tools;37.0.0"
+          "$SDKMANAGER" --channel=3 "platforms;android-37.0" "build-tools;37.0.0"
+          test -d "$SDK_ROOT/platforms/android-37.0" || { echo "::error::Android API 37.0 platform package was not installed"; exit 1; }
+          test -d "$SDK_ROOT/build-tools/37.0.0" || { echo "::error::Android Build Tools 37.0.0 were not installed"; exit 1; }
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
