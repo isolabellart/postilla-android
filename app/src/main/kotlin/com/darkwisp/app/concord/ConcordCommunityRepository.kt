@@ -39,6 +39,7 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteList
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListDocument
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEntry as InviteListEntry
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListTombstone
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteListEvent
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteRegistry
 import com.vitorpamplona.quartz.concord.cord06Rekey.ConcordRefounding
@@ -724,7 +725,7 @@ class ConcordCommunityRepository(
         val communityInviteEntries = inviteList.entries.filter { it.communityId == communityId }
         val liveInviteEntries = communityInviteEntries.filterNot { it.isExpired(nowSecs) }
         for (entry in communityInviteEntries.filter { it.isExpired(nowSecs) }) {
-            updatedInviteList = ConcordInviteList.revoke(updatedInviteList, entry.token, nowSecs)
+            updatedInviteList = retireInvite(updatedInviteList, entry.token, communityId)
             inviteListChanged = true
         }
 
@@ -1419,6 +1420,22 @@ class ConcordCommunityRepository(
             throw IllegalStateException("The Invite Registry was not confirmed by the Control Plane relay; do not share the link yet")
         }
         return minted.url
+    }
+
+
+    private fun retireInvite(
+        document: ConcordInviteListDocument,
+        token: String,
+        communityId: String,
+    ): ConcordInviteListDocument {
+        if (document.tombstones.any { it.token == token }) return document
+        return ConcordInviteListDocument(
+            entries = document.entries.filterNot { it.token == token },
+            tombstones = document.tombstones + ConcordInviteListTombstone(token, communityId),
+            residue = document.residue,
+            opaqueEntries = document.opaqueEntries,
+            opaqueTombstones = document.opaqueTombstones,
+        )
     }
 
     private suspend fun fetchInviteList(signer: PostillaQuartzSigner): ConcordInviteListDocument {
