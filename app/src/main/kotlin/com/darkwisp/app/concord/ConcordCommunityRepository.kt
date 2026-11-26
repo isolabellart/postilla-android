@@ -616,6 +616,327 @@ class ConcordCommunityRepository(
         return event
     }
 
+
+    data class RefoundingResult(
+        val communityId: String,
+        val newEpoch: Long,
+        val retainedMembers: Int,
+        val refreshedInvites: Int,
+        val publishedEvents: Int,
+    )
+
+    /**
+     * Whole-community CORD-06 refounding. The pending root/control-root pair and every
+     * signed event are persisted before the first publish, so retries reuse identical
+     * keys and event IDs. Communities with private channels are refused until their
+     * independently keyed channels can be rekeyed in the same operation.
+     */
+    suspend fun refoundCommunity(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        excludedMembers: Set<String> = emptySet(),
+        extraGuestbookEntries: List<GuestbookEntry> = emptyList(),
+    ): RefoundingResult {
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val pending = pendingRefounding(communityId)
+
+        if (pending != null && prefs.getBoolean(refoundingReadyKey(communityId), false)) {
+            val plan = loadPendingRefoundingPlan(communityId)
+            publishRefoundingPlan(communityId, membership.relays, plan)
+            clearPendingRefounding(communityId)
+            return RefoundingResult(
+                communityId = communityId,
+                newEpoch = pending.rootEpoch + 1,
+                retainedMembers = 0,
+                refreshedInvites = plan.inviteBundles.size,
+                publishedEvents = plan.all().size,
+            )
+        }
+        if (pending != null && !pending.matches(communityId, membership.rootEpoch, membership.root.hexToByteArray())) {
+            throw IllegalStateException("A pending refounding belongs to a different root epoch; refusing to start another rotation")
+        }
+        if (membership.privateChannels.isNotEmpty()) {
+            throw IllegalStateException("This community has private channels; their independent keys must be rekeyed before a whole-community rotation")
+        }
+        val control = loadControlPlaneSnapshot(membership)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)) {
+            throw IllegalStateException("This account is not authorized to refound the community")
+        }
+        if (membership.controlRoot == null) {
+            throw IllegalStateException("The current Control Plane write key is unavailable on this device")
+        }
+        val foreignInviteCreators = control.state.inviteRegistries.keys
+            .filter { it.isNotBlank() && it != signer.pubKey.lowercase() }
+        if (foreignInviteCreators.isNotEmpty()) {
+            throw IllegalStateException("Other members own live invite links; those creators must refresh or revoke their links before this community can rotate")
+        }
+
+        val nowSecs = System.currentTimeMillis() / 1000
+        val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = membership.id.hexToByteArray(),
+            epoch = membership.rootEpoch,
+        )
+        val guestbookEvents = fetchEventsFromRelays(
+            relays = membership.relays,
+            filter = Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = listOf(guestbookKey.publicKeyHex),
+                limit = 5000,
+            ),
+            label = "refounding-guestbook",
+            requireAllResponders = true,
+        )
+        val guestbookEntries = guestbookEvents.mapNotNull { event ->
+            try {
+                val opened = ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), guestbookKey)
+                Guestbook.parse(opened.rumor)
+            } catch (_: Exception) {
+                null
+            }
+        } + extraGuestbookEntries
+        val coalesced = Guestbook.coalesce(guestbookEntries, System.currentTimeMillis(), authority)
+        val staffMembers = authority.staffMembers().map { it.lowercase() }.toSet()
+        val retained = coalesced.values
+            .filter { it.action == GuestbookAction.JOIN }
+            .map { it.member.lowercase() }
+            .toMutableSet()
+        retained += staffMembers
+        retained += membership.owner.lowercase()
+        retained.removeAll(excludedMembers.map { it.lowercase() }.toSet())
+        require(membership.owner.lowercase() in retained) { "The owner must remain a recipient of the new root" }
+        require(retained.isNotEmpty()) { "No retained members were found; refusing to rotate into an empty community" }
+        val staffRecipients = staffMembers.intersect(retained)
+
+        val reserved = ConcordRefounding.reserveKeys(
+            pending = pending,
+            communityId = membership.id,
+            rootEpoch = membership.rootEpoch,
+            priorRoot = membership.root.hexToByteArray(),
+        )
+        savePendingRefounding(reserved)
+
+        val inviteList = fetchInviteList(signer)
+        var updatedInviteList = inviteList
+        var inviteListChanged = false
+        val communityInviteEntries = inviteList.entries.filter { it.communityId == communityId }
+        val liveInviteEntries = communityInviteEntries.filterNot { it.isExpired(nowSecs) }
+        for (entry in communityInviteEntries.filter { it.isExpired(nowSecs) }) {
+            updatedInviteList = ConcordInviteList.revoke(updatedInviteList, entry.token, nowSecs)
+            inviteListChanged = true
+        }
+
+        val bundleEvents = if (liveInviteEntries.isEmpty()) {
+            emptyList()
+        } else {
+            fetchEventsFromRelays(
+                relays = membership.relays,
+                filter = Filter(
+                    kinds = listOf(ConcordInviteBundle.KIND),
+                    authors = liveInviteEntries.map { it.signerPubKeyHex() }.distinct(),
+                    limit = 5000,
+                ),
+                label = "refounding-invites",
+                requireAllResponders = true,
+            ).map { Event.fromJson(it.toJson()) }
+        }
+        val refreshedBundles = mutableListOf<NostrEvent>()
+        for (entry in liveInviteEntries) {
+            val status = ConcordInviteBundle.classify(
+                wraps = bundleEvents,
+                linkSignerPubKey = entry.signerPubKeyHex(),
+                token = entry.token.hexToByteArray(),
+            )
+            when (status) {
+                is InviteBundleStatus.Live -> {
+                    val oldInvite = status.invite
+                    if (oldInvite.communityId != communityId ||
+                        oldInvite.communityRoot != membership.root ||
+                        oldInvite.rootEpoch != membership.rootEpoch
+                    ) {
+                        throw IllegalStateException("An active invite bundle does not match the current community epoch")
+                    }
+                    val updatedInvite = oldInvite.copy(
+                        communityRoot = reserved.newRoot.toHexKey(),
+                        rootEpoch = membership.rootEpoch + 1,
+                        controlPk = ControlPlaneKeys.forStaff(
+                            reserved.newRoot,
+                            communityId.hexToByteArray(),
+                            membership.rootEpoch + 1,
+                            reserved.newControlRoot,
+                        ).address,
+                    )
+                    refreshedBundles += NostrEvent.fromJson(
+                        ConcordInviteBundle.build(
+                            linkSignerPrivKey = entry.signerSk.hexToByteArray(),
+                            token = entry.token.hexToByteArray(),
+                            invite = updatedInvite,
+                            createdAt = nowSecs,
+                        ).toJson(),
+                    )
+                }
+                is InviteBundleStatus.Expired, InviteBundleStatus.Revoked -> {
+                    updatedInviteList = ConcordInviteList.revoke(updatedInviteList, entry.token, nowSecs)
+                    inviteListChanged = true
+                }
+                InviteBundleStatus.Absent, InviteBundleStatus.Unreadable ->
+                    throw IllegalStateException("An active invite bundle cannot be verified; refusing an incomplete rotation")
+            }
+        }
+
+        val refounding = ConcordRefounding.build(
+            rotatorSigner = signer,
+            communityId = communityId.hexToByteArray(),
+            priorRoot = membership.root.hexToByteArray(),
+            newRoot = reserved.newRoot,
+            newControlRoot = reserved.newControlRoot,
+            rootEpoch = membership.rootEpoch,
+            priorControlWraps = control.wraps,
+            priorControlKeys = control.keys,
+            recipientsXOnly = retained.sorted(),
+            staffXOnly = staffRecipients,
+            createdAt = nowSecs,
+            ownerPubKey = membership.owner,
+            authority = ConcordRotationAuthority.citationFor(
+                communityId,
+                signer.pubKey,
+                membership.owner,
+                ConcordRotationAuthority.headsOf(control.editions, communityId, membership.owner),
+            ),
+            mustCarry = ConcordRefounding.headVersions(control.editions, communityId.hexToByteArray(), membership.owner),
+        )
+
+        val newEditions = refounding.controlWraps.map { wrap ->
+            val opened = ConcordStreamEnvelope.open(wrap, refounding.newControlKeys)
+            ControlEdition.fromOpened(opened)
+                ?: throw IllegalStateException("The compacted Control Plane contains a non-canonical edition")
+        }
+        val newState = ConcordCommunityState.fold(newEditions, communityId.hexToByteArray(), membership.owner)
+        val newHeads = ConcordRotationAuthority.headsOf(newEditions, communityId, membership.owner)
+        val publishedLinks = newState.inviteRegistries[signer.pubKey.lowercase()].orEmpty()
+        val liveLinks = ConcordInviteRegistry.nextLinks(
+            published = publishedLinks,
+            list = updatedInviteList,
+            communityIdHex = communityId,
+            nowSecs = nowSecs,
+        )
+        val registryEvents = if (liveLinks != publishedLinks) {
+            if (!newState.authority.hasPermission(signer.pubKey, ConcordPermissions.CREATE_INVITE)) {
+                throw IllegalStateException("This account cannot refresh the community Invite Registry during rotation")
+            }
+            val coordinate = ConcordInviteRegistry.coordinateHex(communityId.hexToByteArray(), signer.pubKey)
+            val head = newHeads[coordinate]
+            val rumor = ConcordInviteRegistry.rumor(
+                creator = signer.pubKey,
+                communityId = communityId.hexToByteArray(),
+                linkSigners = liveLinks,
+                version = (head?.version ?: 0L) + 1L,
+                prevHash = head?.hashHex?.hexToByteArray(),
+                createdAt = nowSecs,
+                authorityCitation = ConcordRotationAuthority.citationFor(communityId, signer.pubKey, membership.owner, newHeads),
+            )
+            listOf(
+                NostrEvent.fromJson(
+                    ConcordStreamEnvelope.wrap(
+                        rumor = rumor,
+                        keys = refounding.newControlKeys,
+                        authorSigner = signer,
+                        encrypted = false,
+                        createdAt = nowSecs,
+                    ).toJson(),
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        val inviteListEvents = if (inviteListChanged) {
+            listOf(NostrEvent.fromJson(ConcordInviteListEvent.create(signer, updatedInviteList, nowSecs).toJson()))
+        } else {
+            emptyList()
+        }
+
+        val currentList = fetchCommunityList(signer)
+        val oldEntry = currentList.document.entries.firstOrNull { it.id == communityId }
+            ?: throw IllegalStateException("The owner membership disappeared during refounding")
+        require(oldEntry.root == membership.root && oldEntry.rootEpoch == membership.rootEpoch) {
+            "The membership changed while refounding; refusing to publish against a stale epoch"
+        }
+        val heldRoots = (oldEntry.heldRoots + HeldRoot(
+            epoch = oldEntry.rootEpoch,
+            key = oldEntry.root,
+            controlPk = oldEntry.controlPk,
+            controlRoot = oldEntry.controlRoot,
+        )).distinctBy { it.epoch to it.key.lowercase() }
+        val rotatedEntry = ConcordCommunityListEntry(
+            id = oldEntry.id,
+            owner = oldEntry.owner,
+            ownerSalt = oldEntry.ownerSalt,
+            root = reserved.newRoot.toHexKey(),
+            rootEpoch = refounding.newEpoch,
+            controlPk = refounding.newControlKeys.address,
+            controlRoot = reserved.newControlRoot.toHexKey(),
+            privateChannels = oldEntry.privateChannels,
+            relays = oldEntry.relays,
+            name = oldEntry.name,
+            addedAt = oldEntry.addedAt,
+            heldRoots = heldRoots,
+            inviteRef = oldEntry.inviteRef,
+            residue = oldEntry.residue,
+            extras = oldEntry.extras,
+        )
+        val mergedEntries = ConcordCommunityList.merge(currentList.document.entries, listOf(rotatedEntry))
+        val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, currentList.document.residue)
+        val listWrites = currentList.fragments.planWrites(nextDocument, nowSecs)
+        val membershipEvents = listWrites.map { write ->
+            NostrEvent.fromJson(
+                ConcordCommunityListFragmentEvent.create(
+                    signer = signer,
+                    index = write.index,
+                    plaintext = write.plaintext,
+                    createdAt = write.createdAt,
+                ).toJson(),
+            )
+        }
+        val newGuestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
+            communityRoot = reserved.newRoot,
+            communityId = communityId.hexToByteArray(),
+            epoch = refounding.newEpoch,
+        )
+        val newOwnerJoin = Guestbook.join(signer.pubKey, nowSecs)
+        val guestbookEventsNew = listOf(
+            NostrEvent.fromJson(
+                ConcordStreamEnvelope.wrap(
+                    rumor = newOwnerJoin,
+                    stream = newGuestbookKey,
+                    authorSigner = signer,
+                    encrypted = true,
+                    createdAt = nowSecs,
+                ).toJson(),
+            ),
+        )
+        val eventPlan = RefoundingPlanEvents(
+            control = refounding.controlWraps.map { NostrEvent.fromJson(it.toJson()) },
+            inviteList = inviteListEvents,
+            registry = registryEvents,
+            inviteBundles = refreshedBundles,
+            rekey = refounding.rekeyWraps.map { NostrEvent.fromJson(it.toJson()) },
+            membership = membershipEvents,
+            guestbook = guestbookEventsNew,
+        )
+        storePendingRefoundingPlan(communityId, eventPlan)
+        publishRefoundingPlan(communityId, membership.relays, eventPlan)
+        clearPendingRefounding(communityId)
+        return RefoundingResult(
+            communityId = communityId,
+            newEpoch = refounding.newEpoch,
+            retainedMembers = retained.size,
+            refreshedInvites = refreshedBundles.size,
+            publishedEvents = eventPlan.all().size,
+        )
+    }
+
     data class CommunityMember(
         val pubkey: String,
         val joinedAt: Long,
