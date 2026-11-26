@@ -3,13 +3,18 @@ package com.darkwisp.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.darkwisp.app.concord.ConcordChatMessage
+import com.darkwisp.app.concord.ConcordChatRepository
 import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
@@ -19,13 +24,67 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
 
+    data class CommunityItem(
+        val id: String,
+        val name: String,
+        val generalChannelId: String?,
+        val rootEpoch: Long,
+        val relays: List<String>,
+    )
+
     private var repository: ConcordCommunityRepository? = null
+    private var chatRepository: ConcordChatRepository? = null
+    private var signerPubkey: String? = null
+    private val memberships = linkedMapOf<String, ConcordCommunityListEntry>()
+
+    private val _communities = MutableStateFlow<List<CommunityItem>>(emptyList())
+    val communities: StateFlow<List<CommunityItem>> = _communities
+
     private val _creation = MutableStateFlow(CreationState())
     val creation: StateFlow<CreationState> = _creation
 
-    fun init(relayPool: RelayPool) {
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
+    fun init(relayPool: RelayPool, signer: NostrSigner?) {
         if (repository == null) {
             repository = ConcordCommunityRepository(getApplication(), relayPool)
+            chatRepository = ConcordChatRepository(relayPool)
+        }
+        if (signer?.pubkeyHex == signerPubkey) return
+        signerPubkey = signer?.pubkeyHex
+        if (signer != null) refreshLocalCommunities(signer)
+        else {
+            memberships.clear()
+            _communities.value = emptyList()
+        }
+    }
+
+    fun refreshLocalCommunities(signer: NostrSigner) {
+        val repo = repository ?: return
+        _isLoading.value = true
+        viewModelScope.launch {
+            try {
+                val quartzSigner = PostillaQuartzSigner(signer)
+                val entries = repo.loadLocalMemberships(quartzSigner)
+                memberships.clear()
+                entries.forEach { memberships[it.id] = it }
+                _communities.value = entries.map { entry ->
+                    CommunityItem(
+                        id = entry.id,
+                        name = entry.name.ifBlank { entry.id.take(12) },
+                        generalChannelId = repo.getLocalGeneralChannelId(entry.id),
+                        rootEpoch = entry.rootEpoch,
+                        relays = entry.relays,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _communities.value = emptyList()
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
@@ -48,11 +107,24 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         _creation.value = CreationState(isCreating = true)
         viewModelScope.launch {
             try {
+                val quartzSigner = PostillaQuartzSigner(signer)
                 val result = repo.createCommunity(
-                    signer = PostillaQuartzSigner(signer),
+                    signer = quartzSigner,
                     name = name,
                     description = description,
                 )
+                val entries = repo.loadLocalMemberships(quartzSigner)
+                memberships.clear()
+                entries.forEach { memberships[it.id] = it }
+                _communities.value = entries.map { entry ->
+                    CommunityItem(
+                        id = entry.id,
+                        name = entry.name.ifBlank { entry.id.take(12) },
+                        generalChannelId = repo.getLocalGeneralChannelId(entry.id),
+                        rootEpoch = entry.rootEpoch,
+                        relays = entry.relays,
+                    )
+                }
                 _creation.value = CreationState(result = result)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -60,6 +132,34 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 _creation.value = CreationState(error = error.message ?: "Community creation failed")
             }
         }
+    }
+
+    fun observeGeneralChannel(communityId: String): Flow<ConcordChatMessage> {
+        val entry = memberships[communityId] ?: return emptyFlow()
+        val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return emptyFlow()
+        return chatRepository?.observeChannel(
+            communityRootHex = entry.root,
+            channelIdHex = channelId,
+            epoch = entry.rootEpoch,
+        ) ?: emptyFlow()
+    }
+
+    suspend fun sendGeneralMessage(
+        communityId: String,
+        text: String,
+        signer: NostrSigner?,
+    ): ConcordChatMessage? {
+        val entry = memberships[communityId] ?: return null
+        val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return null
+        val chat = chatRepository ?: return null
+        signer ?: return null
+        return chat.sendMessage(
+            signer = PostillaQuartzSigner(signer),
+            communityRootHex = entry.root,
+            channelIdHex = channelId,
+            epoch = entry.rootEpoch,
+            text = text,
+        )
     }
 
     fun clearResult() {
