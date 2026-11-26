@@ -13,7 +13,7 @@ android {
     val debugApplicationIdSuffix = rootProject.extra["debugApplicationIdSuffix"] as String
 
     namespace = "com.darkwisp.app"
-    compileSdk = 35
+    compileSdk = 37
 
     val localProps = Properties().apply {
         val f = rootProject.file("local.properties")
@@ -28,8 +28,8 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 72
-        versionName = "1.0.72"
+        versionCode = 73
+        versionName = "1.0.73"
         resValue("string", "app_name", "Postilla")
 
         ndk {
@@ -110,6 +110,11 @@ android {
 }
 
 dependencies {
+    // Concord protocol implementation; keep Postilla's secp256k1 pin during the compatibility test.
+    implementation(libs.quartz) {
+        exclude(group = "fr.acinq.secp256k1")
+    }
+
     implementation("io.github.erweixin:ratex-android:0.1.16")
 
     testImplementation(libs.kotlinx.serialization.json)

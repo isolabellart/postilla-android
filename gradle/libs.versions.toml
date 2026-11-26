@@ -1,6 +1,6 @@
 [versions]
-kotlin = "2.0.21"
-agp = "8.13.2"
+kotlin = "2.4.21"
+agp = "9.1.1"
 compose-bom = "2025.08.00"
 okhttp = "4.12.0"
 kotlinx-serialization = "1.7.3"
@@ -31,9 +31,11 @@ activity-compose = "1.9.3"
 navigation-compose = "2.8.5"
 lifecycle = "2.8.7"
 work = "2.12.0"
+quartz = "2.15.1"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
+quartz = { group = "com.vitorpamplona.quartz", name = "quartz", version.ref = "quartz" }
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
