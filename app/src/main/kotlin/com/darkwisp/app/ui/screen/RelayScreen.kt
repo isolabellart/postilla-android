@@ -1,6 +1,9 @@
 package com.darkwisp.app.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.platform.LocalView
+import android.view.HapticFeedbackConstants
+import com.darkwisp.app.ui.component.horizontalSectionSwipe
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -74,6 +77,7 @@ fun RelayScreen(
     val localRelayConfig by viewModel.localRelay.collectAsState()
 
     val tabs = RelaySetType.entries
+    val swipeHapticView = LocalView.current
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -95,6 +99,12 @@ fun RelayScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .horizontalSectionSwipe(
+                    selectedIndex = tabs.indexOf(selectedTab).coerceAtLeast(0),
+                    itemCount = tabs.size,
+                    onSelectionChanged = { index -> tabs.getOrNull(index)?.let(viewModel::selectTab) },
+                    onHaptic = { swipeHapticView.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE) }
+                )
         ) {
             ScrollableTabRow(
                 selectedTabIndex = tabs.indexOf(selectedTab),
