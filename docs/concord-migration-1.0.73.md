@@ -30,3 +30,13 @@ The Quartz dependency excludes its transitive secp256k1 group for this initial b
 5. Remove NIP-29 group routes and code only after parity tests pass and legacy chat data has an export/recovery path.
 
 The Coinos repository URL supplied for reference was not accessible from the build environment; its screenshot is used only as the UI layout reference. The protocol implementation is based on Quartz/Concord and cross-client conformance, not copied Coinos source.
+
+## Implementation progress — 2026-11-26
+
+- Added `ConcordCommunityRepository` on the feature branch.
+- Creation uses Quartz `ConcordCommunityFactory` for the CORD-02 genesis and the Quartz kind-33302 fragmented Community List codec.
+- Membership key material (community root and staff control root included) is placed only in the NIP-44 self-encrypted membership fragments. The local journal stores signed event JSON, not plaintext community secrets.
+- Genesis wraps and membership fragments are journaled before relay publication. Publication waits for an actual NIP-20 OK through `RelayPool.publishWithConfirmation`; unconfirmed event IDs are returned as pending and remain journaled.
+- Added a JVM unit test for fragmented-list packing and base64url wire encoding of 32-byte key material.
+
+This is an initial repository slice, not yet a user-facing Community chat. It does not yet restore the journal into live community state, subscribe to Control/Chat planes, implement channel messaging, or wire a Community UI. Those remain explicit implementation gates; no staging APK from this slice is intended for community testing.
