@@ -9,7 +9,6 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
-import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -98,7 +97,7 @@ class ConcordCommunityRepository(
         val events = (community.genesisWraps + listEvents).map { NostrEvent.fromJson(it.toJson()) }
         withContext(Dispatchers.IO) {
             journalEvents(community.communityIdHex, events)
-        prefs.edit().putString(generalChannelKey(community.communityIdHex), community.generalChannelIdHex).commit()
+            prefs.edit().putString(generalChannelKey(community.communityIdHex), community.generalChannelIdHex).commit()
         }
 
         var published = 0
