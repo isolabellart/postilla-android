@@ -2,6 +2,7 @@ package com.darkwisp.app.concord
 
 import android.content.Context
 import com.darkwisp.app.nostr.ClientMessage
+import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityFactory
@@ -22,7 +23,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
