@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import java.util.UUID
 
 data class ConcordChatMessage(
     val id: String,
@@ -40,7 +41,7 @@ class ConcordChatRepository(
         epoch: Long,
         text: String,
         createdAt: Long = System.currentTimeMillis() / 1000,
-    ): Boolean {
+    ): ConcordChatMessage? {
         val message = text.trim()
         require(message.isNotEmpty()) { "Message cannot be empty" }
 
@@ -63,8 +64,14 @@ class ConcordChatRepository(
         val outcome = relayPool.publishWithConfirmation(event.id) {
             relayPool.sendToWriteRelays(ClientMessage.event(event))
         }
-        if (outcome.confirmed) seenMessageIds.add(rumor.id)
-        return outcome.confirmed
+        if (!outcome.confirmed) return null
+        seenMessageIds.add(rumor.id)
+        return ConcordChatMessage(
+            id = rumor.id,
+            authorPubkey = rumor.pubKey,
+            content = rumor.content,
+            createdAt = rumor.createdAt,
+        )
     }
 
     /**
