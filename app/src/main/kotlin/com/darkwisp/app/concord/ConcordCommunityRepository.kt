@@ -10,6 +10,8 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteList
@@ -73,6 +75,9 @@ class ConcordCommunityRepository(
         require(name.isNotBlank()) { "Community name cannot be blank" }
         require(relays.isNotEmpty()) { "At least one community relay is required" }
 
+        // Read/merge the existing list before publishing anything. A new community must
+        // never replace the user's other memberships or their anti-resurrection tombstones.
+        val existingList = fetchCommunityList(signer)
         val community = ConcordCommunityFactory.create(
             ownerSigner = signer,
             name = name.trim(),
@@ -81,8 +86,6 @@ class ConcordCommunityRepository(
             relays = relays.distinct(),
         )
 
-        // Concord's kind-33302 list is fragmented and self-encrypted. Never persist
-        // community_root/control_root as plaintext in app preferences or ObjectBox.
         val entry = ConcordCommunityListEntry(
             id = community.communityIdHex,
             owner = community.ownerPubKey,
@@ -95,38 +98,32 @@ class ConcordCommunityRepository(
             name = name.trim(),
             addedAt = System.currentTimeMillis(),
         )
-        val listDocument = json.parseToJsonElement(ConcordCommunityList.encode(listOf(entry))).jsonObject
-        val fragmentPlaintexts = ConcordListFragments.pack(listDocument)
-        require(fragmentPlaintexts.isNotEmpty()) { "Quartz produced an empty Community List" }
-
-        val listEvents = fragmentPlaintexts.mapIndexed { index, plaintext ->
+        val mergedEntries = ConcordCommunityList.merge(existingList.document.entries, listOf(entry))
+        val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, existingList.document.residue)
+        val listWrites = existingList.fragments.planWrites(nextDocument, createdAt)
+        val listEvents = listWrites.map { write ->
             ConcordCommunityListFragmentEvent.create(
                 signer = signer,
-                index = index,
-                plaintext = plaintext,
-                createdAt = createdAt,
+                index = write.index,
+                plaintext = write.plaintext,
+                createdAt = write.createdAt,
             )
         }
 
-        // The two genesis wraps and membership fragments are all saved locally before
-        // network I/O. Their payloads are encrypted by the Concord envelope / NIP-44 list.
-        val events = (community.genesisWraps + listEvents).map { NostrEvent.fromJson(it.toJson()) }
+        val genesisEvents = community.genesisWraps.map { NostrEvent.fromJson(it.toJson()) }
+        val allEvents = genesisEvents + listEvents.map { NostrEvent.fromJson(it.toJson()) }
         withContext(Dispatchers.IO) {
-            journalEvents(community.communityIdHex, events)
+            journalEvents(community.communityIdHex, allEvents)
             prefs.edit().putString(generalChannelKey(community.communityIdHex), community.generalChannelIdHex).commit()
         }
 
         var published = 0
         val pending = mutableListOf<String>()
-        for (event in events) {
-            val outcome = relayPool.publishWithConfirmation(event.id) {
-                relayPool.sendToWriteRelays(ClientMessage.event(event))
-            }
-            if (outcome.confirmed) {
-                published++
-            } else {
-                pending += event.id
-            }
+        for (event in genesisEvents) {
+            if (publishConfirmed(event, relays)) published++ else pending += event.id
+        }
+        for (event in allEvents.drop(genesisEvents.size)) {
+            if (publishConfirmed(event, emptyList())) published++ else pending += event.id
         }
 
         return CreationResult(
@@ -134,44 +131,118 @@ class ConcordCommunityRepository(
             generalChannelId = community.generalChannelIdHex,
             name = name.trim(),
             publishedCount = published,
-            totalCount = events.size,
+            totalCount = allEvents.size,
             pendingEventIds = pending,
         )
     }
 
+    private data class CommunityListSnapshot(
+        val fragments: ConcordListFragmentSet,
+        val document: ConcordCommunityListDocument,
+    )
 
     /**
-     * Rebuilds locally journaled memberships from the self-encrypted kind-33302
-     * fragments. This is a recovery path, not a substitute for relay discovery.
+     * Reads every configured read relay to a per-relay EOSE, then merges remote and
+     * locally journaled fragments. A failed decrypt stays unreadable in the fragment
+     * set, so Quartz can scope a safe write instead of repacking missing memberships.
      */
-    suspend fun loadLocalMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> {
-        val encodedEvents = prefs.all.keys
-            .filter { it.startsWith("events_") }
-            .flatMap { key -> prefs.getStringSet(key, emptySet()).orEmpty() }
-        val events = encodedEvents.mapNotNull { encoded ->
-            runCatching { NostrEvent.fromJson(encoded) }.getOrNull()
-        }.filter {
-            it.kind == ConcordCommunityListFragmentEvent.KIND && it.pubkey == signer.pubKey
-        }
+    private suspend fun fetchCommunityList(signer: PostillaQuartzSigner): CommunityListSnapshot {
+        val readRelays = relayPool.getReadRelayUrls().distinct()
+        require(readRelays.isNotEmpty()) { "No read relays configured; refusing to replace the Community List" }
 
-        var merged: JsonObject? = null
-        for (event in events) {
-            try {
-                val plaintext = signer.nip44Decrypt(event.content, signer.pubKey)
-                val fragment = ConcordListFragments.decodeFragment(plaintext)
-                merged = merged?.let { ConcordListFragments.mergeDocs(it, fragment.doc) } ?: fragment.doc
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                // An unreadable local fragment is not treated as an empty membership list.
+        val subId = "concord-community-list-${signer.pubKey.take(12)}-${System.nanoTime()}"
+        val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
+        val responded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        val allEose = CompletableDeferred<Unit>()
+
+        coroutineScope {
+            val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEvents
+                    .filter {
+                        it.subscriptionId == subId &&
+                            it.event.kind in setOf(ConcordCommunityListFragmentEvent.KIND, 13302)
+                    }
+                    .collect { relayEvent ->
+                        if (relayEvent.event.pubkey == signer.pubKey) {
+                            events.putIfAbsent(relayEvent.event.id, relayEvent.event)
+                        }
+                    }
+            }
+            val eoseCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                relayPool.relayEoseSignals
+                    .filter { it.subscriptionId == subId && it.relayUrl in readRelays }
+                    .collect { signal ->
+                        responded.add(signal.relayUrl)
+                        if (responded.containsAll(readRelays)) allEose.complete(Unit)
+                    }
+            }
+            relayPool.sendToReadRelays(
+                ClientMessage.req(
+                    subId,
+                    listOf(
+                        Filter(
+                            kinds = listOf(ConcordCommunityListFragmentEvent.KIND, 13302),
+                            authors = listOf(signer.pubKey),
+                            limit = 5000,
+                        ),
+                    ),
+                ),
+            )
+            val complete = withTimeoutOrNull(8_000L) {
+                allEose.await()
+                true
+            } ?: false
+            delay(150)
+            eventCollector.cancelAndJoin()
+            eoseCollector.cancelAndJoin()
+            relayPool.closeOnAllRelays(subId)
+            if (!complete) {
+                throw IllegalStateException("Could not read the Community List from every configured read relay; refusing a destructive update")
             }
         }
-        return merged?.let { ConcordCommunityList.decodeDocument(it).entries } ?: emptyList()
+
+        // Include signed local events that may not have reached a relay yet.
+        prefs.all.keys.filter { it.startsWith("events_") }.forEach { key ->
+            prefs.getStringSet(key, emptySet()).orEmpty().forEach { encoded ->
+                runCatching { NostrEvent.fromJson(encoded) }.getOrNull()?.let { event ->
+                    if (event.pubkey == signer.pubKey &&
+                        event.kind in setOf(ConcordCommunityListFragmentEvent.KIND, 13302)
+                    ) events.putIfAbsent(event.id, event)
+                }
+            }
+        }
+
+        val copies = events.values
+            .filter { it.kind == ConcordCommunityListFragmentEvent.KIND }
+            .mapNotNull { event ->
+                val d = event.tags.firstOrNull { it.firstOrNull() == "d" }?.getOrNull(1) ?: return@mapNotNull null
+                val index = ConcordCommunityListFragmentEvent.parseIndex(d) ?: return@mapNotNull null
+                val plaintext = try {
+                    signer.nip44Decrypt(event.content, signer.pubKey)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                ConcordListFragmentSet.Copy(index, event.created_at, event.id, plaintext)
+            }
+        val fragmentSet = ConcordListFragmentSet.of(copies)
+
+        val legacyEvent = events.values
+            .filter { it.kind == 13302 }
+            .maxByOrNull { it.created_at }
+        val legacyPlaintext = legacyEvent?.let { event ->
+            try {
+                signer.nip44Decrypt(event.content, signer.pubKey)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                throw IllegalStateException("The legacy Community List could not be decrypted; refusing to overwrite it", error)
+            }
+        }
+        val mergedDocument = ConcordCommunityList.readWithLegacy(fragmentSet, legacyPlaintext)
+        return CommunityListSnapshot(fragmentSet, ConcordCommunityList.decodeDocument(mergedDocument))
     }
-
-    fun getLocalGeneralChannelId(communityId: String): String? =
-        prefs.getString(generalChannelKey(communityId), null)
-
 
     /**
      * Mints and publishes a Vector-compatible public invite link.
