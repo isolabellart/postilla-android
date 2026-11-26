@@ -1,16 +1,13 @@
 package com.darkwisp.app.concord
 
+import com.darkwisp.app.nostr.LocalSigner
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteBundle
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
-import com.darkwisp.app.nostr.LocalSigner
-import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
-import com.vitorpamplona.quartz.nip01Core.signers.NostrSignerSync
-import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Guards the published Quartz artifact's Concord wire identifiers. */
+/** Guards the published Quartz artifact's Concord wire identifiers and key-derivation vector. */
 class QuartzConcordCompatibilityTest {
     @Test
     fun concordWireKindsAreAvailable() {
@@ -20,12 +17,15 @@ class QuartzConcordCompatibilityTest {
     }
 
     @Test
-    fun localQuartzKeyDerivationMatchesQuartzReferenceSigner() = kotlinx.coroutines.runBlocking {
+    fun localQuartzKeyDerivationMatchesQuartzReferenceVector() = kotlinx.coroutines.runBlocking {
         val privateKey = ByteArray(32).also { it[31] = 7 }
-        val keyPair = KeyPair(privKey = privateKey)
-        val nonce = ByteArray(32).also { it[0] = 42 }.toHexKey()
-        val expected = NostrSignerSync(keyPair).deriveKey(nonce)
-        val actual = LocalSigner(privateKey, keyPair.pubKey).deriveKey(nonce)
+        val publicKey = ByteArray(32)
+        val nonce = ByteArray(32).also { it[0] = 42 }.joinToString("") { "%02x".format(it) }
+
+        // Fixed vector computed from Quartz 2.15.1 EncryptionKeyDerivation:
+        // SHA-256(HKDF-Extract(salt = UTF8("nip44kd") || nonce, IKM = privateKey)).
+        val expected = "f14cc4d5a083aa3971978f0cfb260413b3600fd03893e0d2577f14576eaf4f64"
+        val actual = LocalSigner(privateKey, publicKey).deriveKey(nonce)
         assertEquals(expected, actual)
     }
 }
