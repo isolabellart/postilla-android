@@ -48,3 +48,6 @@ This is an initial repository slice, not yet a user-facing Community chat. It do
 - Added a dedicated Concord tab, community creation/list UI, general-channel screen, and navigation. The existing NIP-29 Rooms tab remains available and unchanged.
 - Added a Vector invite-link flow using `https://vector.chat`, Quartz kind-13303 private Invite List and kind-33301 encrypted bundle. The Invite List is merged from all configured read relays and must be confirmed before the bundle is published; the bundle must also receive relay confirmation before the URL is shared.
 - These flows are implementation work in progress. Remote discovery/join, full control-plane folding, role/invite administration, key rotation and end-to-end Vector device testing remain open.
+
+- Added invite redemption: Postilla parses a Vector link, resolves and validates the kind-33301 bundle, verifies the read-only Control Plane through Quartz, discovers the live `general` channel, and merges the membership into the user's fragmented kind-33302 list.
+- Community creation now reads and merges the existing list before publishing, using Quartz `ConcordListFragmentSet.planWrites` so incomplete fragment sets are updated safely without overwriting memberships that were not fetched.
