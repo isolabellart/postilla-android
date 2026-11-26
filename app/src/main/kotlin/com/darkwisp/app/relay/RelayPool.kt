@@ -75,6 +75,9 @@ internal fun classifyEventBroadcastStatus(
     else -> EventBroadcastStatus.REJECTED
 }
 
+/** Retry only when a relay gave no response; explicit OK responses are final. */
+internal fun shouldRetryEventBroadcast(result: PublishResult?): Boolean = result == null
+
 class RelayPool(private var prefs: SharedPreferences? = null) {
     /** Point AUTH storage at another account, clearing the old signer/trust first.
      * Configure pinned/DM/group AUTH targets and the new signer AFTER this call. */
@@ -798,7 +801,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
             return EventBroadcastReport(event.id, emptyList(), EventBroadcastFailure.NO_WRITE_RELAYS)
         }
 
-        // Try to recover disconnected write relays, but never hold the UI indefinitely.
+        // Recover relays already known to be disconnected before the first attempt.
         ensureWriteRelaysConnected(timeoutMs = connectTimeoutMs)
 
         val targetUrls = targets.map { it.config.url }.toSet()
@@ -810,18 +813,62 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         }
 
         try {
-            // ClientMessage.event serializes the original NostrEvent, preserving its ID,
-            // pubkey, tags, content, timestamp and signature. No new kind-6 event is made.
+            // Keep one immutable EVENT frame for both attempts: same event ID and signature.
             val message = ClientMessage.event(event)
-            val sentUrls = targets.filter { relay ->
-                val sent = relay.send(message, queueIfDisconnected = false)
-                if (sent && appIsActive) healthTracker?.onEventSent(relay.config.url, message.length)
-                sent
-            }.map { it.config.url }.toSet()
+            val sentUrls = mutableSetOf<String>()
 
-            val deadline = System.currentTimeMillis() + acknowledgementTimeoutMs
-            while (sentUrls.any { !acknowledgements.containsKey(it) } && System.currentTimeMillis() < deadline) {
-                delay(50)
+            fun sendToRelay(relay: Relay): Boolean {
+                val url = relay.config.url
+                // An OK may arrive while reconnecting; never resend after it has been observed.
+                if (acknowledgements.containsKey(url)) return false
+                val sent = relay.send(message, queueIfDisconnected = false)
+                if (sent) {
+                    sentUrls.add(url)
+                    if (appIsActive) healthTracker?.onEventSent(url, message.length)
+                }
+                return sent
+            }
+
+            fun pendingUrls(relayUrls: Collection<String>): Boolean =
+                relayUrls.any { !acknowledgements.containsKey(it) }
+
+            suspend fun awaitAcknowledgements(relayUrls: Collection<String>, timeoutMs: Long) {
+                if (relayUrls.isEmpty()) return
+                val deadline = System.currentTimeMillis() + timeoutMs
+                while (pendingUrls(relayUrls) && System.currentTimeMillis() < deadline) {
+                    delay(50)
+                }
+            }
+
+            targets.forEach { relay -> sendToRelay(relay) }
+            awaitAcknowledgements(sentUrls, acknowledgementTimeoutMs)
+
+            // OkHttp can accept a WebSocket write on a half-open socket. If a relay
+            // did not answer, recycle only that relay and retry the exact same event.
+            // If the first write actually arrived, the relay's second OK will normally
+            // identify the event as a duplicate instead of creating another publication.
+            val retryTargets = targets.filter { shouldRetryEventBroadcast(acknowledgements[it.config.url]) }
+            if (retryTargets.isNotEmpty()) {
+                Log.w("RLC", "[Pool] Broadcast received no OK from ${retryTargets.size}/${targets.size} relay(s); reconnecting and retrying the same event")
+                retryTargets.forEach { relay ->
+                    relay.forceDisconnect()
+                    relay.resetBackoff()
+                    relay.connect()
+                }
+
+                val reconnectDeadline = System.currentTimeMillis() + connectTimeoutMs
+                while (retryTargets.any { !it.isConnected } && System.currentTimeMillis() < reconnectDeadline) {
+                    delay(200)
+                }
+
+                val retriedUrls = mutableSetOf<String>()
+                retryTargets.forEach { relay ->
+                    val url = relay.config.url
+                    if (!acknowledgements.containsKey(url) && relay.isConnected && sendToRelay(relay)) {
+                        retriedUrls.add(url)
+                    }
+                }
+                awaitAcknowledgements(retriedUrls, acknowledgementTimeoutMs)
             }
 
             val relayResults = targets.map { relay ->

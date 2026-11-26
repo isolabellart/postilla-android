@@ -1,6 +1,8 @@
 package com.darkwisp.app.relay
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EventBroadcastStatusTest {
@@ -50,6 +52,25 @@ class EventBroadcastStatusTest {
         assertEquals(
             EventBroadcastStatus.NO_ACK,
             classifyEventBroadcastStatus(sent = true, result = null)
+        )
+    }
+
+    @Test
+    fun relayWithoutAcknowledgementIsEligibleForRetry() {
+        assertTrue(shouldRetryEventBroadcast(result = null))
+    }
+
+    @Test
+    fun explicitAcceptedOrRejectedAcknowledgementIsNotRetried() {
+        assertFalse(
+            shouldRetryEventBroadcast(
+                PublishResult("wss://relay.example", "event-id", true, "stored")
+            )
+        )
+        assertFalse(
+            shouldRetryEventBroadcast(
+                PublishResult("wss://relay.example", "event-id", false, "blocked")
+            )
         )
     }
 }
