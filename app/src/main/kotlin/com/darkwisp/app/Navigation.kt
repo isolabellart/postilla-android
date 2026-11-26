@@ -102,6 +102,7 @@ import com.darkwisp.app.ui.screen.ExistingUserOnboardingScreen
 import com.darkwisp.app.ui.screen.LoadingScreen
 import com.darkwisp.app.ui.screen.ListsHubScreen
 import com.darkwisp.app.ui.screen.InterfaceScreen
+import com.darkwisp.app.ui.screen.SettingsHubScreen
 import com.darkwisp.app.ui.screen.PowSettingsScreen
 import com.darkwisp.app.ui.screen.OnboardingScreen
 import com.darkwisp.app.ui.component.AddNoteToListDialog
@@ -195,6 +196,7 @@ object Routes {
     const val DRAFTS = "drafts"
     const val SOCIAL_GRAPH = "social_graph"
     const val POW_SETTINGS = "pow_settings"
+    const val SETTINGS = "settings"
     const val INTERFACE_SETTINGS = "interface_settings"
     const val RELAY_HEALTH = "relay_health"
     const val ARTICLE = "article/{kind}/{author}/{dTag}"
@@ -1096,6 +1098,7 @@ fun WispNavHost(
                 onPowSettings = {
                     navController.navigate(Routes.POW_SETTINGS)
                 },
+                onSettings = { navController.navigate(Routes.SETTINGS) },
                 onInterfaceSettings = {
                     navController.navigate(Routes.INTERFACE_SETTINGS)
                 },
@@ -3670,6 +3673,23 @@ fun WispNavHost(
             PowSettingsScreen(
                 powPrefs = feedViewModel.powPrefs,
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Routes.SETTINGS) {
+            SettingsHubScreen(
+                onBack = { navController.popBackStack() },
+                onInterface = { navController.navigate(Routes.INTERFACE_SETTINGS) },
+                onRelays = { navController.navigate(Routes.RELAYS) },
+                onMediaServers = { navController.navigate(Routes.BLOSSOM_SERVERS) },
+                onKeys = { navController.navigate(Routes.KEYS) },
+                onSafety = { navController.navigate(Routes.SAFETY) },
+                onPow = { navController.navigate(Routes.POW_SETTINGS) },
+                onSocialGraph = { navController.navigate(Routes.SOCIAL_GRAPH) },
+                onCustomEmojis = { navController.navigate(Routes.CUSTOM_EMOJIS) },
+                onPaymentTargets = { navController.navigate(Routes.PAYMENT_TARGETS) },
+                onRelayHealth = { navController.navigate(Routes.RELAY_HEALTH) },
+                onConsole = { navController.navigate(Routes.CONSOLE) }
             )
         }
 
