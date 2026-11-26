@@ -578,7 +578,7 @@ class ConcordCommunityRepository(
         return event.id
     }
 
-    private suspend fun publishControlEdition(
+    private fun buildControlEdition(
         signer: PostillaQuartzSigner,
         membership: ConcordCommunityListEntry,
         control: ControlPlaneSnapshot,
@@ -611,13 +611,29 @@ class ConcordCommunityRepository(
             createdAt = System.currentTimeMillis() / 1000,
             authorityCitation = control.state.authority.citationFor(signer.pubKey),
         )
-        val event = NostrEvent.fromJson(
+        return NostrEvent.fromJson(
             ConcordStreamEnvelope.wrap(
                 rumor = rumor,
                 keys = control.keys,
                 authorSigner = signer,
                 encrypted = false,
             ).toJson(),
+        )
+    }
+
+    private suspend fun publishControlEdition(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        entityKind: ControlEntityKind,
+        entityId: ByteArray,
+        content: String,
+        permission: Int,
+        previousVersion: Long? = null,
+        previousHash: String? = null,
+    ): NostrEvent {
+        val event = buildControlEdition(
+            signer, membership, control, entityKind, entityId, content, permission, previousVersion, previousHash,
         )
         withContext(Dispatchers.IO) { journalEvents(membership.id, listOf(event)) }
         if (!publishConfirmed(event, membership.relays)) {
