@@ -11,8 +11,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import com.darkwisp.app.ui.component.horizontalSectionSwipe
 import android.view.HapticFeedbackConstants
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import coil3.compose.AsyncImage
@@ -223,6 +221,7 @@ fun FeedScreen(
     onRelayHealth: () -> Unit = {},
     onKeys: () -> Unit = {},
     onPowSettings: () -> Unit = {},
+    onSettings: () -> Unit = {},
     onInterfaceSettings: () -> Unit = {},
     onFeedChromeVisibilityChanged: (Boolean) -> Unit = {},
     onAddToList: (String) -> Unit = {},
