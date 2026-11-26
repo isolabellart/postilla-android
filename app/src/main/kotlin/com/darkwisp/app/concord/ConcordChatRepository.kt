@@ -119,11 +119,13 @@ class ConcordChatRepository(
         relayPool.sendToReadRelays(
             ClientMessage.req(
                 subscriptionId,
-                Filter(
-                    kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
-                    authors = listOf(channelKey.publicKeyHex),
-                    since = since,
-                    limit = 500,
+                listOf(
+                    Filter(
+                        kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                        authors = listOf(channelKey.publicKeyHex),
+                        since = since,
+                        limit = 500,
+                    ),
                 ),
             ),
         )
