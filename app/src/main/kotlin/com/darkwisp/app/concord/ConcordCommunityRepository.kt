@@ -413,6 +413,11 @@ class ConcordCommunityRepository(
         if (winner.rootEpoch > invite.rootEpoch) {
             throw IllegalStateException("A newer membership epoch already exists; refresh the community list before joining this older invite")
         }
+        if (winner.rootEpoch == invite.rootEpoch &&
+            (winner.root != invite.communityRoot || winner.controlPk != invite.controlPk)
+        ) {
+            throw IllegalStateException("This invite conflicts with the keys already stored for the same community epoch")
+        }
         val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, currentList.document.residue)
         val writes = currentList.fragments.planWrites(nextDocument, System.currentTimeMillis() / 1000)
         val listEvents = writes.map { write ->
