@@ -8,6 +8,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import com.darkwisp.app.ui.component.horizontalSectionSwipe
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import coil3.compose.AsyncImage
@@ -430,11 +435,11 @@ fun FeedScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
-    var reopenSettingsDrawerAfterResume by rememberSaveable { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    // Drawer destinations are real navigation destinations: close the drawer
+    // and keep it closed while the user visits settings and their sub-pages.
     val closeSettingsDrawerForNavigation = {
-        settingsExpanded = true
-        reopenSettingsDrawerAfterResume = true
+        settingsExpanded = false
         scope.launch { drawerState.close() }
     }
     DisposableEffect(lifecycleOwner) {
@@ -442,11 +447,6 @@ fun FeedScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 autoHideFeedChrome = interfacePrefs.isFeedChromeAutoHideEnabled()
                 feedChromeVisible = true
-                if (reopenSettingsDrawerAfterResume) {
-                    reopenSettingsDrawerAfterResume = false
-                    settingsExpanded = true
-                    scope.launch { drawerState.open() }
-                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -901,6 +901,7 @@ fun FeedScreen(
     ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
             val torState by TorManager.state.collectAsState()
             val torContext = LocalContext.current
@@ -1222,11 +1223,31 @@ fun FeedScreen(
                     }
 
                     AnimatedVisibility(visible = !autoHideFeedChrome || feedChromeVisible) {
+                    val feedSectionIndex = when (feedType) {
+                        FeedType.FOR_YOU -> 0
+                        FeedType.FOLLOWS -> 1
+                        FeedType.WITH_REPLIES -> 2
+                        else -> 3
+                    }
+                    val hapticView = LocalView.current
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(76.dp)
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = 8.dp)
+                            .horizontalSectionSwipe(
+                                selectedIndex = feedSectionIndex,
+                                itemCount = 4,
+                                onSelectionChanged = { index ->
+                                    when (index) {
+                                        0 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.FOR_YOU) }
+                                        1 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.FOLLOWS) }
+                                        2 -> { showFeedTypeDropdown = false; viewModel.setFeedType(FeedType.WITH_REPLIES) }
+                                        3 -> { showFeedTypeDropdown = true }
+                                    }
+                                },
+                                onHaptic = { hapticView.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE) }
+                            ),
                         horizontalArrangement = Arrangement.spacedBy(0.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
