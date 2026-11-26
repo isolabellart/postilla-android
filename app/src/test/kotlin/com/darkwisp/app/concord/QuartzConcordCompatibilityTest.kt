@@ -7,7 +7,7 @@ import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Guards the published Quartz artifact's Concord wire identifiers and key-derivation vector. */
+/** Guards Concord wire identifiers and a Quartz 2.15.1 derivation vector without loading native secp256k1. */
 class QuartzConcordCompatibilityTest {
     @Test
     fun concordWireKindsAreAvailable() {
