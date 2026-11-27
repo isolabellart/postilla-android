@@ -96,7 +96,7 @@ fun ConcordRoomScreen(
     var selectedChannelId by rememberSaveable(communityId) { mutableStateOf("") }
     val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
     val selectedChannelAccessible = selectedChannel?.let {
-        !it.isPrivate || !it.privateKeyHex.isNullOrBlank()
+        !it.isWriterRestricted && (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
     } ?: (selectedChannelId.isNotBlank() && selectedChannelId == community?.generalChannelId)
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
