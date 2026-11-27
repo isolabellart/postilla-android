@@ -8,6 +8,7 @@ import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordImageAttachment
 import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
+import com.vitorpamplona.quartz.concord.crypto.GroupKey
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
@@ -27,6 +28,13 @@ data class ConcordChatMessage(
     val content: String,
     val createdAt: Long,
     val imageAttachments: List<ConcordImageAttachment> = emptyList(),
+)
+
+/** A CORD-03 read plane: direct channel address or a restricted writer address. */
+data class ConcordChatReadPlane(
+    val stream: GroupKey,
+    val channelEpoch: Long,
+    val writerEpoch: Long? = null,
 )
 
 /**
@@ -115,9 +123,14 @@ class ConcordChatRepository(
         since: Long? = null,
         privateChannelKeyHex: String? = null,
         privateChannelEpoch: Long? = null,
+        readPlanes: List<ConcordChatReadPlane> = emptyList(),
     ): Flow<ConcordChatMessage> = channelFlow {
         val channelEpoch = privateChannelEpoch ?: epoch
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
+        // Current + historical read planes, including CORD-03 writer addresses. Older clients
+        // only queried the base channel key and silently missed messages from restricted streams.
+        val planes = readPlanes.ifEmpty { listOf(ConcordChatReadPlane(channelKey, channelEpoch)) }
+        val authorKeys = planes.map { it.stream.publicKeyHex }.distinct()
         // CORD-01 streams are addressed by their derived author key, but relays are
         // interchangeable. Query both the community's advertised relays and this account's
         // configured read relays: Amethyst/Vector may publish to either set.
@@ -133,15 +146,27 @@ class ConcordChatRepository(
                 .filter {
                     it.subscriptionId == subscriptionId &&
                         it.relayUrl in targets &&
-                        it.event.kind == ConcordStreamEnvelope.KIND_WRAP
+                        it.event.kind == ConcordStreamEnvelope.KIND_WRAP &&
+                        it.event.pubkey in authorKeys
                 }
                 .collect { relayEvent ->
                     try {
                         val wrap = Event.fromJson(relayEvent.event.toJson())
-                        val opened = ConcordStreamEnvelope.open(wrap, channelKey)
-                        val rumor = opened.rumor
-                        if (rumor.kind !in ChannelChat.CHAT_KINDS) return@collect
-                        if (!ChannelChat.isBoundTo(rumor, channelIdHex, channelEpoch)) return@collect
+                        val accepted = planes.asSequence()
+                            .filter { it.stream.publicKeyHex.equals(wrap.pubKey, ignoreCase = true) }
+                            .mapNotNull { plane ->
+                                val opened = ConcordStreamEnvelope.open(wrap, plane.stream)
+                                if (plane.writerEpoch != null) {
+                                    ChannelChat.acceptWriterOpened(
+                                        opened, channelIdHex, plane.channelEpoch, plane.writerEpoch, ChannelChat.CHAT_KINDS,
+                                    )
+                                } else {
+                                    ChannelChat.acceptOpened(opened, channelIdHex, plane.channelEpoch, ChannelChat.CHAT_KINDS)
+                                }
+                            }
+                            .firstOrNull()
+                            ?: return@collect
+                        val rumor = accepted
                         if (rumor.kind != 9 || !seenInSubscription.add(rumor.id)) return@collect
 
                         send(
@@ -166,7 +191,7 @@ class ConcordChatRepository(
             listOf(
                 Filter(
                     kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
-                    authors = listOf(channelKey.publicKeyHex),
+                    authors = authorKeys,
                     since = since,
                     limit = 5000,
                 ),
