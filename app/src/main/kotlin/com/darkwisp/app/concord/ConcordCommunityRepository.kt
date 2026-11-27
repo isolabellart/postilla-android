@@ -1749,7 +1749,8 @@ class ConcordCommunityRepository(
      */
     suspend fun fetchDirectInvites(signer: PostillaQuartzSigner): List<OpenedDirectInvite> {
         val inboxRelays = relayPool.getDmRelayUrls().distinct().ifEmpty { relayPool.getReadRelayUrls().distinct() }
-        val cursor = prefs.getLong("concord_direct_invites_newest_wrap", 0L).takeIf { it > 0L }
+        val inboxCursorKey = "concord_direct_invites_newest_wrap_${signer.pubKey.lowercase()}"
+        val cursor = prefs.getLong(inboxCursorKey, 0L).takeIf { it > 0L }
         val events = fetchEventsFromRelays(
             relays = inboxRelays,
             filter = Filter(
@@ -1773,24 +1774,26 @@ class ConcordCommunityRepository(
         } catch (_: Exception) {
             emptySet()
         }
-        val declined = prefs.getStringSet(PREF_DECLINED_DIRECT_INVITES, emptySet()).orEmpty()
+        val declinedKey = "${PREF_DECLINED_DIRECT_INVITES}_${signer.pubKey.lowercase()}"
+        val declined = prefs.getStringSet(declinedKey, emptySet()).orEmpty()
         val visible = opened.filterNot {
             it.invite.communityId in joinedIds || it.wrapId.lowercase() in declined
         }
         val newest = events.maxOfOrNull { it.created_at } ?: cursor
         if (newest != null && newest > (cursor ?: 0L)) {
             withContext(Dispatchers.IO) {
-                prefs.edit().putLong("concord_direct_invites_newest_wrap", newest).apply()
+                prefs.edit().putLong(inboxCursorKey, newest).apply()
             }
         }
         return visible
     }
 
     /** Remember an explicit decline so the same NIP-59 wrap does not resurface on the next sweep. */
-    fun declineDirectInvite(wrapId: String) {
-        val declined = prefs.getStringSet(PREF_DECLINED_DIRECT_INVITES, emptySet()).orEmpty().toMutableSet()
+    fun declineDirectInvite(wrapId: String, signerPubkey: String) {
+        val declinedKey = "${PREF_DECLINED_DIRECT_INVITES}_${signerPubkey.lowercase()}"
+        val declined = prefs.getStringSet(declinedKey, emptySet()).orEmpty().toMutableSet()
         declined.add(wrapId.lowercase())
-        prefs.edit().putStringSet(PREF_DECLINED_DIRECT_INVITES, declined).apply()
+        prefs.edit().putStringSet(declinedKey, declined).apply()
     }
 
     suspend fun joinCommunityFromDirectInvite(
