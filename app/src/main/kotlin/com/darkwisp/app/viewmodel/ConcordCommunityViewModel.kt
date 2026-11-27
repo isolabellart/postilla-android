@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordChatRepository
 import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
 import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
@@ -125,6 +126,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         signer: NostrSigner?,
         name: String,
         description: String? = null,
+        icon: ImagePointer? = null,
     ) {
         if (_creation.value.isCreating) return
         if (signer == null) {
@@ -145,6 +147,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     signer = quartzSigner,
                     name = name,
                     description = description,
+                    icon = icon,
                 )
                 val entries = repo.loadLocalMemberships(quartzSigner)
                 memberships.clear()
