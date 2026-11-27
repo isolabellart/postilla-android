@@ -57,6 +57,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _channels = MutableStateFlow<List<ConcordCommunityRepository.CommunityChannel>>(emptyList())
     val channels: StateFlow<List<ConcordCommunityRepository.CommunityChannel>> = _channels
 
+    private val _communityIcons = MutableStateFlow<Map<String, ByteArray>>(emptyMap())
+    val communityIcons: StateFlow<Map<String, ByteArray>> = _communityIcons
+
     private val _creation = MutableStateFlow(CreationState())
     val creation: StateFlow<CreationState> = _creation
 
@@ -171,6 +174,17 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             } catch (error: Exception) {
                 _creation.value = CreationState(error = error.message ?: "Community creation failed")
             }
+        }
+    }
+
+    fun loadCommunityIcon(communityId: String) {
+        val repo = repository ?: return
+        val membership = memberships[communityId] ?: return
+        if (_communityIcons.value.containsKey(communityId)) return
+        viewModelScope.launch {
+            runCatching { repo.loadCommunityIcon(membership) }
+                .getOrNull()
+                ?.let { bytes -> _communityIcons.value = _communityIcons.value + (communityId to bytes) }
         }
     }
 
