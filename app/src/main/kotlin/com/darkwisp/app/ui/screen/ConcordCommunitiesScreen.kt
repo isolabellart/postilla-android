@@ -618,4 +618,5 @@ fun ConcordCommunitiesScreen(
             },
         )
     }
+    }
 }
