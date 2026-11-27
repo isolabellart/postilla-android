@@ -171,6 +171,7 @@ fun ConcordRoomScreen(
                         signer,
                         imetas = listOf(imeta),
                         replyTo = replyToMessage,
+                        inlineReply = inlineReplyMode,
                     )
                     if (sent == null) throw IllegalStateException("Image message was not confirmed by a relay")
                     if (messages.none { it.id == sent.id }) messages.add(sent)
@@ -341,7 +342,10 @@ fun ConcordRoomScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
-                        TextButton(onClick = { replyToMessage = null }) { Text("Cancel reply") }
+                        TextButton(onClick = {
+                            replyToMessage = null
+                            inlineReplyMode = false
+                        }) { Text("Cancel reply") }
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
