@@ -106,6 +106,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val quartzSigner = PostillaQuartzSigner(signer)
                 val entries = repo.loadLocalMemberships(quartzSigner)
+                val warning = repo.getCommunityListReadWarning()
+                // An incomplete/empty remote snapshot is not proof that existing memberships
+                // were removed. Keep the last known list visible until a usable snapshot arrives.
+                if (entries.isEmpty() && memberships.isNotEmpty() && warning != null) {
+                    _communityListWarning.value = warning
+                    return@launch
+                }
                 memberships.clear()
                 entries.forEach { memberships[it.id] = it }
                 _communities.value = entries.map { entry ->
@@ -117,7 +124,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         relays = entry.relays,
                     )
                 }
-                _communityListWarning.value = repo.getCommunityListReadWarning()
+                _communityListWarning.value = warning
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -158,6 +165,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     icon = icon,
                 )
                 val entries = repo.loadLocalMemberships(quartzSigner)
+                val warning = repo.getCommunityListReadWarning()
+                // An incomplete/empty remote snapshot is not proof that existing memberships
+                // were removed. Keep the last known list visible until a usable snapshot arrives.
+                if (entries.isEmpty() && memberships.isNotEmpty() && warning != null) {
+                    _communityListWarning.value = warning
+                    return@launch
+                }
                 memberships.clear()
                 entries.forEach { memberships[it.id] = it }
                 _communities.value = entries.map { entry ->
@@ -169,7 +183,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         relays = entry.relays,
                     )
                 }
-                _communityListWarning.value = repo.getCommunityListReadWarning()
+                _communityListWarning.value = warning
                 _creation.value = CreationState(result = result)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -325,6 +339,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 val quartzSigner = PostillaQuartzSigner(signer)
                 val result = repo.joinCommunityFromInvite(quartzSigner, inviteUrl)
                 val entries = repo.loadLocalMemberships(quartzSigner)
+                val warning = repo.getCommunityListReadWarning()
+                // An incomplete/empty remote snapshot is not proof that existing memberships
+                // were removed. Keep the last known list visible until a usable snapshot arrives.
+                if (entries.isEmpty() && memberships.isNotEmpty() && warning != null) {
+                    _communityListWarning.value = warning
+                    return@launch
+                }
                 memberships.clear()
                 entries.forEach { memberships[it.id] = it }
                 _communities.value = entries.map { entry ->
@@ -336,7 +357,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         relays = entry.relays,
                     )
                 }
-                _communityListWarning.value = repo.getCommunityListReadWarning()
+                _communityListWarning.value = warning
                 _join.value = JoinState(result = result)
             } catch (cancelled: CancellationException) {
                 throw cancelled
