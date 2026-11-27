@@ -302,6 +302,7 @@ fun DmListScreen(
                     relayPool = relayPool,
                     signer = signer,
                     blossomRepository = blossomRepository,
+                    eventRepository = eventRepo,
                     onOpenCommunity = onConcordCommunity,
                     embedded = true,
                 )
