@@ -104,7 +104,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     fun init(relayPool: RelayPool, signer: NostrSigner?) {
         if (repository == null) {
             repository = ConcordCommunityRepository(getApplication(), relayPool)
-            chatRepository = ConcordChatRepository(relayPool)
+            chatRepository = ConcordChatRepository(relayPool, getApplication())
         }
         if (signer?.pubkeyHex == signerPubkey) return
         signerPubkey = signer?.pubkeyHex
@@ -249,7 +249,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val entry = memberships[communityId] ?: return emptyFlow()
         val channel = _channels.value.firstOrNull { it.id == channelId }
         if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return emptyFlow()
+        val ownerPubkey = signerPubkey ?: return emptyFlow()
         return chatRepository?.observeChannel(
+            ownerPubkey = ownerPubkey,
+            communityIdHex = entry.id,
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
@@ -313,6 +316,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         signer: NostrSigner?,
         extraTags: Array<Array<String>> = emptyArray(),
         imetas: List<IMetaTag> = emptyList(),
+        replyTo: ConcordChatMessage? = null,
+        inlineReply: Boolean = false,
     ): ConcordChatMessage? {
         val entry = memberships[communityId] ?: return null
         val channelInfo = _channels.value.firstOrNull { it.id == channelId }
@@ -321,6 +326,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         signer ?: return null
         return chat.sendMessage(
             signer = PostillaQuartzSigner(signer),
+            communityIdHex = entry.id,
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
@@ -330,7 +336,52 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             communityRelays = entry.relays,
             extraTags = extraTags,
             imetas = imetas,
+            replyTo = replyTo,
+            inlineReply = inlineReply,
         )
+    }
+
+    suspend fun loadOlderChannelMessages(
+        communityId: String,
+        channelId: String,
+    ): List<ConcordChatMessage> {
+        val entry = memberships[communityId] ?: return emptyList()
+        val ownerPubkey = signerPubkey ?: return emptyList()
+        val channel = _channels.value.firstOrNull { it.id == channelId }
+        if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return emptyList()
+        if (channel?.readPlanes.isNullOrEmpty()) return emptyList()
+        return chatRepository?.loadOlder(
+            ownerPubkey = ownerPubkey,
+            communityIdHex = entry.id,
+            channelIdHex = channelId,
+            readPlanes = channel.readPlanes,
+            communityRelays = entry.relays,
+        ).orEmpty()
+    }
+
+    suspend fun sendChannelReaction(
+        communityId: String,
+        channelId: String,
+        target: ConcordChatMessage,
+        reaction: String,
+        signer: NostrSigner?,
+    ): Boolean {
+        val entry = memberships[communityId] ?: return false
+        val channel = _channels.value.firstOrNull { it.id == channelId }
+        if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return false
+        signer ?: return false
+        return chatRepository?.sendReaction(
+            signer = PostillaQuartzSigner(signer),
+            communityIdHex = entry.id,
+            communityRootHex = entry.root,
+            channelIdHex = channelId,
+            epoch = entry.rootEpoch,
+            target = target,
+            reaction = reaction,
+            privateChannelKeyHex = channel?.privateKeyHex,
+            privateChannelEpoch = channel?.privateChannelEpoch,
+            communityRelays = entry.relays,
+        ) ?: false
     }
 
     suspend fun sendGeneralMessage(
