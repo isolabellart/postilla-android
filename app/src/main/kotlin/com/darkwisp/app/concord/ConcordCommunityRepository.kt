@@ -280,6 +280,13 @@ class ConcordCommunityRepository(
             // still receive REQ and can contribute events during the short settling window.
             // A partial/apparently complete fragment set remains read-only under the write policy.
             withTimeoutOrNull(5_000L) { readQuorumEose.await() }
+            // Let the first responders' EVENT frames drain before deciding the list is empty.
+            // If no fragment arrived, give slower relays a second bounded window: treating two
+            // fast empty responses as proof of an empty private list caused false-safe blocks.
+            delay(1_000)
+            if (events.isEmpty() && !allEose.isCompleted) {
+                withTimeoutOrNull(7_000L) { allEose.await() }
+            }
             allResponded = allEose.isCompleted
             delay(350)
             eventCollector.cancelAndJoin()
