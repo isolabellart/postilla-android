@@ -43,8 +43,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,6 +114,7 @@ fun ConcordRoomScreen(
     var loadingOlder by remember { mutableStateOf(false) }
     var suppressAutoScroll by remember { mutableStateOf(false) }
     val timelineMessages = messages.filter { it.kind == 9 || it.kind == 1111 }
+    var showRoomMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showCreateChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -203,12 +207,24 @@ fun ConcordRoomScreen(
 
     LaunchedEffect(inviteState.url) {
         inviteState.url?.let { url ->
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, url)
+            try {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, url)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Share Concord invite link"))
+            } catch (_: Exception) {
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager
+                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Concord invite link", url))
+                android.widget.Toast.makeText(
+                    context,
+                    if (clipboard != null) "Invite link copied to clipboard" else "Could not open the share sheet",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            } finally {
+                viewModel.clearInviteResult()
             }
-            context.startActivity(Intent.createChooser(shareIntent, "Share Concord invite link"))
-            viewModel.clearInviteResult()
         }
     }
 
@@ -246,6 +262,47 @@ fun ConcordRoomScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showRoomMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Community menu")
+                        }
+                        DropdownMenu(
+                            expanded = showRoomMenu,
+                            onDismissRequest = { showRoomMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Members") },
+                                onClick = {
+                                    showRoomMenu = false
+                                    showMembersDialog = true
+                                    viewModel.loadMembers(communityId, signer)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Invite by npub") },
+                                onClick = { showRoomMenu = false; showDirectInviteDialog = true },
+                            )
+                            DropdownMenuItem(
+                                enabled = signer != null && !inviteState.isCreating,
+                                text = { Text(if (inviteState.isCreating) "Preparing share link…" else "Share public invite link") },
+                                onClick = {
+                                    showRoomMenu = false
+                                    viewModel.createInviteLink(communityId, signer)
+                                },
+                            )
+                            DropdownMenuItem(
+                                enabled = signer != null,
+                                text = { Text("Create public channel") },
+                                onClick = { showRoomMenu = false; showCreateChannelDialog = true },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Refresh channels") },
+                                onClick = { showRoomMenu = false; viewModel.refreshChannels(communityId) },
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -383,24 +440,6 @@ fun ConcordRoomScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    TextButton(onClick = {
-                        showMembersDialog = true
-                        viewModel.loadMembers(communityId, signer)
-                    }) { Text("Members") }
-                    TextButton(onClick = { showDirectInviteDialog = true }) { Text("Invite by npub") }
-                    TextButton(
-                        enabled = signer != null && !inviteState.isCreating,
-                        onClick = { viewModel.createInviteLink(communityId, signer) },
-                    ) { Text(if (inviteState.isCreating) "Preparing…" else "Share link") }
-                    TextButton(
-                        enabled = signer != null,
-                        onClick = { showCreateChannelDialog = true },
-                    ) { Text("New channel") }
-                }
                 inviteState.error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
