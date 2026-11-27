@@ -1506,7 +1506,10 @@ class ConcordCommunityRepository(
     ): List<CommunityMember> {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        // Member visibility is read-only and can use a partial snapshot when relays are
+        // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
+        // immediately before publishing, so this display snapshot cannot authorize a write.
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
         val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
             communityRoot = membership.root.hexToByteArray(),
             communityId = membership.id.hexToByteArray(),
