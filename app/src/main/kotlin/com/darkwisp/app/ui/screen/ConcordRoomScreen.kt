@@ -117,11 +117,6 @@ fun ConcordRoomScreen(
                     require(bytes.isNotEmpty() && bytes.size <= 12 * 1024 * 1024) {
                         "Image must be smaller than 12 MB"
                     }
-                    val extension = when (mimeType.substringAfter('/').lowercase()) {
-                        "jpeg" -> "jpg"
-                        "png", "webp", "gif" -> mimeType.substringAfter('/').lowercase()
-                        else -> "jpg"
-                    }
                     val key = RandomInstance.bytes(32)
                     val nonce = RandomInstance.bytes(16)
                     val cipher = AESGCM(key, nonce)
@@ -374,11 +369,22 @@ fun ConcordRoomScreen(
                         val attachment = message.imageAttachments.firstOrNull()
                         if (attachment != null && decryptedImage == null && !imageLoadFailed) {
                             runCatching {
+                                require(attachment.algo.equals("aes-gcm", ignoreCase = true)) {
+                                    "Unsupported Concord image encryption algorithm"
+                                }
+                                require(attachment.url.startsWith("https://", ignoreCase = true)) {
+                                    "Concord image URL must use HTTPS"
+                                }
                                 val ciphertext = withContext(Dispatchers.IO) {
                                     val connection = java.net.URL(attachment.url).openConnection()
                                     connection.connectTimeout = 8_000
                                     connection.readTimeout = 15_000
-                                    connection.getInputStream().use { it.readBytes() }
+                                    require(connection.contentLengthLong <= 16L * 1024 * 1024 || connection.contentLengthLong < 0) {
+                                        "Concord image exceeds the 16 MB download limit"
+                                    }
+                                    connection.getInputStream().use { it.readBytes() }.also {
+                                        require(it.size <= 16 * 1024 * 1024) { "Concord image exceeds the 16 MB download limit" }
+                                    }
                                 }
                                 val plain = AESGCM(attachment.key, attachment.nonce).decryptOrNull(ciphertext)
                                     ?: throw IllegalStateException("Image decryption failed")
@@ -432,7 +438,12 @@ fun ConcordRoomScreen(
                                     content.replace(attachment.url, "").trim()
                                 }
                                 if (visibleText.isNotBlank()) {
-                                    Text(visibleText, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        if (showTranslated && translation.status == TranslationStatus.DONE) {
+                                            translation.translatedText
+                                        } else visibleText,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
                                 }
                                 if (message.imageAttachments.isNotEmpty()) {
                                     when {
@@ -453,29 +464,33 @@ fun ConcordRoomScreen(
                                         }
                                     }
                                 }
-                                TextButton(
-                                    onClick = {
-                                        if (translation.status == TranslationStatus.DONE) {
-                                            showTranslated = !showTranslated
-                                        } else {
-                                            translationRepository.translateWithDeepL(message.id, message.content)
-                                        }
-                                    },
-                                ) {
-                                    Text(
-                                        when {
-                                            translation.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
-                                                translation.status == TranslationStatus.DOWNLOADING_MODEL ||
-                                                translation.status == TranslationStatus.TRANSLATING -> "Translating…"
-                                            translation.status == TranslationStatus.ERROR -> "Retry translation"
-                                            showTranslated -> "Show original"
-                                            translation.status == TranslationStatus.DONE -> "Show translation"
-                                            else -> "Translate with DeepL"
-                                        }
-                                    )
-                                }
-                                if (showTranslated && translation.status == TranslationStatus.DONE) {
-                                    Text(translation.translatedText, style = MaterialTheme.typography.bodyMedium)
+                                if (visibleText.isNotBlank()) {
+                                    TextButton(
+                                        enabled = translation.status != TranslationStatus.IDENTIFYING_LANGUAGE &&
+                                            translation.status != TranslationStatus.DOWNLOADING_MODEL &&
+                                            translation.status != TranslationStatus.TRANSLATING &&
+                                            translation.status != TranslationStatus.SAME_LANGUAGE,
+                                        onClick = {
+                                            if (translation.status == TranslationStatus.DONE) {
+                                                showTranslated = !showTranslated
+                                            } else {
+                                                translationRepository.translateWithDeepL(message.id, visibleText)
+                                            }
+                                        },
+                                    ) {
+                                        Text(
+                                            when {
+                                                translation.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+                                                    translation.status == TranslationStatus.DOWNLOADING_MODEL ||
+                                                    translation.status == TranslationStatus.TRANSLATING -> "Translating…"
+                                                translation.status == TranslationStatus.ERROR -> "Retry translation"
+                                                translation.status == TranslationStatus.SAME_LANGUAGE -> "Already in this language"
+                                                showTranslated -> "Show original"
+                                                translation.status == TranslationStatus.DONE -> "Show translation"
+                                                else -> "Translate with DeepL"
+                                            }
+                                        )
+                                    }
                                 }
                                 if (translation.status == TranslationStatus.ERROR) {
                                     Text(
