@@ -1,7 +1,11 @@
 package com.darkwisp.app.ui.screen
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.darkwisp.app.nostr.Blossom
 import com.darkwisp.app.repo.BlossomRepository
+import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.ui.component.ProfilePicture
 import com.vitorpamplona.crypto.aes.AESGCM
 import com.vitorpamplona.crypto.random.RandomInstance
 import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
@@ -76,6 +82,7 @@ fun ConcordCommunitiesScreen(
     relayPool: RelayPool,
     signer: NostrSigner?,
     blossomRepository: BlossomRepository,
+    eventRepository: EventRepository,
     onOpenCommunity: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     embedded: Boolean = false,
@@ -125,12 +132,23 @@ fun ConcordCommunitiesScreen(
     }
     LaunchedEffect(invite.url) {
         invite.url?.let { url ->
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, url)
+            try {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, url)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Share Concord invite"))
+            } catch (_: Exception) {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                clipboard?.setPrimaryClip(ClipData.newPlainText("Concord invite link", url))
+                Toast.makeText(
+                    context,
+                    if (clipboard != null) "Invite link copied to clipboard" else "Could not open the share sheet",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } finally {
+                viewModel.clearInviteResult()
             }
-            context.startActivity(Intent.createChooser(shareIntent, "Share Concord invite"))
-            viewModel.clearInviteResult()
         }
     }
 
@@ -357,6 +375,13 @@ fun ConcordCommunitiesScreen(
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
                     )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val pasted = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                            if (!pasted.isNullOrBlank()) inviteUrl = pasted.trim()
+                        }) { Text("Paste from clipboard") }
+                    }
                     if (join.error != null) {
                         Text(join.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
@@ -489,35 +514,98 @@ fun ConcordCommunitiesScreen(
             onDismissRequest = { if (!join.isJoining) showDirectInvitesDialog = false },
             title = { Text("Direct community invites") },
             text = {
-                Column(modifier = Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     directInvites.error?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                     if (directInvites.isLoading && directInvites.invites.isEmpty()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                            Text("Checking your DM relays…", modifier = Modifier.padding(start = 10.dp))
+                            Text("Checking your DM inbox relays…", modifier = Modifier.padding(start = 10.dp))
                         }
                     } else if (directInvites.invites.isEmpty()) {
-                        Text("No pending Direct Invites were found on your inbox relays.")
+                        Text("No pending Direct Invites were found on your configured inbox relays.")
                     } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             items(directInvites.invites, key = { it.wrapId }) { opened ->
-                                Column {
-                                    Text(opened.invite.name.ifBlank { opened.invite.communityId.take(12) },
-                                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                    Text("Invited by ${opened.sender}", style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (opened.isExpired()) {
-                                        Text("Expired — this invite can no longer be accepted.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error)
-                                    } else {
-                                        TextButton(
-                                            enabled = signer != null && !join.isJoining,
-                                            onClick = { viewModel.acceptDirectInvite(opened, signer) },
-                                        ) { Text(if (join.isJoining) "Joining…" else "Accept invite") }
+                                var inviterProfile by remember(opened.sender) {
+                                    mutableStateOf(eventRepository.getProfileData(opened.sender))
+                                }
+                                LaunchedEffect(opened.sender) {
+                                    if (inviterProfile == null) {
+                                        eventRepository.requestProfileIfMissing(opened.sender)
+                                        repeat(8) {
+                                            if (inviterProfile == null) {
+                                                kotlinx.coroutines.delay(750)
+                                                inviterProfile = eventRepository.getProfileData(opened.sender)
+                                            }
+                                        }
                                     }
+                                }
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    Text(
+                                        opened.invite.name.ifBlank { opened.invite.communityId.take(12) },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        ProfilePicture(url = inviterProfile?.picture, size = 38)
+                                        Column(modifier = Modifier.padding(start = 10.dp)) {
+                                            Text(
+                                                inviterProfile?.displayString ?: "Concord member",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                            Text(
+                                                "Invited by ${opened.sender.take(16)}…",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        "Community ID: ${opened.invite.communityId.take(16)}…",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    val channelNames = opened.invite.channels.map { it.name }.filter { it.isNotBlank() }
+                                    if (channelNames.isNotEmpty()) {
+                                        Text(
+                                            "Channels included: ${channelNames.joinToString(", ")}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                    Text(
+                                        "This is a private CORD-05 invitation. Accepting adds the community keys to this account.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    if (opened.isExpired()) {
+                                        Text(
+                                            "Expired — this invite can no longer be accepted.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                        TextButton(
+                                            enabled = !join.isJoining,
+                                            onClick = { viewModel.declineDirectInvite(opened.wrapId) },
+                                        ) { Text("Decline") }
+                                        if (!opened.isExpired()) {
+                                            TextButton(
+                                                enabled = signer != null && !join.isJoining,
+                                                onClick = { viewModel.acceptDirectInvite(opened, signer) },
+                                            ) { Text(if (join.isJoining) "Joining…" else "Accept invite") }
+                                        }
+                                    }
+                                    if (join.error != null) {
+                                        Text(join.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 }
                             }
                         }
@@ -528,6 +616,5 @@ fun ConcordCommunitiesScreen(
                 TextButton(onClick = { showDirectInvitesDialog = false }) { Text("Close") }
             },
         )
-    }
     }
 }
