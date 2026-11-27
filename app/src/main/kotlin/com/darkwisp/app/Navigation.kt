@@ -170,8 +170,6 @@ object Routes {
     const val DM_CONVERSATION = "dm/{pubkey}?prefill={prefill}&strictDm={strictDm}&protocol={protocol}"
     const val DM_CONVERSATION_GROUP = "dm/group/{conversationKey}"
     const val CONTACT_PICKER = "contact_picker?legacyDm={legacyDm}"
-    const val GROUP_ROOM = "group_room/{encodedRelay}/{groupId}?scrollTo={scrollTo}"
-    const val GROUP_DETAIL = "group_detail/{encodedRelay}/{groupId}"
     const val CONCORD_ROOM = "concord_room/{communityId}"
     const val NOTIFICATIONS = "notifications"
     const val BLOSSOM_SERVERS = "blossom_servers"
@@ -571,7 +569,7 @@ fun WispNavHost(
     }
 
     val nonAppRoutes = setOf(Routes.SPLASH, Routes.AUTH, Routes.LOADING, Routes.ONBOARDING_PROFILE, Routes.ONBOARDING_SUGGESTIONS, Routes.ONBOARDING_TOPICS, Routes.ONBOARDING_FIRST_POST, Routes.EXISTING_USER_ONBOARDING)
-    val hideBottomBarRoutes = nonAppRoutes + Routes.WALLET + Routes.DM_CONVERSATION + Routes.DM_CONVERSATION_GROUP + Routes.CONTACT_PICKER + Routes.GROUP_ROOM + Routes.GROUP_DETAIL + Routes.LIVE_STREAM
+    val hideBottomBarRoutes = nonAppRoutes + Routes.WALLET + Routes.DM_CONVERSATION + Routes.DM_CONVERSATION_GROUP + Routes.CONTACT_PICKER + Routes.LIVE_STREAM
     val socialGraphDiscoveryState by feedViewModel.extendedNetworkRepo.discoveryState.collectAsState()
     val socialGraphComputing = currentRoute == Routes.SOCIAL_GRAPH && (
         socialGraphDiscoveryState is com.darkwisp.app.repo.DiscoveryState.FetchingFollowLists ||
@@ -1124,12 +1122,12 @@ fun WispNavHost(
                 onCurationClick = { author, dTag, relayHints ->
                     navController.navigate(curationSetRoute(author, dTag, relayHints))
                 },
-                onGroupRoom = { relayUrl, groupId ->
-                    val encoded = android.util.Base64.encodeToString(
-                        relayUrl.toByteArray(Charsets.UTF_8),
-                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                    )
-                    navController.navigate("group_room/$encoded/${android.net.Uri.encode(groupId)}")
+                onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                     val route = buildString {
@@ -1964,9 +1962,12 @@ fun WispNavHost(
                     }
                 },
                 onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
-                onGroupRoom = { relayUrl, groupId ->
-                    val encodedRelay = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(relayUrl.toByteArray())
-                    navController.navigate("group_room/$encodedRelay/${android.net.Uri.encode(groupId)}")
+                onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 onOpenStorefront = { navController.navigate("marketplace/seller/$pubkey") },
                 onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
@@ -2422,315 +2423,6 @@ fun WispNavHost(
         }
 
         composable(
-            Routes.GROUP_ROOM,
-            arguments = listOf(
-                navArgument("encodedRelay") { type = NavType.StringType },
-                navArgument("groupId") { type = NavType.StringType },
-                navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }
-            )
-        ) { backStackEntry ->
-            val encodedRelay = backStackEntry.arguments?.getString("encodedRelay") ?: return@composable
-            val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
-            val scrollToMessageId = backStackEntry.arguments?.getString("scrollTo")
-            val relayUrl = String(
-                android.util.Base64.decode(encodedRelay, android.util.Base64.URL_SAFE),
-                Charsets.UTF_8
-            )
-            val groupRoomViewModel: com.darkwisp.app.viewmodel.GroupRoomViewModel = viewModel()
-            // Pre-compute from current repo state so the first composition doesn't flash
-            // the join screen for groups the user has already joined.
-            val initialRoom = remember(relayUrl, groupId) {
-                feedViewModel.groupRepo.getRoom(relayUrl, groupId)
-            }
-            LaunchedEffect(relayUrl, groupId) {
-                groupRoomViewModel.init(groupId, relayUrl, feedViewModel.groupRepo, feedViewModel.relayPool)
-                feedViewModel.metadataFetcher.queueProfileFetch(feedViewModel.getUserPubkey() ?: "")
-                groupListViewModel.markGroupRead(relayUrl, groupId)
-            }
-            // Only subscribe eagerly if the group is already joined locally —
-            // otherwise messages arrive before the room exists in the repo and get
-            // silently dropped.  joinGroup/silentJoin handle their own subscriptions.
-            DisposableEffect(relayUrl, groupId) {
-                if (initialRoom != null) {
-                    groupListViewModel.subscribeToGroup(relayUrl, groupId)
-                }
-                onDispose {
-                    groupListViewModel.markGroupRead(relayUrl, groupId)
-                    groupListViewModel.unsubscribeFromGroup(relayUrl, groupId)
-                }
-            }
-            val groupRoomContext = LocalContext.current
-            val groupRoomUploadScope = rememberCoroutineScope()
-            var groupRoomUploadProgress by remember { mutableStateOf<String?>(null) }
-            var groupRoomZapTarget by remember { mutableStateOf<com.darkwisp.app.nostr.NostrEvent?>(null) }
-            var groupRoomZapInitialSats by remember { mutableStateOf<Int?>(null) }
-            var showGroupRoomEmojiLibrary by remember { mutableStateOf(false) }
-            val groupRoomResolvedEmojis by feedViewModel.customEmojiRepo.resolvedEmojis.collectAsState()
-            val groupRoomUnicodeEmojis by feedViewModel.customEmojiRepo.sortedUnicodeEmojis.collectAsState()
-            val groupRoomZapVersion by feedViewModel.eventRepo.zapVersion.collectAsState()
-            val groupRoomZapInProgress by feedViewModel.zapInProgress.collectAsState()
-            var groupRoomZapAnimatingIds by remember { mutableStateOf(emptySet<String>()) }
-            LaunchedEffect(Unit) {
-                feedViewModel.zapSuccess.collect { eventId ->
-                    groupRoomZapAnimatingIds = groupRoomZapAnimatingIds + eventId
-                    kotlinx.coroutines.delay(1500)
-                    groupRoomZapAnimatingIds = groupRoomZapAnimatingIds - eventId
-                }
-            }
-            val isNwcConnected = feedViewModel.activeWalletProvider.hasConnection()
-
-            if (groupRoomZapTarget != null) {
-                val zapRecipient = groupRoomZapTarget!!.pubkey
-                var recipientHasDmRelays by remember(zapRecipient) {
-                    mutableStateOf(feedViewModel.relayListRepo.hasDmRelays(zapRecipient))
-                }
-                if (feedViewModel.relayPool.hasDmRelays() && !recipientHasDmRelays) {
-                    LaunchedEffect(zapRecipient) {
-                        recipientHasDmRelays = feedViewModel.fetchDmRelaysIfMissing(zapRecipient)
-                    }
-                }
-                ZapDialog(
-                    isWalletConnected = isNwcConnected,
-                    onDismiss = {
-                        groupRoomZapTarget = null
-                        groupRoomZapInitialSats = null
-                    },
-                    onZap = { amountMsats, message, isAnonymous, isPrivate ->
-                        val event = groupRoomZapTarget ?: return@ZapDialog
-                        groupRoomZapTarget = null
-                        groupRoomZapInitialSats = null
-                        feedViewModel.sendZap(event, amountMsats, message, isAnonymous, isPrivate)
-                    },
-                    onGoToWallet = { navController.navigate(Routes.WALLET) },
-                    zapPrefsRepo = feedViewModel.zapPrefs,
-                    canPrivateZap = feedViewModel.hasLocalKeypair && feedViewModel.relayPool.hasDmRelays() && recipientHasDmRelays,
-                    initialSatsHint = groupRoomZapInitialSats,
-                    recipientPubkey = groupRoomZapTarget?.pubkey,
-                    recipientHasLud16 = (groupRoomZapTarget?.pubkey)?.let { zapRecipientHasLud16(feedViewModel, it) } ?: true,
-                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
-                    profileLookup = { feedViewModel.profileRepo.get(it) }
-                )
-            }
-            val groupRoomMediaLauncher = rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia()
-            ) { uris ->
-                if (uris.isNotEmpty()) {
-                    groupRoomUploadScope.launch {
-                        val total = uris.size
-                        for ((index, uri) in uris.withIndex()) {
-                            try {
-                                groupRoomUploadProgress = if (total > 1) "Uploading ${index + 1}/$total..." else "Uploading..."
-                                val bytes = groupRoomContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                                    ?: continue
-                                val mimeType = groupRoomContext.contentResolver.getType(uri) ?: "application/octet-stream"
-                                val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "bin"
-                                val url = feedViewModel.blossomRepo.uploadMedia(bytes, mimeType, ext, activeSigner)
-                                groupRoomViewModel.appendToText(url)
-                            } catch (_: Exception) { }
-                        }
-                        groupRoomUploadProgress = null
-                    }
-                }
-            }
-            com.darkwisp.app.ui.screen.GroupRoomScreen(
-                viewModel = groupRoomViewModel,
-                initialRoom = initialRoom,
-                scrollToMessageId = scrollToMessageId,
-                relayPool = feedViewModel.relayPool,
-                eventRepo = feedViewModel.eventRepo,
-                signer = activeSigner,
-                onBack = { navController.popBackStack() },
-                onProfileClick = { pk -> navController.navigate("profile/$pk") },
-                onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
-                onGroupDetail = { navController.navigate("group_detail/$encodedRelay/${android.net.Uri.encode(groupId)}") },
-                onJoin = { groupListViewModel.joinGroup(relayUrl, groupId, activeSigner) },
-                onAlreadyMember = { groupListViewModel.silentJoin(relayUrl, groupId, activeSigner) },
-                fetchGroupPreview = { rUrl, gId -> groupListViewModel.fetchGroupPreview(rUrl, gId) },
-                onPickMedia = {
-                    groupRoomMediaLauncher.launch(
-                        androidx.activity.result.PickVisualMediaRequest(
-                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                        )
-                    )
-                },
-                onUploadMedia = { uris, onUrl ->
-                    groupRoomUploadScope.launch {
-                        val total = uris.size
-                        for ((index, uri) in uris.withIndex()) {
-                            try {
-                                groupRoomUploadProgress = if (total > 1) "Uploading ${index + 1}/$total..." else "Uploading..."
-                                val bytes = groupRoomContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                                    ?: continue
-                                val mimeType = groupRoomContext.contentResolver.getType(uri) ?: "application/octet-stream"
-                                val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "bin"
-                                val url = feedViewModel.blossomRepo.uploadMedia(bytes, mimeType, ext, activeSigner)
-                                onUrl(url)
-                            } catch (_: Exception) { }
-                        }
-                        groupRoomUploadProgress = null
-                    }
-                },
-                uploadProgress = groupRoomUploadProgress,
-                myPubkey = feedViewModel.getUserPubkey(),
-                onZap = { msgId, senderPubkey ->
-                    groupRoomZapInitialSats = null
-                    groupRoomZapTarget = com.darkwisp.app.nostr.NostrEvent(
-                        id = msgId,
-                        pubkey = senderPubkey,
-                        created_at = 0L,
-                        kind = com.darkwisp.app.nostr.Nip29.KIND_CHAT_MESSAGE,
-                        tags = listOf(listOf("h", groupId)),
-                        content = "",
-                        sig = ""
-                    )
-                    feedViewModel.relayPool.sendToRelayOrEphemeral(
-                        relayUrl,
-                        com.darkwisp.app.nostr.ClientMessage.req(
-                            subscriptionId = "zap-rcpt-grp-${msgId.take(12)}",
-                            filter = com.darkwisp.app.nostr.Filter(kinds = listOf(9735), eTags = listOf(msgId))
-                        ),
-                        skipBadCheck = true
-                    )
-                },
-                onZapPreset = { msgId, senderPubkey, sats ->
-                    groupRoomZapInitialSats = sats
-                    groupRoomZapTarget = com.darkwisp.app.nostr.NostrEvent(
-                        id = msgId,
-                        pubkey = senderPubkey,
-                        created_at = 0L,
-                        kind = com.darkwisp.app.nostr.Nip29.KIND_CHAT_MESSAGE,
-                        tags = listOf(listOf("h", groupId)),
-                        content = "",
-                        sig = ""
-                    )
-                    feedViewModel.relayPool.sendToRelayOrEphemeral(
-                        relayUrl,
-                        com.darkwisp.app.nostr.ClientMessage.req(
-                            subscriptionId = "zap-rcpt-grp-${msgId.take(12)}",
-                            filter = com.darkwisp.app.nostr.Filter(kinds = listOf(9735), eTags = listOf(msgId))
-                        ),
-                        skipBadCheck = true
-                    )
-                },
-                resolvedEmojis = groupRoomResolvedEmojis,
-                unicodeEmojis = groupRoomUnicodeEmojis,
-                zapVersion = groupRoomZapVersion,
-                zapAnimatingIds = groupRoomZapAnimatingIds,
-                zapInProgressIds = groupRoomZapInProgress,
-                onOpenEmojiLibrary = { showGroupRoomEmojiLibrary = true },
-                onFollowAuthor = { pubkey -> feedViewModel.toggleFollow(pubkey) },
-                onBlockAuthor = { pubkey -> feedViewModel.blockUser(pubkey) },
-                isFollowing = { pubkey -> feedViewModel.contactRepo.isFollowing(pubkey) },
-                noteActions = remember {
-                    com.darkwisp.app.ui.component.NoteActions(
-                        onMarketplaceListingClick = { event -> navController.navigate(marketplaceAddressRoute(event)) },
-                        onArticleClick = { kind, author, dTag ->
-                            navController.navigate(addressableContentRoute(kind, author, dTag))
-                        },
-                        onCurationClick = { author, dTag, relayHints ->
-                            navController.navigate(curationSetRoute(author, dTag, relayHints))
-                        },
-                        nip05Repo = feedViewModel.nip05Repo,
-                        onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
-                        onNoteClick = { eventId -> navController.navigate("thread/$eventId") },
-                        onAddEmojiSet = { pk, dTag -> feedViewModel.addSetToEmojiList(pk, dTag) },
-                        onRemoveEmojiSet = { pk, dTag -> feedViewModel.removeSetFromEmojiList(pk, dTag) },
-                        isEmojiSetAdded = { pk, dTag ->
-                            val ref = com.darkwisp.app.nostr.Nip30.buildSetReference(pk, dTag)
-                            feedViewModel.customEmojiRepo.userEmojiList.value?.setReferences?.contains(ref) ?: false
-                        },
-                        resolvedEmojisProvider = { feedViewModel.customEmojiRepo.resolvedEmojis.value },
-                        unicodeEmojisProvider = { feedViewModel.customEmojiRepo.sortedUnicodeEmojis.value },
-                        onOpenEmojiLibrary = { showGroupRoomEmojiLibrary = true }
-                    )
-                },
-                onEmojiUsed = { feedViewModel.customEmojiRepo.recordEmojiUsage(it) }
-            )
-            if (showGroupRoomEmojiLibrary) {
-                val groupRoomSheetUnicodeEmojis by feedViewModel.customEmojiRepo.unicodeEmojis.collectAsState()
-                val groupRoomSheetResolvedEmojis by feedViewModel.customEmojiRepo.resolvedEmojis.collectAsState()
-                com.darkwisp.app.ui.component.EmojiLibrarySheet(
-                    currentEmojis = groupRoomSheetUnicodeEmojis,
-                    customEmojiMap = groupRoomSheetResolvedEmojis,
-                    onAddEmojis = { emojis ->
-                        emojis.forEach { feedViewModel.customEmojiRepo.addUnicodeEmoji(it) }
-                        if (emojis.isNotEmpty()) pendingEmojiReactCallback?.invoke(emojis.first())
-                        pendingEmojiReactCallback = null
-                    },
-                    onCustomEmojiPick = { shortcode ->
-                        pendingEmojiReactCallback?.invoke(":$shortcode:")
-                        pendingEmojiReactCallback = null
-                        showGroupRoomEmojiLibrary = false
-                    },
-                    onDismiss = { showGroupRoomEmojiLibrary = false; pendingEmojiReactCallback = null }
-                )
-            }
-        }
-
-        composable(
-            Routes.GROUP_DETAIL,
-            arguments = listOf(
-                navArgument("encodedRelay") { type = NavType.StringType },
-                navArgument("groupId") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val encodedRelay = backStackEntry.arguments?.getString("encodedRelay") ?: return@composable
-            val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
-            val relayUrl = String(
-                android.util.Base64.decode(encodedRelay, android.util.Base64.URL_SAFE),
-                Charsets.UTF_8
-            )
-            val groupDetailContext = LocalContext.current
-            val groupPictureUploadScope = rememberCoroutineScope()
-            var pendingPictureCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
-            val groupPictureLauncher = rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
-            ) { uri ->
-                val callback = pendingPictureCallback ?: return@rememberLauncherForActivityResult
-                pendingPictureCallback = null
-                uri ?: run { callback(""); return@rememberLauncherForActivityResult }
-                groupPictureUploadScope.launch {
-                    try {
-                        val bytes = groupDetailContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                            ?: return@launch
-                        val mimeType = groupDetailContext.contentResolver.getType(uri) ?: "image/jpeg"
-                        val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "jpg"
-                        val url = feedViewModel.blossomRepo.uploadMedia(bytes, mimeType, ext, activeSigner)
-                        callback(url)
-                    } catch (_: Exception) { callback("") }
-                }
-            }
-            com.darkwisp.app.ui.screen.GroupDetailScreen(
-                groupId = groupId,
-                relayUrl = relayUrl,
-                groupListViewModel = groupListViewModel,
-                eventRepo = feedViewModel.eventRepo,
-                myPubkey = feedViewModel.getUserPubkey(),
-                signer = activeSigner,
-                relayPool = feedViewModel.relayPool,
-                onBack = { navController.popBackStack() },
-                onLeave = {
-                    navController.navigate(Routes.DM_LIST) {
-                        popUpTo(Routes.DM_LIST) { inclusive = false }
-                    }
-                },
-                onDelete = {
-                    navController.navigate(Routes.DM_LIST) {
-                        popUpTo(Routes.DM_LIST) { inclusive = false }
-                    }
-                },
-                onPickPicture = { callback ->
-                    pendingPictureCallback = callback
-                    groupPictureLauncher.launch(
-                        androidx.activity.result.PickVisualMediaRequest(
-                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
-                        )
-                    )
-                }
-            )
-        }
-
-        composable(
             Routes.THREAD,
             arguments = listOf(navArgument("eventId") { type = NavType.StringType })
         ) { backStackEntry ->
@@ -2886,9 +2578,12 @@ fun WispNavHost(
                 onOpenEmojiLibrary = { showThreadEmojiLibrary = true },
                 onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
                 onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
-                onGroupRoom = { relayUrl, groupId ->
-                    val encodedRelay = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(relayUrl.toByteArray())
-                    navController.navigate("group_room/$encodedRelay/${android.net.Uri.encode(groupId)}")
+                onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 onLiveStreamClick = { hostPubkey, dTag, relayHint ->
                     val route = buildString {
@@ -3041,13 +2736,13 @@ fun WispNavHost(
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
-                    onGroupRoom = { relayUrl, groupId ->
-                        val encoded = android.util.Base64.encodeToString(
-                            relayUrl.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                        )
-                        navController.navigate("group_room/$encoded/${android.net.Uri.encode(groupId)}")
-                    },
+                    onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                },
                     groupMetadataProvider = { relayUrl, groupId -> feedViewModel.groupRepo.getRoom(relayUrl, groupId)?.metadata },
                     fetchGroupPreview = { relayUrl, groupId -> groupListViewModel.fetchGroupPreview(relayUrl, groupId) },
                     onAddEmojiSet = { pubkey, dTag -> feedViewModel.addSetToEmojiList(pubkey, dTag) },
@@ -3210,13 +2905,13 @@ fun WispNavHost(
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
-                    onGroupRoom = { relayUrl, groupId ->
-                        val encoded = android.util.Base64.encodeToString(
-                            relayUrl.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                        )
-                        navController.navigate("group_room/$encoded/${android.net.Uri.encode(groupId)}")
-                    },
+                    onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                },
                     groupMetadataProvider = { relayUrl, groupId -> feedViewModel.groupRepo.getRoom(relayUrl, groupId)?.metadata },
                     fetchGroupPreview = { relayUrl, groupId -> groupListViewModel.fetchGroupPreview(relayUrl, groupId) },
                     onAddEmojiSet = { pubkey, dTag -> feedViewModel.addSetToEmojiList(pubkey, dTag) },
@@ -3424,13 +3119,13 @@ fun WispNavHost(
                     },
                     onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
                     onPollVote = { pollId, optionIds -> feedViewModel.publishPollVote(pollId, optionIds) },
-                    onGroupRoom = { relayUrl, groupId ->
-                        val encoded = android.util.Base64.encodeToString(
-                            relayUrl.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                        )
-                        navController.navigate("group_room/$encoded/${android.net.Uri.encode(groupId)}")
-                    },
+                    onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                },
                     groupMetadataProvider = { relayUrl, groupId -> feedViewModel.groupRepo.getRoom(relayUrl, groupId)?.metadata },
                     fetchGroupPreview = { relayUrl, groupId -> groupListViewModel.fetchGroupPreview(relayUrl, groupId) },
                     onAddEmojiSet = { pubkey, dTag -> feedViewModel.addSetToEmojiList(pubkey, dTag) },
@@ -4420,16 +4115,19 @@ fun WispNavHost(
                     }
                 },
                 onPayInvoice = { bolt11 -> feedViewModel.payInvoice(bolt11) },
-                onGroupRoom = { relayUrl, groupId ->
-                    val encodedRelay = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(relayUrl.toByteArray())
-                    navController.navigate("group_room/$encodedRelay/${android.net.Uri.encode(groupId)}")
+                onGroupRoom = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 },
-                onGroupNotificationClick = { groupChatId, messageId ->
-                    val relayUrl = feedViewModel.groupRepo.getRelayForGroup(groupChatId)
-                    if (relayUrl != null) {
-                        val encodedRelay = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(relayUrl.toByteArray())
-                        navController.navigate("group_room/$encodedRelay/${android.net.Uri.encode(groupChatId)}?scrollTo=${android.net.Uri.encode(messageId)}")
-                    }
+                onGroupNotificationClick = { _, _ ->
+                    android.widget.Toast.makeText(
+                        context,
+                        "NIP-29 rooms are no longer available. Use Concord communities.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 resolveGroupMessage = { groupChatId, messageId ->
                     val result = feedViewModel.groupRepo.findGroupMessage(groupChatId, messageId)
