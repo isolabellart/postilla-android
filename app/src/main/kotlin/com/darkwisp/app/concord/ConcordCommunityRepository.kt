@@ -1583,6 +1583,7 @@ class ConcordCommunityRepository(
                 )
             }
         }
+        require(channels.size <= 256) { "This community has more channels than the Direct Invite limit (256)" }
         val invite = CommunityInvite(
             communityId = membership.id,
             owner = membership.owner,
@@ -1596,6 +1597,9 @@ class ConcordCommunityRepository(
             icon = control.state.metadata?.icon,
             creatorNpub = NPub.create(signer.pubKey),
         )
+        require(ConcordInviteBundle.validate(invite)) {
+            "The local membership does not pass the CORD-05 community owner proof"
+        }
 
         // CORD-05 §6: deliver only to the recipient's kind-10050 DM relays, or
         // their NIP-65 read relays when no DM relay list exists. Never spray a
