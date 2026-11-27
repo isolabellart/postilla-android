@@ -94,7 +94,6 @@ import java.util.Locale
 @Composable
 fun DmListScreen(
     viewModel: DmListViewModel,
-    groupListViewModel: GroupListViewModel,
     concordCommunityViewModel: ConcordCommunityViewModel,
     relayPool: RelayPool,
     eventRepo: EventRepository,
@@ -104,7 +103,6 @@ fun DmListScreen(
     onBack: (() -> Unit)? = null,
     onConversation: (DmConversation) -> Unit,
     onNewGroupDm: () -> Unit = {},
-    onGroupRoom: (relayUrl: String, groupId: String) -> Unit = { _, _ -> },
     onConcordCommunity: (communityId: String) -> Unit = {},
     legacyDmEnabled: Boolean = true,
     onNewLegacyDm: () -> Unit = {}
