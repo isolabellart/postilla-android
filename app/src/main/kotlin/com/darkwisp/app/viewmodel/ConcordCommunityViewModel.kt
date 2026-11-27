@@ -70,6 +70,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _channels = MutableStateFlow<List<ConcordCommunityRepository.CommunityChannel>>(emptyList())
     val channels: StateFlow<List<ConcordCommunityRepository.CommunityChannel>> = _channels
+    private val _channelsByCommunity =
+        MutableStateFlow<Map<String, List<ConcordCommunityRepository.CommunityChannel>>>(emptyMap())
+    val channelsByCommunity: StateFlow<Map<String, List<ConcordCommunityRepository.CommunityChannel>>> =
+        _channelsByCommunity
 
     private val _communityIcons = MutableStateFlow<Map<String, ByteArray>>(emptyMap())
     val communityIcons: StateFlow<Map<String, ByteArray>> = _communityIcons
@@ -110,6 +114,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         signerPubkey = signer?.pubkeyHex
         memberships.clear()
         _channels.value = emptyList()
+        _channelsByCommunity.value = emptyMap()
         _members.value = MembersState()
         _directInvites.value = DirectInvitesState()
         _communityIcons.value = emptyMap()
@@ -227,13 +232,17 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun findChannel(communityId: String, channelId: String) =
+        _channelsByCommunity.value[communityId]?.firstOrNull { it.id == channelId }
+
     fun refreshChannels(communityId: String) {
         val repo = repository ?: return
         val membership = memberships[communityId] ?: return
         viewModelScope.launch {
             runCatching { repo.loadCommunityChannels(membership) }
                 .onSuccess { loaded ->
-                    _channels.value = loaded
+                    _channelsByCommunity.value = _channelsByCommunity.value + (communityId to loaded)
+                    _channels.value = loaded // Legacy observer; Concord operations use the community-scoped index.
                     val general = loaded.firstOrNull { it.name.equals("general", ignoreCase = true) }
                     if (general != null) {
                         val current = _communities.value
@@ -247,7 +256,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     fun observeChannel(communityId: String, channelId: String): Flow<ConcordChatMessage> {
         val entry = memberships[communityId] ?: return emptyFlow()
-        val channel = _channels.value.firstOrNull { it.id == channelId }
+        val channel = findChannel(communityId, channelId)
         if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return emptyFlow()
         val ownerPubkey = signerPubkey ?: return emptyFlow()
         return chatRepository?.observeChannel(
@@ -320,7 +329,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         inlineReply: Boolean = false,
     ): ConcordChatMessage? {
         val entry = memberships[communityId] ?: return null
-        val channelInfo = _channels.value.firstOrNull { it.id == channelId }
+        val channelInfo = findChannel(communityId, channelId)
         if (channelInfo?.isPrivate == true && channelInfo.privateKeyHex.isNullOrBlank()) return null
         val chat = chatRepository ?: return null
         signer ?: return null
@@ -347,7 +356,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     ): List<ConcordChatMessage> {
         val entry = memberships[communityId] ?: return emptyList()
         val ownerPubkey = signerPubkey ?: return emptyList()
-        val channel = _channels.value.firstOrNull { it.id == channelId }
+        val channel = findChannel(communityId, channelId)
         if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return emptyList()
         if (channel?.readPlanes.isNullOrEmpty()) return emptyList()
         return chatRepository?.loadOlder(
@@ -367,7 +376,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         signer: NostrSigner?,
     ): Boolean {
         val entry = memberships[communityId] ?: return false
-        val channel = _channels.value.firstOrNull { it.id == channelId }
+        val channel = findChannel(communityId, channelId)
         if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return false
         signer ?: return false
         return chatRepository?.sendReaction(
