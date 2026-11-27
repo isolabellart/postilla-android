@@ -118,7 +118,10 @@ class ConcordChatRepository(
     ): Flow<ConcordChatMessage> = channelFlow {
         val channelEpoch = privateChannelEpoch ?: epoch
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
-        val targets = communityRelays.distinct().ifEmpty { relayPool.getReadRelayUrls() }
+        // CORD-01 streams are addressed by their derived author key, but relays are
+        // interchangeable. Query both the community's advertised relays and this account's
+        // configured read relays: Amethyst/Vector may publish to either set.
+        val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
         val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$channelEpoch-${UUID.randomUUID().toString().take(8)}"
         // Deduplicate only within this subscription. A repository-wide set suppresses
         // historical messages when the user leaves and re-enters a channel, including
@@ -165,7 +168,7 @@ class ConcordChatRepository(
                     kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
                     authors = listOf(channelKey.publicKeyHex),
                     since = since,
-                    limit = 500,
+                    limit = 5000,
                 ),
             ),
         )
