@@ -22,7 +22,6 @@ import com.vitorpamplona.quartz.concord.cord02Community.GuestbookAction
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEditionBuilder
-import com.vitorpamplona.quartz.concord.cord04Roles.ControlRootWrap
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEntityKind
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordJson
 import com.vitorpamplona.quartz.concord.cord04Roles.GrantEntity
@@ -578,7 +577,7 @@ class ConcordCommunityRepository(
         return event.id
     }
 
-    private fun buildControlEdition(
+    private suspend fun buildControlEdition(
         signer: PostillaQuartzSigner,
         membership: ConcordCommunityListEntry,
         control: ControlPlaneSnapshot,
@@ -954,7 +953,7 @@ class ConcordCommunityRepository(
                     )
                 }
                 is InviteBundleStatus.Expired, InviteBundleStatus.Revoked -> {
-                    updatedInviteList = ConcordInviteList.revoke(updatedInviteList, entry.token, nowSecs)
+                    updatedInviteList = retireInvite(updatedInviteList, entry.token, communityId)
                     inviteListChanged = true
                 }
                 InviteBundleStatus.Absent, InviteBundleStatus.Unreadable ->
