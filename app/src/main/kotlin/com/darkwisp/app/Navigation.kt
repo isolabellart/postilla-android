@@ -2135,7 +2135,6 @@ fun WispNavHost(
             }
             DmListScreen(
                 viewModel = dmListViewModel,
-                groupListViewModel = groupListViewModel,
                 concordCommunityViewModel = concordCommunityViewModel,
                 relayPool = feedViewModel.relayPool,
                 eventRepo = feedViewModel.eventRepo,
@@ -2155,13 +2154,6 @@ fun WispNavHost(
                 },
                 legacyDmEnabled = legacyDmEnabled,
                 onNewLegacyDm = { navController.navigate("contact_picker?legacyDm=true") },
-                onGroupRoom = { relayUrl, groupId ->
-                    val encoded = android.util.Base64.encodeToString(
-                        relayUrl.toByteArray(Charsets.UTF_8),
-                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                    )
-                    navController.navigate("group_room/$encoded/${android.net.Uri.encode(groupId)}")
-                },
                 onConcordCommunity = { communityId ->
                     navController.navigate("concord_room/${android.net.Uri.encode(communityId)}")
                 }
