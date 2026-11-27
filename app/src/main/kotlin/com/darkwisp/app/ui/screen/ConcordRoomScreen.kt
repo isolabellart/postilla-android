@@ -926,6 +926,11 @@ fun ConcordRoomScreen(
             title = { Text("Community members") },
             text = {
                 Column(modifier = Modifier.heightIn(max = 440.dp)) {
+                    Text(
+                        "Roster from Concord Guestbook and verified channel activity. Kick and Ban are rechecked against the full Control Plane before any write.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     when {
                         membersState.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp))
