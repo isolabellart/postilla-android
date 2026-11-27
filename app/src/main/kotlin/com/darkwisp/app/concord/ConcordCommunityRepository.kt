@@ -1747,7 +1747,8 @@ class ConcordCommunityRepository(
             epoch = invite.rootEpoch,
             controlPk = invite.controlPk,
         )
-        val communityRelays = invite.relays.distinct().take(5).ifEmpty { parsed.fragment.relays }
+        val communityRelays = invite.relays.distinct().take(5)
+        require(communityRelays.isNotEmpty()) { "The invite bundle contains no community bootstrap relays" }
         val controlEvents = fetchEventsFromRelays(
             relays = communityRelays,
             filter = Filter(
