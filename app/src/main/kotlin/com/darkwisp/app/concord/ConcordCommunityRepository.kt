@@ -229,6 +229,7 @@ class ConcordCommunityRepository(
         val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
         val responded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val allEose = CompletableDeferred<Unit>()
+        var allResponded = false
 
         coroutineScope {
             val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -263,7 +264,7 @@ class ConcordCommunityRepository(
                     ),
                 ),
             )
-            val allResponded = withTimeoutOrNull(8_000L) {
+            allResponded = withTimeoutOrNull(8_000L) {
                 allEose.await()
                 true
             } ?: false
