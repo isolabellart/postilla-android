@@ -218,9 +218,9 @@ fun ConcordRoomScreen(
         }
     }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty() && !suppressAutoScroll) {
-            listState.animateScrollToItem((messages.size - 1).coerceAtLeast(0))
+    LaunchedEffect(timelineMessages.size) {
+        if (timelineMessages.isNotEmpty() && !suppressAutoScroll) {
+            listState.animateScrollToItem((timelineMessages.size - 1).coerceAtLeast(0))
         }
     }
 
