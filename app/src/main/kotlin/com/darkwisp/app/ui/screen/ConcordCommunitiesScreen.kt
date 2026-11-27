@@ -80,6 +80,19 @@ fun ConcordCommunitiesScreen(
     LaunchedEffect(signer?.pubkeyHex) {
         viewModel.init(relayPool, signer)
     }
+    LaunchedEffect(join.result?.communityId) {
+        if (join.result != null) {
+            showJoinDialog = false
+            inviteUrl = ""
+        }
+    }
+    LaunchedEffect(creation.result?.communityId) {
+        if (creation.result != null) {
+            showCreateDialog = false
+            name = ""
+            description = ""
+        }
+    }
     LaunchedEffect(invite.url) {
         invite.url?.let { url ->
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -128,7 +141,10 @@ fun ConcordCommunitiesScreen(
                     onClick = { signer?.let(viewModel::refreshLocalCommunities) },
                     enabled = signer != null && !isLoading,
                 ) { Text("Refresh list") }
-                TextButton(onClick = { showJoinDialog = true }) { Text("Join with invite link") }
+                Row {
+                    TextButton(onClick = { showJoinDialog = true }) { Text("Join by link") }
+                    TextButton(onClick = { showCreateDialog = true }) { Text("Create") }
+                }
             }
 
             Surface(
@@ -303,8 +319,6 @@ fun ConcordCommunitiesScreen(
                     onClick = {
                         viewModel.clearJoinResult()
                         viewModel.joinCommunityFromInvite(inviteUrl.trim(), signer)
-                        showJoinDialog = false
-                        inviteUrl = ""
                     },
                 ) {
                     if (join.isJoining) CircularProgressIndicator(modifier = Modifier.size(18.dp))
@@ -347,9 +361,6 @@ fun ConcordCommunitiesScreen(
                     onClick = {
                         viewModel.clearResult()
                         viewModel.createCommunity(signer, name.trim(), description.trim().ifBlank { null })
-                        showCreateDialog = false
-                        name = ""
-                        description = ""
                     },
                 ) {
                     if (creation.isCreating) CircularProgressIndicator(modifier = Modifier.size(18.dp))
