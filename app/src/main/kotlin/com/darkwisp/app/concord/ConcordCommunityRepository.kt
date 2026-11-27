@@ -1597,9 +1597,9 @@ class ConcordCommunityRepository(
             creatorNpub = NPub.create(signer.pubKey),
         )
 
-        // CORD-05 §6: use the recipient's kind-10050 inbox relays first, then NIP-65
-        // read relays. The stock Concord relays are a last resort when no recipient
-        // relay list can be discovered from our own read relays.
+        // CORD-05 §6: deliver only to the recipient's kind-10050 DM relays, or
+        // their NIP-65 read relays when no DM relay list exists. Never spray a
+        // private key bundle to an unrelated public fallback relay.
         val bootstrap = relayPool.getReadRelayUrls().distinct()
         val recipientLists = if (bootstrap.isNotEmpty()) {
             fetchEventsFromRelays(
@@ -1625,15 +1625,10 @@ class ConcordCommunityRepository(
             }
             ?.mapNotNull { it.getOrNull(1)?.takeIf(String::isNotBlank) }
             .orEmpty()
-        val deliveryRelays = (dmRelays.ifEmpty { nip65Relays }.ifEmpty {
-            listOf(
-                "wss://jskitty.com/nostr",
-                "wss://asia.vectorapp.io/nostr",
-                "wss://relay.ditto.pub",
-                "wss://relay.dreamith.to",
-            )
-        }).distinct().take(10)
-        require(deliveryRelays.isNotEmpty()) { "No recipient inbox relay could be selected" }
+        val deliveryRelays = dmRelays.ifEmpty { nip65Relays }.distinct().take(10)
+        require(deliveryRelays.isNotEmpty()) {
+            "The recipient publishes neither kind-10050 DM relays nor NIP-65 read relays; invite not sent"
+        }
 
         val wrap = ConcordDirectInvite.build(signer, recipient, invite)
         val event = NostrEvent.fromJson(wrap.toJson())
