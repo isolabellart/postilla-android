@@ -70,7 +70,7 @@ class ConcordChatRepository(
             ChannelChat.message(
                 authorPubKey = signer.pubKey,
                 channelId = channelIdHex,
-                epoch = epoch,
+                epoch = channelEpoch,
                 text = message,
                 createdAt = createdAt,
                 extraTags = extraTags,
