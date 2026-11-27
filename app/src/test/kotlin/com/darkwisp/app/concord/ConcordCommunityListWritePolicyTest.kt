@@ -92,22 +92,36 @@ class ConcordCommunityListWritePolicyTest {
     @Test
     fun partialReadScopesNewMembershipToHeldFragmentWithoutRepacking() {
         val existing = membership("a".repeat(64), "Existing")
+        val untouched = membership("c".repeat(64), "Untouched")
         val added = membership("b".repeat(64), "New")
-        val wireEntry = ConcordListFragments.entryToWire(existing)
-        val originalPlaintext = ConcordListFragments.serializeFragment(1, listOf(wireEntry), emptyList())
+        val firstPlaintext = ConcordListFragments.serializeFragment(
+            2,
+            listOf(ConcordListFragments.entryToWire(existing)),
+            emptyList(),
+        )
+        val secondPlaintext = ConcordListFragments.serializeFragment(
+            2,
+            listOf(ConcordListFragments.entryToWire(untouched)),
+            emptyList(),
+        )
         val set = ConcordListFragmentSet.of(
-            listOf(ConcordListFragmentSet.Copy(0, 100, "event-0", originalPlaintext))
+            listOf(
+                ConcordListFragmentSet.Copy(0, 100, "event-0", firstPlaintext),
+                ConcordListFragmentSet.Copy(1, 100, "event-1", secondPlaintext),
+            )
         )
         assertTrue(set.complete)
 
         val next = ConcordListFragments.mergeDocs(set.doc, document(listOf(added)))
         val writes = ConcordCommunityListWritePolicy.planScopedWrites(set, next, now = 50)
 
+        // A full repack would rewrite/empty index 1. A scoped write touches index 0 only.
         assertEquals(listOf(0), writes.map { it.index })
         assertEquals(101L, writes.single().createdAt)
         val decoded = ConcordListFragments.decodeFragment(writes.single().plaintext)
-        assertEquals(1, decoded.frags)
+        assertEquals(2, decoded.frags)
         assertEquals(2, decoded.doc["entries"]!!.let { (it as JsonArray).size })
+        assertEquals(secondPlaintext, set.held.getValue(1).plaintext)
     }
 
     @Test
