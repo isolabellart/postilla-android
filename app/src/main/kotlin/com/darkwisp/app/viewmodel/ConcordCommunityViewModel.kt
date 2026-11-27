@@ -242,6 +242,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             communityRelays = entry.relays,
             privateChannelKeyHex = channel?.privateKeyHex,
             privateChannelEpoch = channel?.privateChannelEpoch,
+            readPlanes = channel?.readPlanes.orEmpty(),
         ) ?: emptyFlow()
     }
 
@@ -302,6 +303,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val entry = memberships[communityId] ?: return null
         val channelInfo = _channels.value.firstOrNull { it.id == channelId }
         if (channelInfo?.isPrivate == true && channelInfo.privateKeyHex.isNullOrBlank()) return null
+        // CORD-03 writer-restricted channels need the writer certificate/key path. Until
+        // Postilla implements that write path, fail closed instead of posting to the public base plane.
+        if (channelInfo?.isWriterRestricted == true) return null
         val chat = chatRepository ?: return null
         signer ?: return null
         return chat.sendMessage(
