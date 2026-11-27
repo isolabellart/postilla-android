@@ -45,6 +45,7 @@ class ConcordChatRepository(
         epoch: Long,
         text: String,
         privateChannelKeyHex: String? = null,
+        privateChannelEpoch: Long? = null,
         communityRelays: List<String> = emptyList(),
         extraTags: Array<Array<String>> = emptyArray(),
         imetas: List<IMetaTag> = emptyList(),
@@ -53,7 +54,7 @@ class ConcordChatRepository(
         val message = text.trim()
         require(message.isNotEmpty() || imetas.isNotEmpty()) { "Message cannot be empty" }
 
-        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex)
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
         val rumor = if (imetas.isNotEmpty()) {
             ChannelChat.imageMessage(
                 authorPubKey = signer.pubKey,
@@ -183,6 +184,7 @@ class ConcordChatRepository(
         channelIdHex: String,
         epoch: Long,
         privateChannelKeyHex: String? = null,
+        privateChannelEpoch: Long? = null,
     ) = if (!privateChannelKeyHex.isNullOrBlank()) {
         ConcordChannelKeys.privateChannel(
             channelKey = privateChannelKeyHex.hexToByteArray(),
