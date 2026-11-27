@@ -55,3 +55,15 @@ This is an initial repository slice, not yet a user-facing Community chat. It do
 - Added member Guestbook discovery, Quartz role/grant creation and assignment, and Control Root delivery to staff grants. Staff invite redemption opens and verifies the delivered Control Root against the invite's `control_pk`.
 - Added moderation paths: public-community kicks remain Guestbook moderation; private kicks are coupled to CORD-06 refounding. Bans follow Quartz's public/private rule, and staff demotion/role deletion triggers a whole-community refounding when staff write authority is removed.
 - Added retry-safe refounding: the pending root/control-root pair is stored in encrypted preferences; signed control, registry, invite, rekey, membership, kick and new-Guestbook events are journaled before publication and replayed with the same IDs after failure. Private-channel rotations are explicitly refused until their independent channel keys can be rekeyed.
+
+## Concord functional follow-up — staging 1.0.74
+
+The 1.0.73 device test exposed that the first visible Concord screen was not yet a complete community experience. The following remediation is isolated on the 1.0.74 staging branch:
+
+- Community List reads now wait for the configured relays but can return the fragments received from relays that completed before the timeout. A warning is retained for the UI when synchronization is partial; a failed refresh no longer clears the last displayed list.
+- Membership-list writes remain fail-closed. A partial read is writable only when at least one kind-33302 fragment was observed, allowing Quartz to perform its scoped fragment update. If no fragment was seen and not every read relay completed, creation/join/refounding is refused rather than assuming that the user's list is empty.
+- When a membership arrives from another device or Concord client, opening the community attempts to recover the #general channel id from the read-only Control Plane and persist it locally. The chat collector restarts when that id becomes available.
+- The Concord screen now offers a direct entry to Vector Hub, the public directory for listed communities, and an explicit refresh action for the private membership list. Hub discovery is external; this client does not yet embed or cache the Hub catalogue.
+- Added unit coverage for the fail-closed partial-list write rule.
+
+These are code changes awaiting CI and manual device verification. In particular, successful compilation does not prove that the relay set returns the complete private list or that Control Plane reads work against real Vector communities.
