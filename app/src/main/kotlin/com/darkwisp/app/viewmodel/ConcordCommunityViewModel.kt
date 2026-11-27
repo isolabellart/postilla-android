@@ -223,6 +223,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         communityId: String,
         text: String,
         signer: NostrSigner?,
+        extraTags: Array<Array<String>> = emptyArray(),
     ): ConcordChatMessage? {
         val entry = memberships[communityId] ?: return null
         val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return null
@@ -235,6 +236,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             epoch = entry.rootEpoch,
             text = text,
             communityRelays = entry.relays,
+            extraTags = extraTags,
         )
     }
 
