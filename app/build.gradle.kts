@@ -30,8 +30,8 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 74
-        versionName = "1.0.74"
+        versionCode = 75
+        versionName = "1.0.75"
         resValue("string", "app_name", "Postilla")
 
         ndk {
