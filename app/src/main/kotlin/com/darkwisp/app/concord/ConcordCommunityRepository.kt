@@ -216,6 +216,8 @@ class ConcordCommunityRepository(
         if (
             ConcordCommunityListWritePolicy.mayWrite(
                 allReadRelaysResponded = snapshot.allReadRelaysResponded,
+                readQuorumReached = snapshot.respondingReadRelays >=
+                    ConcordCommunityListWritePolicy.requiredReadRelayResponses(snapshot.configuredReadRelays),
                 hasWritableFragment = hasWritableFragment,
             )
         ) return
