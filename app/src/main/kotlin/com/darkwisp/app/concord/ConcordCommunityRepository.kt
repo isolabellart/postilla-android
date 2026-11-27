@@ -1719,7 +1719,7 @@ class ConcordCommunityRepository(
             relays = inboxRelays,
             filter = Filter(
                 kinds = listOf(1059),
-                tags = mapOf("p" to listOf(signer.pubKey)),
+                pTags = listOf(signer.pubKey),
                 since = ConcordDirectInvite.inboxSince(cursor),
                 limit = 1000,
             ),
