@@ -39,7 +39,7 @@ data class ConcordChatReadPlane(
 
 /**
  * CORD-03 channel transport. All cryptographic derivation, rumor construction,
- * wrapping and validation are delegated to Quartz 2.15.1.
+ * wrapping and validation are delegated to Quartz 2.30.0, including CORD-03 writer-plane validation.
  */
 class ConcordChatRepository(
     private val relayPool: RelayPool,
