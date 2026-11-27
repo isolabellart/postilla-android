@@ -318,11 +318,12 @@ class ConcordChatRepository(
         ownerPubkey: String,
         communityIdHex: String,
         channelIdHex: String,
-        authorKeys: List<String>,
+        readPlanes: List<ConcordChatReadPlane>,
         communityRelays: List<String>,
-    ): List<NostrEvent> {
+    ): List<ConcordChatMessage> {
         val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
-        return coroutineScope {
+        val authorKeys = readPlanes.map { it.stream.publicKeyHex }.distinct()
+        val wraps = coroutineScope {
             targets.map { relay ->
                 async {
                     val exhausted = historyPrefs.getBoolean(exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, relay), false)
@@ -334,6 +335,9 @@ class ConcordChatRepository(
                 }
             }.awaitAll().flatten().distinctBy { it.id }
         }
+        val messages = wraps.mapNotNull { decode(it, readPlanes, channelIdHex) }
+        for (wrap in wraps) persistEncryptedWrap(ownerPubkey, communityIdHex, channelIdHex, wrap)
+        return messages.distinctBy { it.id }.sortedBy { it.orderingAtMs }
     }
 
     suspend fun hasOlder(
