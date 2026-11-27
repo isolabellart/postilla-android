@@ -5,7 +5,6 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.content
 
 /**
  * Relay quorum and safe write planning for the private CORD-02 Community List.
