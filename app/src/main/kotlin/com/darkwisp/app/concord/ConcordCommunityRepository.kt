@@ -86,6 +86,11 @@ class ConcordCommunityRepository(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
+    @Volatile
+    private var communityListReadWarning: String? = null
+
+    fun getCommunityListReadWarning(): String? = communityListReadWarning
+
     data class CreationResult(
         val communityId: String,
         val generalChannelId: String,
@@ -115,6 +120,7 @@ class ConcordCommunityRepository(
         // Read/merge the existing list before publishing anything. A new community must
         // never replace the user's other memberships or their anti-resurrection tombstones.
         val existingList = fetchCommunityList(signer)
+        requireSafeCommunityListForWrite(existingList, "Community creation")
         val community = ConcordCommunityFactory.create(
             ownerSigner = signer,
             name = name.trim(),
@@ -189,7 +195,26 @@ class ConcordCommunityRepository(
     private data class CommunityListSnapshot(
         val fragments: ConcordListFragmentSet,
         val document: ConcordCommunityListDocument,
+        val allReadRelaysResponded: Boolean,
+        val respondingReadRelays: Int,
+        val configuredReadRelays: Int,
     )
+
+    /**
+     * A partial relay read is safe to update only when we hold at least one kind-33302
+     * fragment: Quartz then scopes the write to known fragments instead of repacking an
+     * apparently empty list. With no fragment observed, every read relay must have sent
+     * EOSE or we cannot prove that the private list is empty.
+     */
+    private fun requireSafeCommunityListForWrite(snapshot: CommunityListSnapshot, operation: String) {
+        if (snapshot.allReadRelaysResponded || !snapshot.fragments.isEmpty) return
+        throw IllegalStateException(
+            "$operation stopped safely: only ${snapshot.respondingReadRelays} of " +
+                "${snapshot.configuredReadRelays} read relays completed the Community List read, " +
+                "and no kind-33302 fragment was available. Check the read-relay connections and retry; " +
+                "Postilla will not assume that your existing memberships are empty."
+        )
+    }
 
     /**
      * Reads every configured read relay to a per-relay EOSE, then merges remote and
@@ -238,7 +263,7 @@ class ConcordCommunityRepository(
                     ),
                 ),
             )
-            val complete = withTimeoutOrNull(8_000L) {
+            val allResponded = withTimeoutOrNull(8_000L) {
                 allEose.await()
                 true
             } ?: false
@@ -246,8 +271,10 @@ class ConcordCommunityRepository(
             eventCollector.cancelAndJoin()
             eoseCollector.cancelAndJoin()
             relayPool.closeOnAllRelays(subId)
-            if (!complete) {
-                throw IllegalStateException("Could not read the Community List from every configured read relay; refusing a destructive update")
+            if (responded.isEmpty()) {
+                throw IllegalStateException(
+                    "No configured read relay completed the Community List read; refusing to treat it as empty."
+                )
             }
         }
 
@@ -291,16 +318,32 @@ class ConcordCommunityRepository(
             }
         }
         val mergedDocument = ConcordCommunityList.readWithLegacy(fragmentSet, legacyPlaintext)
-        return CommunityListSnapshot(fragmentSet, ConcordCommunityList.decodeDocument(mergedDocument))
+        return CommunityListSnapshot(
+            fragments = fragmentSet,
+            document = ConcordCommunityList.decodeDocument(mergedDocument),
+            allReadRelaysResponded = allResponded,
+            respondingReadRelays = responded.size,
+            configuredReadRelays = readRelays.size,
+        )
     }
 
 
-    /** Loads the relay-merged membership list, falling back to the local encrypted journal for display. */
+    /** Loads remote and local memberships, retaining a visible warning for incomplete relay sync. */
     suspend fun loadLocalMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> = try {
-        fetchCommunityList(signer).document.entries
+        val snapshot = fetchCommunityList(signer)
+        communityListReadWarning = if (snapshot.allReadRelaysResponded) {
+            null
+        } else {
+            "Community list partly synchronized: ${snapshot.respondingReadRelays} of " +
+                "${snapshot.configuredReadRelays} read relays responded. Some memberships may still be missing."
+        }
+        snapshot.document.entries
     } catch (cancelled: CancellationException) {
         throw cancelled
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        communityListReadWarning =
+            "Could not synchronize the private Community List: ${error.message ?: "relay read failed"}. " +
+                "Only memberships saved on this device can be shown."
         loadJournaledMemberships(signer)
     }
 
@@ -346,6 +389,25 @@ class ConcordCommunityRepository(
 
     fun getLocalGeneralChannelId(communityId: String): String? =
         prefs.getString(generalChannelKey(communityId), null)
+
+    /**
+     * A Community List synced from another device carries the community secrets, but this
+     * device may not have the cached #general id. Recover it from the read-only Control Plane.
+     */
+    suspend fun restoreGeneralChannelId(membership: ConcordCommunityListEntry): String {
+        getLocalGeneralChannelId(membership.id)?.takeIf { it.isNotBlank() }?.let { return it }
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val channel = control.state.channels.values.firstOrNull {
+            it.definition.name.equals("general", ignoreCase = true)
+        } ?: throw IllegalStateException("The community Control Plane has no live #general channel")
+        val channelId = channel.channelIdHex
+        withContext(Dispatchers.IO) {
+            check(prefs.edit().putString(generalChannelKey(membership.id), channelId).commit()) {
+                "Could not save the restored #general channel key locally"
+            }
+        }
+        return channelId
+    }
 
 
 
@@ -1033,6 +1095,7 @@ class ConcordCommunityRepository(
         }
 
         val currentList = fetchCommunityList(signer)
+        requireSafeCommunityListForWrite(currentList, "Community refounding")
         val oldEntry = currentList.document.entries.firstOrNull { it.id == communityId }
             ?: throw IllegalStateException("The owner membership disappeared during refounding")
         require(oldEntry.root == membership.root && oldEntry.rootEpoch == membership.rootEpoch) {
@@ -1129,6 +1192,7 @@ class ConcordCommunityRepository(
 
     private suspend fun loadControlPlaneSnapshot(
         membership: ConcordCommunityListEntry,
+        requireAllResponders: Boolean = true,
     ): ControlPlaneSnapshot {
         val keys = ControlPlaneKeys.of(
             communityRoot = membership.root.hexToByteArray(),
@@ -1145,7 +1209,7 @@ class ConcordCommunityRepository(
                 limit = 5000,
             ),
             label = "control-state",
-            requireAllResponders = true,
+            requireAllResponders = requireAllResponders,
         )
         val wraps = events.map { Event.fromJson(it.toJson()) }
         val editions = wraps.map { wrap ->
@@ -1294,6 +1358,7 @@ class ConcordCommunityRepository(
         } ?: throw IllegalStateException("The community has no live #general channel")
 
         val currentList = fetchCommunityList(signer)
+        requireSafeCommunityListForWrite(currentList, "Joining a community")
         val existingMembership = currentList.document.entries.firstOrNull { it.id == invite.communityId }
         val memberControlRoot = when {
             state.authority.isOwner(signer.pubKey) -> {
