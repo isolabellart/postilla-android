@@ -496,6 +496,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun declineDirectInvite(wrapId: String) {
+        repository?.declineDirectInvite(wrapId)
+        _directInvites.value = _directInvites.value.copy(
+            invites = _directInvites.value.invites.filterNot { it.wrapId.equals(wrapId, ignoreCase = true) },
+        )
+    }
+
     fun acceptDirectInvite(opened: OpenedDirectInvite, signer: NostrSigner?) {
         if (_join.value.isJoining) return
         if (signer == null) {
