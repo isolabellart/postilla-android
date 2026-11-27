@@ -32,8 +32,9 @@ internal object ConcordCommunityListWritePolicy {
      */
     fun mayWrite(
         allReadRelaysResponded: Boolean,
+        readQuorumReached: Boolean,
         hasWritableFragment: Boolean,
-    ): Boolean = allReadRelaysResponded || hasWritableFragment
+    ): Boolean = allReadRelaysResponded || (readQuorumReached && hasWritableFragment)
 
     /**
      * CORD-02 scoped update for a partial relay read. Unlike planWrites() on a complete
