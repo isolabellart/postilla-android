@@ -1,6 +1,22 @@
 package com.darkwisp.app.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
+import com.darkwisp.app.concord.ConcordCommunityViewModel
+import com.darkwisp.app.nostr.Blossom
+import com.darkwisp.app.repo.EventRepository
+import com.darkwisp.app.repo.BlossomRepository
+import com.darkwisp.app.repo.TranslationRepository
+import com.darkwisp.app.repo.TranslationState
+import com.darkwisp.app.repo.TranslationStatus
+import com.darkwisp.app.ui.component.ProfilePicture
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,7 +66,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.nostr.NostrSigner
-import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +74,9 @@ fun ConcordRoomScreen(
     communityId: String,
     viewModel: ConcordCommunityViewModel,
     signer: NostrSigner?,
+    eventRepository: EventRepository,
+    translationRepository: TranslationRepository,
+    blossomRepository: BlossomRepository,
     onBack: () -> Unit,
 ) {
     val communities by viewModel.communities.collectAsState()
@@ -68,9 +86,46 @@ fun ConcordRoomScreen(
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var text by rememberSaveable(communityId) { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && !sending && signer != null) {
+            scope.launch {
+                sending = true
+                sendError = null
+                try {
+                    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                            ?: throw IllegalStateException("Could not read the selected image")
+                    }
+                    require(bytes.isNotEmpty() && bytes.size <= 12 * 1024 * 1024) {
+                        "Image must be smaller than 12 MB"
+                    }
+                    val extension = when (mimeType.substringAfter('/').lowercase()) {
+                        "jpeg" -> "jpg"
+                        "png", "webp", "gif" -> mimeType.substringAfter('/').lowercase()
+                        else -> "jpg"
+                    }
+                    val url = blossomRepository.uploadMedia(bytes, mimeType, extension, signer)
+                    val hash = Blossom.sha256Hex(bytes)
+                    val caption = text.trim()
+                    val outgoing = listOf(caption, url).filter { it.isNotBlank() }.joinToString("\\n")
+                    val tags = arrayOf(arrayOf("imeta", "url $url", "m $mimeType", "x $hash"))
+                    val sent = viewModel.sendGeneralMessage(communityId, outgoing, signer, tags)
+                    if (sent == null) throw IllegalStateException("Image message was not confirmed by a relay")
+                    if (messages.none { it.id == sent.id }) messages.add(sent)
+                    text = ""
+                } catch (error: Exception) {
+                    sendError = error.message ?: "Image upload failed"
+                } finally {
+                    sending = false
+                }
+            }
+        }
+    }
 
     LaunchedEffect(communityId, community?.generalChannelId) {
         messages.clear()
@@ -148,6 +203,12 @@ fun ConcordRoomScreen(
                         ),
                     )
                     IconButton(
+                        enabled = !sending && signer != null && community?.generalChannelId != null,
+                        onClick = { imagePicker.launch("image/*") },
+                    ) {
+                        Icon(Icons.Default.Image, contentDescription = "Attach image")
+                    }
+                    IconButton(
                         enabled = text.isNotBlank() && !sending && signer != null && community?.generalChannelId != null,
                         onClick = {
                             val outgoing = text
@@ -222,6 +283,28 @@ fun ConcordRoomScreen(
             ) {
                 items(messages, key = { it.id }) { message ->
                     val ownMessage = message.authorPubkey == signer?.pubkeyHex
+                    var profile by remember(message.authorPubkey) {
+                        mutableStateOf(eventRepository.getProfileData(message.authorPubkey))
+                    }
+                    var showTranslated by remember(message.id) { mutableStateOf(false) }
+                    val translation by translationRepository.stateFor(message.id)
+                        .collectAsState(initial = TranslationState())
+                    val imageUrl = remember(message.content) {
+                        Regex("https?://[^\\\\s]+", RegexOption.IGNORE_CASE).findAll(message.content)
+                            .map { it.value.trimEnd(')', ']', '}', ',', '.') }
+                            .firstOrNull()
+                    }
+                    LaunchedEffect(message.authorPubkey) {
+                        if (profile == null) {
+                            eventRepository.requestProfileIfMissing(message.authorPubkey)
+                            repeat(12) {
+                                if (profile == null) {
+                                    kotlinx.coroutines.delay(750)
+                                    profile = eventRepository.getProfileData(message.authorPubkey)
+                                }
+                            }
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                         horizontalArrangement = if (ownMessage) Arrangement.End else Arrangement.Start,
@@ -232,15 +315,64 @@ fun ConcordRoomScreen(
                             modifier = Modifier.fillMaxWidth(0.88f),
                         ) {
                             Column(Modifier.padding(horizontal = 13.dp, vertical = 9.dp)) {
-                                if (!ownMessage) {
-                                    Text(
-                                        message.authorPubkey.take(12),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold,
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ProfilePicture(url = profile?.picture, size = 28)
+                                    Column {
+                                        Text(
+                                            profile?.displayString ?: message.authorPubkey.take(12),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            message.authorPubkey.take(12) + "…",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                val visibleText = if (imageUrl != null) message.content.replace(imageUrl, "").trim() else message.content
+                                if (visibleText.isNotBlank()) {
+                                    Text(visibleText, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                if (imageUrl != null) {
+                                    AsyncImage(
+                                        model = imageUrl,
+                                        contentDescription = "Concord image",
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                                     )
                                 }
-                                Text(message.content, style = MaterialTheme.typography.bodyMedium)
+                                TextButton(
+                                    onClick = {
+                                        if (translation.status == TranslationStatus.DONE) {
+                                            showTranslated = !showTranslated
+                                        } else {
+                                            translationRepository.translateWithDeepL(message.id, message.content)
+                                        }
+                                    },
+                                ) {
+                                    Text(
+                                        when {
+                                            translation.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+                                                translation.status == TranslationStatus.DOWNLOADING_MODEL ||
+                                                translation.status == TranslationStatus.TRANSLATING -> "Translating…"
+                                            translation.status == TranslationStatus.ERROR -> "Retry translation"
+                                            showTranslated -> "Show original"
+                                            translation.status == TranslationStatus.DONE -> "Show translation"
+                                            else -> "Translate with DeepL"
+                                        }
+                                    )
+                                }
+                                if (showTranslated && translation.status == TranslationStatus.DONE) {
+                                    Text(translation.translatedText, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                if (translation.status == TranslationStatus.ERROR) {
+                                    Text(
+                                        translation.errorMessage,
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
                             }
                         }
                     }
