@@ -311,67 +311,7 @@ fun DmListScreen(
         }
     }
 
-    joinError?.let { err ->
-        AlertDialog(
-            onDismissRequest = { joinError = null },
-            title = { Text(stringResource(R.string.title_join_rejected)) },
-            text = {
-                Column {
-                    Text(
-                        stringResource(R.string.msg_join_rejected_body),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    if (err.message.isNotBlank()) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = "Relay said: ${err.message}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { joinError = null }) {
-                    Text(stringResource(R.string.btn_ok))
-                }
-            }
-        )
-    }
 
-    adminError?.let { err ->
-        AlertDialog(
-            onDismissRequest = { adminError = null },
-            title = { Text("Action failed") },
-            text = {
-                Column {
-                    Text(
-                        "The relay rejected this action.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Step: ${err.action}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (err.message.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Relay said: ${err.message}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { adminError = null }) {
-                    Text(stringResource(R.string.btn_ok))
-                }
-            }
-        )
-    }
 }
 
 @Composable
