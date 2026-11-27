@@ -34,12 +34,11 @@ data class ConcordChatMessage(
 data class ConcordChatReadPlane(
     val stream: GroupKey,
     val channelEpoch: Long,
-    val writerEpoch: Long? = null,
 )
 
 /**
  * CORD-03 channel transport. All cryptographic derivation, rumor construction,
- * wrapping and validation are delegated to Quartz 2.30.0, including CORD-03 writer-plane validation.
+ * wrapping and validation are delegated to the published Quartz 2.15.1 artifact.
  */
 class ConcordChatRepository(
     private val relayPool: RelayPool,
@@ -127,8 +126,7 @@ class ConcordChatRepository(
     ): Flow<ConcordChatMessage> = channelFlow {
         val channelEpoch = privateChannelEpoch ?: epoch
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
-        // Current + historical read planes, including CORD-03 writer addresses. Older clients
-        // only queried the base channel key and silently missed messages from restricted streams.
+        // Current + historical CORD-03 read planes. Each held epoch has its own author address.
         val planes = readPlanes.ifEmpty { listOf(ConcordChatReadPlane(channelKey, channelEpoch)) }
         val authorKeys = planes.map { it.stream.publicKeyHex }.distinct()
         // CORD-01 streams are addressed by their derived author key, but relays are
@@ -156,13 +154,7 @@ class ConcordChatRepository(
                             .filter { it.stream.publicKeyHex.equals(wrap.pubKey, ignoreCase = true) }
                             .mapNotNull { plane ->
                                 val opened = ConcordStreamEnvelope.open(wrap, plane.stream)
-                                if (plane.writerEpoch != null) {
-                                    ChannelChat.acceptWriterOpened(
-                                        opened, channelIdHex, plane.channelEpoch, plane.writerEpoch, ChannelChat.CHAT_KINDS,
-                                    )
-                                } else {
-                                    ChannelChat.acceptOpened(opened, channelIdHex, plane.channelEpoch, ChannelChat.CHAT_KINDS)
-                                }
+                                ChannelChat.acceptOpened(opened, channelIdHex, plane.channelEpoch, ChannelChat.CHAT_KINDS)
                             }
                             .firstOrNull()
                             ?: return@collect
