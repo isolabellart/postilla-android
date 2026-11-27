@@ -84,12 +84,14 @@ fun ConcordCommunitiesScreen(
     val creation by viewModel.creation.collectAsState()
     val join by viewModel.join.collectAsState()
     val invite by viewModel.invite.collectAsState()
+    val directInvites by viewModel.directInvites.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isLoading by viewModel.isLoading.collectAsState()
     val communityListWarning by viewModel.communityListWarning.collectAsState()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var showJoinDialog by rememberSaveable { mutableStateOf(false) }
+    var showDirectInvitesDialog by rememberSaveable { mutableStateOf(false) }
     var inviteUrl by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
@@ -103,10 +105,12 @@ fun ConcordCommunitiesScreen(
 
     LaunchedEffect(signer?.pubkeyHex) {
         viewModel.init(relayPool, signer)
+        viewModel.refreshDirectInvites(signer)
     }
     LaunchedEffect(join.result?.communityId) {
         if (join.result != null) {
             showJoinDialog = false
+            showDirectInvitesDialog = false
             inviteUrl = ""
         }
     }
@@ -174,6 +178,15 @@ fun ConcordCommunitiesScreen(
                     Text("Refresh list")
                 }
                 Row {
+                    TextButton(
+                        onClick = {
+                            viewModel.refreshDirectInvites(signer)
+                            showDirectInvitesDialog = true
+                        },
+                        enabled = signer != null && !directInvites.isLoading,
+                    ) {
+                        Text(if (directInvites.isLoading) "Invites…" else "Invites (${directInvites.invites.size})")
+                    }
                     TextButton(onClick = { showJoinDialog = true }) { Text("Join by link") }
                     TextButton(onClick = { showCreateDialog = true }) { Text("Create") }
                 }
@@ -471,5 +484,50 @@ fun ConcordCommunitiesScreen(
                 TextButton(onClick = { if (!creation.isCreating) showCreateDialog = false }) { Text("Cancel") }
             },
         )
+    if (showDirectInvitesDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!join.isJoining) showDirectInvitesDialog = false },
+            title = { Text("Direct community invites") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    directInvites.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (directInvites.isLoading && directInvites.invites.isEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Text("Checking your DM relays…", modifier = Modifier.padding(start = 10.dp))
+                        }
+                    } else if (directInvites.invites.isEmpty()) {
+                        Text("No pending Direct Invites were found on your inbox relays.")
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(directInvites.invites, key = { it.wrapId }) { opened ->
+                                Column {
+                                    Text(opened.invite.name.ifBlank { opened.invite.communityId.take(12) },
+                                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text("Invited by ${opened.sender}", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (opened.isExpired()) {
+                                        Text("Expired — this invite can no longer be accepted.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error)
+                                    } else {
+                                        TextButton(
+                                            enabled = signer != null && !join.isJoining,
+                                            onClick = { viewModel.acceptDirectInvite(opened, signer) },
+                                        ) { Text(if (join.isJoining) "Joining…" else "Accept invite") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDirectInvitesDialog = false }) { Text("Close") }
+            },
+        )
+    }
     }
 }
