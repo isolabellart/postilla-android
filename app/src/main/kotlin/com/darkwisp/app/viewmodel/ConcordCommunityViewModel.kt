@@ -331,6 +331,11 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val entry = memberships[communityId] ?: return null
         val channelInfo = findChannel(communityId, channelId)
         if (channelInfo?.isPrivate == true && channelInfo.privateKeyHex.isNullOrBlank()) return null
+        if (channelInfo?.writeRestricted == true) {
+            throw IllegalStateException(
+                "This channel uses a restricted writer key. Postilla can read its messages, but cannot publish to it yet.",
+            )
+        }
         val chat = chatRepository ?: return null
         signer ?: return null
         return chat.sendMessage(
@@ -378,6 +383,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val entry = memberships[communityId] ?: return false
         val channel = findChannel(communityId, channelId)
         if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return false
+        if (channel?.writeRestricted == true) return false
         signer ?: return false
         return chatRepository?.sendReaction(
             signer = PostillaQuartzSigner(signer),

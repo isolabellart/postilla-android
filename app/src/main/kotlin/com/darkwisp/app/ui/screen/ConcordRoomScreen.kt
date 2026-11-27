@@ -451,6 +451,14 @@ fun ConcordRoomScreen(
                 modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding()
                     .background(MaterialTheme.colorScheme.background).padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
+                if (selectedChannel?.writeRestricted == true) {
+                    Text(
+                        "This channel uses a restricted writer key. Postilla can read messages here, but publishing is not yet supported.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
                 sendError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
@@ -476,22 +484,24 @@ fun ConcordRoomScreen(
                         value = text,
                         onValueChange = { text = it; sendError = null },
                         modifier = Modifier.weight(1f),
+                        enabled = selectedChannel?.writeRestricted != true && selectedChannelAccessible,
                         placeholder = { Text("Message #" + (selectedChannel?.name ?: "general")) },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible) {
+                                if (text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannel?.writeRestricted != true) {
                                     val outgoing = text
                                     scope.launch {
                                         sending = true
-                                        val sent = runCatching {
+                                        val sendResult = runCatching {
                                             viewModel.sendChannelMessage(
                                                 communityId, selectedChannelId, outgoing, signer,
                                                 replyTo = replyToMessage,
                                                 inlineReply = inlineReplyMode,
                                             )
-                                        }.getOrNull()
+                                        }
+                                        val sent = sendResult.getOrNull()
                                         if (sent != null) {
                                             if (messages.none { it.id == sent.id }) messages.add(sent)
                                             messages.sortBy { it.orderingAtMs }
@@ -499,7 +509,8 @@ fun ConcordRoomScreen(
                                             replyToMessage = null
                                             inlineReplyMode = false
                                         } else {
-                                            sendError = "Message not confirmed by a relay"
+                                            sendError = sendResult.exceptionOrNull()?.message
+                                                ?: "Message not confirmed by a relay"
                                         }
                                         sending = false
                                     }
@@ -508,23 +519,24 @@ fun ConcordRoomScreen(
                         ),
                     )
                     IconButton(
-                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible,
+                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannel?.writeRestricted != true,
                         onClick = { imagePicker.launch("image/*") },
                     ) {
                         Icon(Icons.Default.Image, contentDescription = "Attach image")
                     }
                     IconButton(
-                        enabled = text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible,
+                        enabled = text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannel?.writeRestricted != true,
                         onClick = {
                             val outgoing = text
                             scope.launch {
                                 sending = true
-                                val sent = runCatching {
+                                val sendResult = runCatching {
                                     viewModel.sendChannelMessage(
                                         communityId, selectedChannelId, outgoing, signer,
                                         replyTo = replyToMessage,
                                     )
-                                }.getOrNull()
+                                }
+                                val sent = sendResult.getOrNull()
                                 if (sent != null) {
                                     if (messages.none { it.id == sent.id }) messages.add(sent)
                                     messages.sortBy { it.orderingAtMs }
@@ -532,7 +544,8 @@ fun ConcordRoomScreen(
                                     replyToMessage = null
                                     inlineReplyMode = false
                                 } else {
-                                    sendError = "Message not confirmed by a relay"
+                                    sendError = sendResult.exceptionOrNull()?.message
+                                        ?: "Message not confirmed by a relay"
                                 }
                                 sending = false
                             }
@@ -835,7 +848,7 @@ fun ConcordRoomScreen(
                                     ) { Text("Quote") }
                                     listOf("👍", "❤️", "😂").forEach { emoji ->
                                         TextButton(
-                                            enabled = signer != null,
+                                            enabled = signer != null && selectedChannel?.writeRestricted != true,
                                             onClick = {
                                                 scope.launch {
                                                     val ok = viewModel.sendChannelReaction(
