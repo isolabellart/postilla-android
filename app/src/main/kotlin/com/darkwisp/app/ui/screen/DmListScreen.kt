@@ -84,6 +84,7 @@ import com.darkwisp.app.viewmodel.DmListViewModel
 import com.darkwisp.app.ui.theme.wispSwitchColors
 import com.darkwisp.app.viewmodel.GroupListViewModel
 import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
+import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.relay.RelayPool
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -97,6 +98,7 @@ fun DmListScreen(
     concordCommunityViewModel: ConcordCommunityViewModel,
     relayPool: RelayPool,
     eventRepo: EventRepository,
+    blossomRepository: BlossomRepository,
     userPubkey: String? = null,
     signer: NostrSigner? = null,
     onBack: (() -> Unit)? = null,
@@ -366,6 +368,7 @@ fun DmListScreen(
                     viewModel = concordCommunityViewModel,
                     relayPool = relayPool,
                     signer = signer,
+                    blossomRepository = blossomRepository,
                     onOpenCommunity = onConcordCommunity,
                     embedded = true,
                 )
