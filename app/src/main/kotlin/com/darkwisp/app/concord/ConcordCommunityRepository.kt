@@ -22,6 +22,12 @@ import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookAction
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
+import com.vitorpamplona.quartz.concord.cord04Roles.ChannelEntity
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordDirectInvite
+import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
+import com.vitorpamplona.quartz.concord.cord05Invites.InviteChannel
+import com.vitorpamplona.quartz.nip19Bech32.Nip19Parser
+import com.vitorpamplona.quartz.nip19Bech32.entities.NPub
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEditionBuilder
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEntityKind
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordJson
@@ -1371,7 +1377,9 @@ class ConcordCommunityRepository(
                 limit = 5000,
             ),
             label = "guestbook",
-            requireAllResponders = true,
+            // Membership visibility must degrade gracefully when a relay is silent.
+            // A partial Guestbook is useful for display; it must never authorize destructive actions.
+            requireAllResponders = false,
         )
         val entries = events.mapNotNull { event ->
             try {
@@ -1393,6 +1401,111 @@ class ConcordCommunityRepository(
                     inviteLabel = it.inviteLabel,
                 )
             }
+    }
+
+    /**
+     * Sends a CORD-05 §6 Direct Invite (kind 3313 inside a standard NIP-59 giftwrap).
+     * Unlike public links this is an ungated, one-recipient key handoff and cannot be revoked.
+     */
+    suspend fun sendDirectInvite(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        recipientInput: String,
+    ) {
+        val rawRecipient = recipientInput.trim()
+        val recipient = when {
+            Regex("^[0-9a-fA-F]{64}$").matches(rawRecipient) -> rawRecipient.lowercase()
+            else -> (Nip19Parser.uriToRoute(rawRecipient)?.entity as? NPub)?.hex
+        } ?: throw IllegalArgumentException("Enter a valid npub or 64-character public key")
+
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available on this device")
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val authority = control.state.authority
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (authority.isBanned(signer.pubKey)) throw IllegalStateException("This account is banned from the community")
+        if (authority.isBanned(recipient)) throw IllegalStateException("This recipient is banned from the community")
+
+        val channels = control.state.channels.values.mapNotNull { channel ->
+            val privateEntry = if (channel.definition.private) {
+                membership.privateChannels.firstOrNull {
+                    it.channelId.equals(channel.channelIdHex, ignoreCase = true)
+                }
+            } else null
+            if (channel.definition.private && privateEntry == null) {
+                null
+            } else {
+                InviteChannel(
+                    id = channel.channelIdHex,
+                    key = privateEntry?.key.orEmpty(),
+                    epoch = privateEntry?.epoch ?: membership.rootEpoch,
+                    name = channel.definition.name,
+                )
+            }
+        }
+        val invite = CommunityInvite(
+            communityId = membership.id,
+            owner = membership.owner,
+            ownerSalt = membership.ownerSalt,
+            communityRoot = membership.root,
+            rootEpoch = membership.rootEpoch,
+            controlPk = membership.controlPk,
+            channels = channels,
+            relays = membership.relays.distinct().take(5),
+            name = control.state.metadata?.name?.ifBlank { membership.name } ?: membership.name,
+            icon = control.state.metadata?.icon,
+            creatorNpub = NPub.create(signer.pubKey),
+        )
+
+        // CORD-05 §6: use the recipient's kind-10050 inbox relays first, then NIP-65
+        // read relays. The stock Concord relays are a last resort when no recipient
+        // relay list can be discovered from our own read relays.
+        val bootstrap = relayPool.getReadRelayUrls().distinct()
+        val recipientLists = if (bootstrap.isNotEmpty()) {
+            fetchEventsFromRelays(
+                relays = bootstrap,
+                filter = Filter(kinds = listOf(10050, 10002), authors = listOf(recipient), limit = 20),
+                label = "direct-invite-recipient-relays",
+                requireAllResponders = false,
+            )
+        } else emptyList()
+        val dmRelays = recipientLists
+            .filter { it.kind == 10050 }
+            .maxByOrNull { it.created_at }
+            ?.tags
+            ?.filter { it.firstOrNull() == "relay" }
+            ?.mapNotNull { it.getOrNull(1)?.takeIf(String::isNotBlank) }
+            .orEmpty()
+        val nip65Relays = recipientLists
+            .filter { it.kind == 10002 }
+            .maxByOrNull { it.created_at }
+            ?.tags
+            ?.filter { tag ->
+                tag.firstOrNull() == "r" && (tag.getOrNull(2).isNullOrBlank() || tag.getOrNull(2) == "read")
+            }
+            ?.mapNotNull { it.getOrNull(1)?.takeIf(String::isNotBlank) }
+            .orEmpty()
+        val deliveryRelays = (dmRelays.ifEmpty { nip65Relays }.ifEmpty {
+            listOf(
+                "wss://jskitty.com/nostr",
+                "wss://asia.vectorapp.io/nostr",
+                "wss://relay.ditto.pub",
+                "wss://relay.dreamith.to",
+            )
+        }).distinct().take(10)
+        require(deliveryRelays.isNotEmpty()) { "No recipient inbox relay could be selected" }
+
+        val wrap = ConcordDirectInvite.build(signer, recipient, invite)
+        val event = NostrEvent.fromJson(wrap.toJson())
+        val message = ClientMessage.event(event)
+        val outcome = relayPool.publishWithConfirmation(event.id) {
+            deliveryRelays.count { url ->
+                relayPool.sendToRelayOrEphemeral(url, message, skipBadCheck = true, write = true)
+            }
+        }
+        if (!outcome.confirmed) {
+            throw IllegalStateException("Direct Invite was not acknowledged by a recipient inbox relay; it was not delivered")
+        }
     }
 
     data class JoinResult(
