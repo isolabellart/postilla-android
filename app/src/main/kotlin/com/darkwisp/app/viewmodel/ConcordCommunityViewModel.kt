@@ -202,6 +202,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             epoch = entry.rootEpoch,
             communityRelays = entry.relays,
             privateChannelKeyHex = channel?.privateKeyHex,
+            privateChannelEpoch = channel?.privateChannelEpoch,
         ) ?: emptyFlow()
     }
 
@@ -271,6 +272,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             epoch = entry.rootEpoch,
             text = text,
             privateChannelKeyHex = channelInfo?.privateKeyHex,
+            privateChannelEpoch = channelInfo?.privateChannelEpoch,
             communityRelays = entry.relays,
             extraTags = extraTags,
             imetas = imetas,
