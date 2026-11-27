@@ -38,6 +38,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
 
+    data class MembersState(
+        val communityId: String? = null,
+        val isLoading: Boolean = false,
+        val members: List<ConcordCommunityRepository.CommunityMember> = emptyList(),
+        val error: String? = null,
+    )
+
     data class CommunityItem(
         val id: String,
         val name: String,
@@ -69,6 +76,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _invite = MutableStateFlow(InviteState())
     val invite: StateFlow<InviteState> = _invite
 
+    private val _members = MutableStateFlow(MembersState())
+    val members: StateFlow<MembersState> = _members
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
@@ -90,6 +100,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         signerPubkey = signer?.pubkeyHex
         memberships.clear()
         _channels.value = emptyList()
+        _members.value = MembersState()
         _communityIcons.value = emptyMap()
         if (signer != null) refreshLocalCommunities(signer)
         else {
@@ -393,6 +404,57 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearInviteResult() {
         if (!_invite.value.isCreating) _invite.value = InviteState()
+    }
+
+    fun loadMembers(communityId: String, signer: NostrSigner?) {
+        val repo = repository ?: return
+        if (signer == null) {
+            _members.value = MembersState(communityId = communityId, error = "A writable Nostr signer is required")
+            return
+        }
+        if (_members.value.communityId == communityId && _members.value.isLoading) return
+        _members.value = _members.value.copy(communityId = communityId, isLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val loaded = repo.loadMembers(PostillaQuartzSigner(signer), communityId)
+                _members.value = MembersState(communityId = communityId, members = loaded)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _members.value = MembersState(
+                    communityId = communityId,
+                    members = _members.value.members,
+                    error = error.message ?: "Could not load community members",
+                )
+            }
+        }
+    }
+
+    suspend fun sendDirectInvite(communityId: String, recipient: String, signer: NostrSigner?) {
+        require(signer != null) { "A writable Nostr signer is required" }
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.sendDirectInvite(PostillaQuartzSigner(signer), communityId, recipient)
+    }
+
+    suspend fun createPublicChannel(communityId: String, name: String, signer: NostrSigner?) {
+        require(signer != null) { "A writable Nostr signer is required" }
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.createPublicChannel(PostillaQuartzSigner(signer), communityId, name)
+        refreshChannels(communityId)
+    }
+
+    suspend fun renameChannel(communityId: String, channelId: String, name: String, signer: NostrSigner?) {
+        require(signer != null) { "A writable Nostr signer is required" }
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.renameChannel(PostillaQuartzSigner(signer), communityId, channelId, name)
+        refreshChannels(communityId)
+    }
+
+    suspend fun deleteChannel(communityId: String, channelId: String, signer: NostrSigner?) {
+        require(signer != null) { "A writable Nostr signer is required" }
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.deleteChannel(PostillaQuartzSigner(signer), communityId, channelId)
+        refreshChannels(communityId)
     }
 
     fun clearResult() {
