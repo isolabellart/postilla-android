@@ -315,9 +315,9 @@ class ConcordCommunityRepository(
             // Let the first responders' EVENT frames drain before deciding the list is empty.
             // If no fragment arrived, give slower relays a second bounded window: treating two
             // fast empty responses as proof of an empty private list caused false-safe blocks.
-            delay(1_000)
+            delay(350)
             if (events.isEmpty() && !allEose.isCompleted) {
-                withTimeoutOrNull(4_000L) { allEose.await() }
+                withTimeoutOrNull(2_000L) { allEose.await() }
             }
             allResponded = allEose.isCompleted
             delay(350)
