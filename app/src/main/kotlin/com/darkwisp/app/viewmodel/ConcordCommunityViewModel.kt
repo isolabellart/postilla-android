@@ -159,6 +159,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
+            communityRelays = entry.relays,
         ) ?: emptyFlow()
     }
 
@@ -177,6 +178,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
             text = text,
+            communityRelays = entry.relays,
         )
     }
 
