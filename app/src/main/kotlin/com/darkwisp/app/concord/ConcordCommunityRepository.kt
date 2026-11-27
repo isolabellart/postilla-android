@@ -1236,6 +1236,35 @@ class ConcordCommunityRepository(
         return ControlPlaneSnapshot(keys, wraps, editions, state)
     }
 
+    data class CommunityChannel(
+        val id: String,
+        val name: String,
+        val isPrivate: Boolean,
+        /** Null means the membership does not currently hold this private channel key. */
+        val privateKeyHex: String? = null,
+    )
+
+    /** Loads the live Control Plane channel catalogue without requiring every community relay. */
+    suspend fun loadCommunityChannels(membership: ConcordCommunityListEntry): List<CommunityChannel> {
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        return control.state.channels.values
+            .map { channel ->
+                val privateKey = if (channel.definition.private) {
+                    membership.privateChannels.firstOrNull {
+                        it.id.equals(channel.channelIdHex, ignoreCase = true) &&
+                            it.epoch == membership.rootEpoch
+                    }?.key
+                } else null
+                CommunityChannel(
+                    id = channel.channelIdHex,
+                    name = channel.definition.name,
+                    isPrivate = channel.definition.private,
+                    privateKeyHex = privateKey,
+                )
+            }
+            .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
+    }
+
     /** Reads and coalesces the Guestbook against the currently folded authority roster. */
     suspend fun loadMembers(
         signer: PostillaQuartzSigner,
