@@ -262,8 +262,11 @@ class ConcordCommunityRepository(
      * set, so the scoped-write planner can preserve unseen memberships instead of repacking.
      */
     private suspend fun fetchCommunityList(signer: PostillaQuartzSigner): CommunityListSnapshot {
-        val readRelays = relayPool.getReadRelayUrls().distinct()
-        require(readRelays.isNotEmpty()) { "No read relays configured; refusing to replace the Community List" }
+        // The private Community List is commonly published to the account's write relays.
+        // Querying only read-enabled relays can therefore return EOSE from many relays while
+        // missing the only relays that actually hold the user's membership fragments.
+        val readRelays = relayPool.getRelayUrls().distinct()
+        require(readRelays.isNotEmpty()) { "No configured relays available; refusing to replace the Community List" }
 
         val subId = "concord-community-list-${signer.pubKey.take(12)}-${System.nanoTime()}"
         val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
@@ -295,18 +298,21 @@ class ConcordCommunityRepository(
                         if (responded.containsAll(readRelays)) allEose.complete(Unit)
                     }
             }
-            relayPool.sendToReadRelays(
-                ClientMessage.req(
-                    subId,
-                    listOf(
-                        Filter(
-                            kinds = listOf(ConcordCommunityListFragmentEvent.KIND, 13302),
-                            authors = listOf(signer.pubKey),
-                            limit = 5000,
-                        ),
+            val request = ClientMessage.req(
+                subId,
+                listOf(
+                    Filter(
+                        kinds = listOf(ConcordCommunityListFragmentEvent.KIND, 13302),
+                        authors = listOf(signer.pubKey),
+                        limit = 5000,
                     ),
                 ),
             )
+            // Use every configured persistent relay, including write-only relays, through
+            // the normal/ephemeral transport. EOSE accounting below is against this same set.
+            readRelays.forEach { url ->
+                relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true, write = false)
+            }
             // Do not make a slow tail of configured relays hold the whole screen hostage.
             // A two-thirds EOSE quorum provides a useful snapshot; remaining relays still
             // receive REQ and may contribute during the settling window. Partial snapshots
@@ -339,6 +345,18 @@ class ConcordCommunityRepository(
                         event.kind in setOf(ConcordCommunityListFragmentEvent.KIND, 13302)
                     ) events.putIfAbsent(event.id, event)
                 }
+            }
+        }
+
+        // Cache the signed, self-encrypted membership events received from relays. This
+        // makes a later partial/empty relay response recoverable without storing plaintext
+        // community secrets, and allows the next refresh to merge local and remote copies.
+        val membershipEvents = events.values.filter {
+            it.kind in setOf(ConcordCommunityListFragmentEvent.KIND, 13302)
+        }
+        if (membershipEvents.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                journalEvents("membership_${signer.pubKey}", membershipEvents.toList())
             }
         }
 
