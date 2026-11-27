@@ -1356,6 +1356,103 @@ class ConcordCommunityRepository(
             .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
     }
 
+    /** Creates a public CORD-03 channel after a fresh MANAGE_CHANNELS authority check. */
+    suspend fun createPublicChannel(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        name: String,
+    ): String {
+        val normalized = name.trim()
+        require(ChannelEntity.isValidName(normalized)) { "Channel name must be 1–64 UTF-8 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
+            throw IllegalStateException("This account cannot manage community channels")
+        }
+        require(control.state.channels.values.none { it.definition.name.equals(normalized, ignoreCase = true) }) {
+            "A channel with this name already exists"
+        }
+        val channelId = RandomInstance.bytes(32)
+        val content = ConcordJson.instance.encodeToString(
+            ChannelEntity.serializer(),
+            ChannelEntity(name = normalized, private = false),
+        )
+        publishControlEdition(
+            signer, membership, control, ControlEntityKind.CHANNEL, channelId, content,
+            ConcordPermissions.MANAGE_CHANNELS,
+        )
+        return channelId.toHexKey()
+    }
+
+    /** Renames a live channel, preserving unknown CORD extension fields verbatim. */
+    suspend fun renameChannel(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        channelId: String,
+        newName: String,
+    ) {
+        val normalized = newName.trim()
+        require(ChannelEntity.isValidName(normalized)) { "Channel name must be 1–64 UTF-8 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
+            throw IllegalStateException("This account cannot manage community channels")
+        }
+        val current = control.state.channels[channelId]
+            ?: throw IllegalArgumentException("Channel does not exist or has been deleted")
+        require(control.state.channels.values.none {
+            it.channelIdHex != channelId && it.definition.name.equals(normalized, ignoreCase = true)
+        }) { "A channel with this name already exists" }
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions, membership.id.hexToByteArray(), membership.owner,
+        )
+        val head = heads[channelId]
+        val content = ConcordJson.encodePreserving(
+            ChannelEntity.serializer(),
+            current.definition.copy(name = normalized),
+            head?.known?.content,
+        )
+        publishControlEdition(
+            signer, membership, control, ControlEntityKind.CHANNEL, channelId.hexToByteArray(), content,
+            ConcordPermissions.MANAGE_CHANNELS, head?.version, head?.hashHex,
+        )
+    }
+
+    /** CORD channel deletion is terminal; the id is never reused. */
+    suspend fun deleteChannel(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        channelId: String,
+    ) {
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
+            throw IllegalStateException("This account cannot manage community channels")
+        }
+        val current = control.state.channels[channelId]
+            ?: throw IllegalArgumentException("Channel does not exist or has already been deleted")
+        require(!current.definition.deleted) { "Channel has already been deleted" }
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions, membership.id.hexToByteArray(), membership.owner,
+        )
+        val head = heads[channelId]
+        val content = ConcordJson.encodePreserving(
+            ChannelEntity.serializer(),
+            current.definition.copy(deleted = true),
+            head?.known?.content,
+        )
+        publishControlEdition(
+            signer, membership, control, ControlEntityKind.CHANNEL, channelId.hexToByteArray(), content,
+            ConcordPermissions.MANAGE_CHANNELS, head?.version, head?.hashHex,
+        )
+    }
+
     /** Reads and coalesces the Guestbook against the currently folded authority roster. */
     suspend fun loadMembers(
         signer: PostillaQuartzSigner,
