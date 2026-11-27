@@ -1692,22 +1692,32 @@ class ConcordCommunityRepository(
         return joinCommunityFromBundle(signer, invite, ConcordInviteLink.bareForm(inviteUrl))
     }
 
-    /** Fetches only indexed CORD-05 Direct Invites addressed to this account. */
+    /**
+     * Fetches Direct Invites from the recipient inbox. The k=3313 tag is only an index hint:
+     * query p-tagged kind-1059 wraps as well, so valid untagged invites from older peers are honored.
+     * The cursor rewinds by NIP-59's backdate window to avoid missing a wrap published after a
+     * previous sweep but carrying an older created_at.
+     */
     suspend fun fetchDirectInvites(signer: PostillaQuartzSigner): List<OpenedDirectInvite> {
         val inboxRelays = relayPool.getDmRelayUrls().distinct().ifEmpty { relayPool.getReadRelayUrls().distinct() }
+        val cursor = prefs.getLong("concord_direct_invites_newest_wrap", 0L).takeIf { it > 0L }
         val events = fetchEventsFromRelays(
             relays = inboxRelays,
             filter = Filter(
                 kinds = listOf(1059),
-                tags = mapOf(
-                    "p" to listOf(signer.pubKey),
-                    "k" to listOf(ConcordDirectInvite.KIND.toString()),
-                ),
-                limit = 500,
+                tags = mapOf("p" to listOf(signer.pubKey)),
+                since = ConcordDirectInvite.inboxSince(cursor),
+                limit = 1000,
             ),
             label = "direct-invites",
             requireAllResponders = false,
         )
+        val newest = events.maxOfOrNull { it.created_at } ?: cursor
+        if (newest != null && newest > (cursor ?: 0L)) {
+            withContext(Dispatchers.IO) {
+                prefs.edit().putLong("concord_direct_invites_newest_wrap", newest).apply()
+            }
+        }
         return events.mapNotNull { event ->
             ConcordDirectInvite.open(Event.fromJson(event.toJson()), signer)
         }.distinctBy { it.wrapId }.sortedByDescending { it.sentAt }
