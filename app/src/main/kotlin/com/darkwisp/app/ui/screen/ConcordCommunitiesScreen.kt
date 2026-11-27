@@ -166,7 +166,13 @@ fun ConcordCommunitiesScreen(
                 TextButton(
                     onClick = { signer?.let(viewModel::refreshLocalCommunities) },
                     enabled = signer != null && !isLoading,
-                ) { Text("Refresh list") }
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text("Refresh list")
+                }
                 Row {
                     TextButton(onClick = { showJoinDialog = true }) { Text("Join by link") }
                     TextButton(onClick = { showCreateDialog = true }) { Text("Create") }
@@ -204,7 +210,11 @@ fun ConcordCommunitiesScreen(
                 Text(
                     warning,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = if (warning.startsWith("Community list")) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 )
             }
@@ -244,7 +254,7 @@ fun ConcordCommunitiesScreen(
                 )
             }
             when {
-                isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                communities.isEmpty() && isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
                 communities.isEmpty() -> Column(
