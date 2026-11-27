@@ -47,7 +47,7 @@ internal object ConcordCommunityListWritePolicy {
         now: Long,
     ): List<ConcordListFragmentSet.Write> {
         val before = fragments.doc
-        val merged = ConcordListFragments.reviseSnapshots(before, nextDocument)
+        val merged = nextDocument
         val changed = changedIds(before, merged)
         if (changed.isEmpty()) return emptyList()
 
