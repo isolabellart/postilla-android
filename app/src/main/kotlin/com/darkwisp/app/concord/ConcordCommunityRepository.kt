@@ -207,7 +207,7 @@ class ConcordCommunityRepository(
      * EOSE or we cannot prove that the private list is empty.
      */
     private fun requireSafeCommunityListForWrite(snapshot: CommunityListSnapshot, operation: String) {
-        if (snapshot.allReadRelaysResponded || !snapshot.fragments.isEmpty) return
+        if (ConcordCommunityListWritePolicy.mayWrite(snapshot.allReadRelaysResponded, !snapshot.fragments.isEmpty)) return
         throw IllegalStateException(
             "$operation stopped safely: only ${snapshot.respondingReadRelays} of " +
                 "${snapshot.configuredReadRelays} read relays completed the Community List read, " +
