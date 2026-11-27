@@ -36,6 +36,17 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * ObjectBox's unique event key must be room-scoped: the same outer event can be
+ * encountered through different accounts or room contexts without those cache rows
+ * evicting one another.
+ */
+internal fun concordChatCacheRecordKey(roomKey: String, eventId: String): String {
+    require(roomKey.isNotBlank()) { "Room key cannot be blank" }
+    require(eventId.isNotBlank()) { "Event ID cannot be blank" }
+    return "$roomKey|${eventId.lowercase()}"
+}
+
 data class ConcordChatMessage(
     val id: String,
     val authorPubkey: String,
@@ -562,11 +573,27 @@ class ConcordChatRepository(
     ) = withContext(Dispatchers.IO) {
         val key = roomKey(ownerPubkey, communityIdHex, channelIdHex)
         val box = messageBox
-        val existing = box.query(GroupMessageEntity_.eventId.equal(event.id)).build().use { it.findFirst() }
+        val recordId = concordChatCacheRecordKey(key, event.id)
+
+        // The previous cache keyed rows only by the Nostr event ID. ObjectBox therefore
+        // allowed an event received by a second account/community/channel to replace the
+        // first room's row. Keep the existing schema, but scope the unique value to its room.
+        val existingScoped = box.query(GroupMessageEntity_.eventId.equal(recordId))
+            .build().use { it.findFirst() }
+        // Migrate an old row in place only when it already belongs to this exact room.
+        // A legacy row belonging to another room must remain untouched.
+        val legacy = if (existingScoped == null) {
+            box.query(GroupMessageEntity_.eventId.equal(event.id)).build().use { it.findFirst() }
+                ?.takeIf { it.roomKey == key }
+        } else {
+            null
+        }
+        val existing = existingScoped ?: legacy
+
         box.put(
             GroupMessageEntity(
                 dbId = existing?.dbId ?: 0L,
-                eventId = event.id,
+                eventId = recordId,
                 roomKey = key,
                 senderPubkey = event.pubkey,
                 content = event.toJson(), // Encrypted kind-1059 wrap only; plaintext rumors are never persisted.
