@@ -50,7 +50,7 @@ class ConcordChatRepository(
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): ConcordChatMessage? {
         val message = text.trim()
-        require(message.isNotEmpty()) { "Message cannot be empty" }
+        require(message.isNotEmpty() || imetas.isNotEmpty()) { "Message cannot be empty" }
 
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
         val rumor = if (imetas.isNotEmpty()) {
