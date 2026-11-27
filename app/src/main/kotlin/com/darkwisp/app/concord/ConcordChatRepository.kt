@@ -42,6 +42,7 @@ class ConcordChatRepository(
         epoch: Long,
         text: String,
         communityRelays: List<String> = emptyList(),
+        extraTags: Array<Array<String>> = emptyArray(),
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): ConcordChatMessage? {
         val message = text.trim()
@@ -54,6 +55,7 @@ class ConcordChatRepository(
             epoch = epoch,
             text = message,
             createdAt = createdAt,
+            extraTags = extraTags,
         )
         val wrap = ConcordStreamEnvelope.wrap(
             rumor = rumor,
