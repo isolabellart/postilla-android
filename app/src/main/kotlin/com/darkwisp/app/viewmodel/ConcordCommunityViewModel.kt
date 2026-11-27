@@ -90,6 +90,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _members = MutableStateFlow(MembersState())
     val members: StateFlow<MembersState> = _members
 
+    private val _membersByCommunity =
+        MutableStateFlow<Map<String, MembersState>>(emptyMap())
+    val membersByCommunity: StateFlow<Map<String, MembersState>> = _membersByCommunity
+
     private val _directInvites = MutableStateFlow(DirectInvitesState())
     val directInvites: StateFlow<DirectInvitesState> = _directInvites
 
@@ -116,6 +120,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         _channels.value = emptyList()
         _channelsByCommunity.value = emptyMap()
         _members.value = MembersState()
+        _membersByCommunity.value = emptyMap()
         _directInvites.value = DirectInvitesState()
         _communityIcons.value = emptyMap()
         if (signer != null) {
@@ -562,14 +567,28 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun setMembersState(communityId: String, state: MembersState) {
+        _membersByCommunity.value = _membersByCommunity.value + (communityId to state)
+        _members.value = state // Compatibility snapshot for callers that still observe one community at a time.
+    }
+
     fun loadMembers(communityId: String, signer: NostrSigner?) {
         val repo = repository ?: return
         if (signer == null) {
-            _members.value = MembersState(communityId = communityId, error = "A writable Nostr signer is required")
+            setMembersState(
+                communityId,
+                MembersState(communityId = communityId, error = "A writable Nostr signer is required"),
+            )
             return
         }
-        if (_members.value.communityId == communityId && _members.value.isLoading) return
-        _members.value = _members.value.copy(communityId = communityId, isLoading = true, error = null)
+        val requestedOwner = signer.pubkeyHex.lowercase()
+        val current = _membersByCommunity.value[communityId] ?: MembersState(communityId = communityId)
+        if (current.isLoading) return
+
+        setMembersState(
+            communityId,
+            current.copy(communityId = communityId, isLoading = true, error = null),
+        )
         viewModelScope.launch {
             try {
                 val entry = memberships[communityId]
@@ -582,14 +601,21 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     communityRelays = entry.relays,
                 ).orEmpty()
                 val loaded = repo.loadMembers(PostillaQuartzSigner(signer), communityId, observed)
-                _members.value = MembersState(communityId = communityId, members = loaded)
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
+                setMembersState(communityId, MembersState(communityId = communityId, members = loaded))
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                _members.value = MembersState(
-                    communityId = communityId,
-                    members = _members.value.members,
-                    error = error.message ?: "Could not load community members",
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
+                val latest = _membersByCommunity.value[communityId]
+                    ?: MembersState(communityId = communityId)
+                setMembersState(
+                    communityId,
+                    latest.copy(
+                        communityId = communityId,
+                        isLoading = false,
+                        error = error.message ?: "Could not load community members",
+                    ),
                 )
             }
         }

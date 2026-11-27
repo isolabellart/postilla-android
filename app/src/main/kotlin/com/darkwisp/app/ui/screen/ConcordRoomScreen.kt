@@ -101,7 +101,8 @@ fun ConcordRoomScreen(
     val communities by viewModel.communities.collectAsState()
     val channelsByCommunity by viewModel.channelsByCommunity.collectAsState()
     val channels = channelsByCommunity[communityId].orEmpty()
-    val membersState by viewModel.members.collectAsState()
+    val membersByCommunity by viewModel.membersByCommunity.collectAsState()
+    val membersState = membersByCommunity[communityId] ?: viewModel.MembersState(communityId = communityId)
     val inviteState by viewModel.invite.collectAsState()
     val communityIcons by viewModel.communityIcons.collectAsState()
     val communityIcon = communityIcons[communityId]
