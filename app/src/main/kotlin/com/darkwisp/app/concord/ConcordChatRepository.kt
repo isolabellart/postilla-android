@@ -44,6 +44,7 @@ class ConcordChatRepository(
         channelIdHex: String,
         epoch: Long,
         text: String,
+        privateChannelKeyHex: String? = null,
         communityRelays: List<String> = emptyList(),
         extraTags: Array<Array<String>> = emptyArray(),
         imetas: List<IMetaTag> = emptyList(),
@@ -52,7 +53,7 @@ class ConcordChatRepository(
         val message = text.trim()
         require(message.isNotEmpty() || imetas.isNotEmpty()) { "Message cannot be empty" }
 
-        val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex)
         val rumor = if (imetas.isNotEmpty()) {
             ChannelChat.imageMessage(
                 authorPubKey = signer.pubKey,
@@ -113,8 +114,9 @@ class ConcordChatRepository(
         epoch: Long,
         communityRelays: List<String> = emptyList(),
         since: Long? = null,
+        privateChannelKeyHex: String? = null,
     ): Flow<ConcordChatMessage> = channelFlow {
-        val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex)
         val targets = communityRelays.distinct().ifEmpty { relayPool.getReadRelayUrls() }
         val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch-${UUID.randomUUID().toString().take(8)}"
 
@@ -180,9 +182,18 @@ class ConcordChatRepository(
         communityRootHex: String,
         channelIdHex: String,
         epoch: Long,
-    ) = ConcordChannelKeys.publicChannel(
-        communityRoot = communityRootHex.hexToByteArray(),
-        channelId = channelIdHex.hexToByteArray(),
-        rootEpoch = epoch,
-    )
+        privateChannelKeyHex: String? = null,
+    ) = if (!privateChannelKeyHex.isNullOrBlank()) {
+        ConcordChannelKeys.privateChannel(
+            channelKey = privateChannelKeyHex.hexToByteArray(),
+            channelId = channelIdHex.hexToByteArray(),
+            rootEpoch = epoch,
+        )
+    } else {
+        ConcordChannelKeys.publicChannel(
+            communityRoot = communityRootHex.hexToByteArray(),
+            channelId = channelIdHex.hexToByteArray(),
+            rootEpoch = epoch,
+        )
+    }
 }
