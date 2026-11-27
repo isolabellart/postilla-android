@@ -118,6 +118,10 @@ fun ConcordRoomScreen(
     var renamedChannelName by rememberSaveable(communityId) { mutableStateOf("") }
     var managementError by remember { mutableStateOf<String?>(null) }
     var managementBusy by remember { mutableStateOf(false) }
+    var showModerationDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var moderationTargetPubkey by rememberSaveable(communityId) { mutableStateOf<String?>(null) }
+    var moderationAction by rememberSaveable(communityId) { mutableStateOf("") }
+    var moderationRequiresRefounding by rememberSaveable(communityId) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null && !sending && signer != null) {
             scope.launch {
@@ -601,19 +605,43 @@ fun ConcordRoomScreen(
                                         }
                                     }
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    ProfilePicture(url = profile?.picture, size = 34)
-                                    Column(modifier = Modifier.padding(start = 10.dp)) {
-                                        Text(
-                                            profile?.displayString ?: member.pubkey.take(16) + "…",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                        Text(
-                                            member.pubkey,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        ProfilePicture(url = profile?.picture, size = 34)
+                                        Column(modifier = Modifier.padding(start = 10.dp).weight(1f)) {
+                                            Text(
+                                                profile?.displayString ?: member.pubkey.take(16) + "…",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                            Text(
+                                                member.pubkey,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    if (member.canKick || member.canBan) {
+                                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                            if (member.canKick) {
+                                                TextButton(onClick = {
+                                                    moderationTargetPubkey = member.pubkey
+                                                    moderationAction = "kick"
+                                                    moderationRequiresRefounding = member.requiresRefounding
+                                                    showMembersDialog = false
+                                                    showModerationDialog = true
+                                                }) { Text("Kick") }
+                                            }
+                                            if (member.canBan) {
+                                                TextButton(onClick = {
+                                                    moderationTargetPubkey = member.pubkey
+                                                    moderationAction = "ban"
+                                                    moderationRequiresRefounding = true
+                                                    showMembersDialog = false
+                                                    showModerationDialog = true
+                                                }) { Text("Ban") }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -800,6 +828,56 @@ fun ConcordRoomScreen(
             },
             dismissButton = {
                 TextButton(enabled = !managementBusy, onClick = { showDeleteChannelDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+    if (showModerationDialog && moderationTargetPubkey != null) {
+        val isBan = moderationAction == "ban"
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showModerationDialog = false },
+            title = { Text(if (isBan) "Ban member?" else "Kick member?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(moderationTargetPubkey!!)
+                    Text(
+                        if (moderationRequiresRefounding) {
+                            "This operation refounds the community and rotates its root keys. It is irreversible for the removed member and requires the remaining members to refresh."
+                        } else {
+                            "The member will be removed from the public community Guestbook."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    managementError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null,
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            managementError = null
+                            try {
+                                if (isBan) {
+                                    viewModel.banMember(communityId, moderationTargetPubkey!!, signer)
+                                } else {
+                                    viewModel.kickMember(communityId, moderationTargetPubkey!!, signer)
+                                }
+                                showModerationDialog = false
+                                moderationTargetPubkey = null
+                                moderationAction = ""
+                            } catch (error: Exception) {
+                                managementError = error.message ?: "Member moderation failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Applying…" else if (isBan) "Ban permanently" else "Kick member") }
+            },
+            dismissButton = {
+                TextButton(enabled = !managementBusy, onClick = { showModerationDialog = false }) { Text("Cancel") }
             },
         )
     }
