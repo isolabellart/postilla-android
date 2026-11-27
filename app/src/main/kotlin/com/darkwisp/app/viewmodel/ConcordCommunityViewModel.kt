@@ -88,9 +88,11 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (signer?.pubkeyHex == signerPubkey) return
         signerPubkey = signer?.pubkeyHex
+        memberships.clear()
+        _channels.value = emptyList()
+        _communityIcons.value = emptyMap()
         if (signer != null) refreshLocalCommunities(signer)
         else {
-            memberships.clear()
             _communities.value = emptyList()
             _communityListWarning.value = null
             _generalChannelError.value = null
