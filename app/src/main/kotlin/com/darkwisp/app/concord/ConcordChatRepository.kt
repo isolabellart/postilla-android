@@ -63,12 +63,12 @@ class ConcordChatRepository(
             createdAt = createdAt,
         )
         val event = NostrEvent.fromJson(wrap.toJson())
-        val message = ClientMessage.event(event)
+        val eventMessage = ClientMessage.event(event)
         val personalWriteRelays = relayPool.getWriteRelayUrls().toSet()
         val outcome = relayPool.publishWithConfirmation(event.id) {
-            var sent = relayPool.sendToWriteRelays(message)
+            var sent = relayPool.sendToWriteRelays(eventMessage)
             for (url in communityRelays.distinct().filterNot { it in personalWriteRelays }) {
-                if (relayPool.sendToRelayOrEphemeral(url, message, skipBadCheck = true, write = true)) sent++
+                if (relayPool.sendToRelayOrEphemeral(url, eventMessage, skipBadCheck = true, write = true)) sent++
             }
             sent
         }
