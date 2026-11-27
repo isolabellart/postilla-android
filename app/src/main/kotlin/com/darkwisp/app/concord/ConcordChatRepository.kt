@@ -36,8 +36,6 @@ data class ConcordChatMessage(
 class ConcordChatRepository(
     private val relayPool: RelayPool,
 ) {
-    private val seenMessageIds = ConcurrentHashMap.newKeySet<String>()
-
     suspend fun sendMessage(
         signer: PostillaQuartzSigner,
         communityRootHex: String,
@@ -94,7 +92,6 @@ class ConcordChatRepository(
             sent
         }
         if (!outcome.confirmed) return null
-        seenMessageIds.add(rumor.id)
         return ConcordChatMessage(
             id = rumor.id,
             authorPubkey = rumor.pubKey,
@@ -123,6 +120,10 @@ class ConcordChatRepository(
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
         val targets = communityRelays.distinct().ifEmpty { relayPool.getReadRelayUrls() }
         val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$channelEpoch-${UUID.randomUUID().toString().take(8)}"
+        // Deduplicate only within this subscription. A repository-wide set suppresses
+        // historical messages when the user leaves and re-enters a channel, including
+        // messages sent by this same client earlier in the session.
+        val seenInSubscription = ConcurrentHashMap.newKeySet<String>()
 
         val collector = launch {
             relayPool.relayEvents
@@ -138,7 +139,7 @@ class ConcordChatRepository(
                         val rumor = opened.rumor
                         if (rumor.kind !in ChannelChat.CHAT_KINDS) return@collect
                         if (!ChannelChat.isBoundTo(rumor, channelIdHex, channelEpoch)) return@collect
-                        if (rumor.kind != 9 || !seenMessageIds.add(rumor.id)) return@collect
+                        if (rumor.kind != 9 || !seenInSubscription.add(rumor.id)) return@collect
 
                         send(
                             ConcordChatMessage(
