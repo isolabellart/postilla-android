@@ -407,7 +407,6 @@ fun ConcordRoomScreen(
                             }
                         }
                     }
-                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                         horizontalArrangement = if (ownMessage) Arrangement.End else Arrangement.Start,
@@ -507,4 +506,5 @@ fun ConcordRoomScreen(
             }
         }
     }
+}
 }
