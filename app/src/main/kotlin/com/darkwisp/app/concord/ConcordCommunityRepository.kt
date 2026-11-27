@@ -1557,7 +1557,9 @@ class ConcordCommunityRepository(
 
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available on this device")
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        // Direct invites transfer the community root and held private-channel keys.
+        // Require a complete Control Plane before checking bans or constructing that bundle.
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         val authority = control.state.authority
         if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
         if (authority.isBanned(signer.pubKey)) throw IllegalStateException("This account is banned from the community")
