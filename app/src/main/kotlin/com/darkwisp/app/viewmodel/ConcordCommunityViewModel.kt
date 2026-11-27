@@ -54,6 +54,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _communities = MutableStateFlow<List<CommunityItem>>(emptyList())
     val communities: StateFlow<List<CommunityItem>> = _communities
 
+    private val _channels = MutableStateFlow<List<ConcordCommunityRepository.CommunityChannel>>(emptyList())
+    val channels: StateFlow<List<ConcordCommunityRepository.CommunityChannel>> = _channels
+
     private val _creation = MutableStateFlow(CreationState())
     val creation: StateFlow<CreationState> = _creation
 
@@ -171,15 +174,40 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun observeGeneralChannel(communityId: String): Flow<ConcordChatMessage> {
+    fun refreshChannels(communityId: String) {
+        val repo = repository ?: return
+        val membership = memberships[communityId] ?: return
+        viewModelScope.launch {
+            runCatching { repo.loadCommunityChannels(membership) }
+                .onSuccess { loaded ->
+                    _channels.value = loaded
+                    val general = loaded.firstOrNull { it.name.equals("general", ignoreCase = true) }
+                    if (general != null) {
+                        val current = _communities.value
+                        _communities.value = current.map {
+                            if (it.id == communityId) it.copy(generalChannelId = general.id) else it
+                        }
+                    }
+                }
+        }
+    }
+
+    fun observeChannel(communityId: String, channelId: String): Flow<ConcordChatMessage> {
         val entry = memberships[communityId] ?: return emptyFlow()
-        val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return emptyFlow()
+        val channel = _channels.value.firstOrNull { it.id == channelId }
+        if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return emptyFlow()
         return chatRepository?.observeChannel(
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
             communityRelays = entry.relays,
+            privateChannelKeyHex = channel?.privateKeyHex,
         ) ?: emptyFlow()
+    }
+
+    fun observeGeneralChannel(communityId: String): Flow<ConcordChatMessage> {
+        val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return emptyFlow()
+        return observeChannel(communityId, channelId)
     }
 
     fun restoreGeneralChannel(communityId: String) {
@@ -223,15 +251,17 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         _generalChannelError.value = null
     }
 
-    suspend fun sendGeneralMessage(
+    suspend fun sendChannelMessage(
         communityId: String,
+        channelId: String,
         text: String,
         signer: NostrSigner?,
         extraTags: Array<Array<String>> = emptyArray(),
         imetas: List<IMetaTag> = emptyList(),
     ): ConcordChatMessage? {
         val entry = memberships[communityId] ?: return null
-        val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return null
+        val channelInfo = _channels.value.firstOrNull { it.id == channelId }
+        if (channelInfo?.isPrivate == true && channelInfo.privateKeyHex.isNullOrBlank()) return null
         val chat = chatRepository ?: return null
         signer ?: return null
         return chat.sendMessage(
@@ -240,10 +270,22 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
             text = text,
+            privateChannelKeyHex = channelInfo?.privateKeyHex,
             communityRelays = entry.relays,
             extraTags = extraTags,
             imetas = imetas,
         )
+    }
+
+    suspend fun sendGeneralMessage(
+        communityId: String,
+        text: String,
+        signer: NostrSigner?,
+        extraTags: Array<Array<String>> = emptyArray(),
+        imetas: List<IMetaTag> = emptyList(),
+    ): ConcordChatMessage? {
+        val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return null
+        return sendChannelMessage(communityId, channelId, text, signer, extraTags, imetas)
     }
 
 
