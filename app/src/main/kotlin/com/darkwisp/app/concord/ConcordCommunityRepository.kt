@@ -1266,6 +1266,9 @@ class ConcordCommunityRepository(
         val joinedAt: Long,
         val inviteCreator: String? = null,
         val inviteLabel: String? = null,
+        val canKick: Boolean = false,
+        val canBan: Boolean = false,
+        val requiresRefounding: Boolean = false,
     )
 
     private data class ControlPlaneSnapshot(
@@ -1527,7 +1530,9 @@ class ConcordCommunityRepository(
                 null
             }
         }
-        return Guestbook.coalesce(entries, System.currentTimeMillis(), control.state.authority)
+        val authority = control.state.authority
+        val isPublic = control.state.isPublic
+        return Guestbook.coalesce(entries, System.currentTimeMillis(), authority)
             .values
             .filter { it.action == GuestbookAction.JOIN }
             .sortedBy { it.createdAt }
@@ -1537,6 +1542,10 @@ class ConcordCommunityRepository(
                     joinedAt = it.createdAt,
                     inviteCreator = it.inviteCreator,
                     inviteLabel = it.inviteLabel,
+                    canKick = authority.canActOn(signer.pubKey, it.member, ConcordPermissions.KICK) &&
+                        (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
+                    canBan = authority.canActOn(signer.pubKey, it.member, ConcordPermissions.BAN),
+                    requiresRefounding = !isPublic,
                 )
             }
     }
