@@ -309,10 +309,13 @@ fun ConcordRoomScreen(
                                 )
                             },
                             selected = selectedChannelId == channel.id,
-                            enabled = !channel.isPrivate || !channel.privateKeyHex.isNullOrBlank(),
                             onClick = {
-                                selectedChannelId = channel.id
-                                scope.launch { drawerState.close() }
+                                if (!channel.isPrivate || !channel.privateKeyHex.isNullOrBlank()) {
+                                    selectedChannelId = channel.id
+                                    scope.launch { drawerState.close() }
+                                } else {
+                                    android.widget.Toast.makeText(context, "This private channel key is not available on this account", android.widget.Toast.LENGTH_LONG).show()
+                                }
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
                         )
@@ -351,12 +354,15 @@ fun ConcordRoomScreen(
                     }
                     item {
                         NavigationDrawerItem(
-                            label = { Text("Share public invite link") },
+                            label = { Text(if (inviteState.isCreating) "Preparing invite link…" else "Share public invite link") },
                             selected = false,
-                            enabled = signer != null && !inviteState.isCreating,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                viewModel.createInviteLink(communityId, signer)
+                                if (signer != null && !inviteState.isCreating) {
+                                    viewModel.createInviteLink(communityId, signer)
+                                } else if (signer == null) {
+                                    android.widget.Toast.makeText(context, "A writable Nostr signer is required", android.widget.Toast.LENGTH_LONG).show()
+                                }
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
                         )
@@ -365,10 +371,10 @@ fun ConcordRoomScreen(
                         NavigationDrawerItem(
                             label = { Text("Create public channel") },
                             selected = false,
-                            enabled = signer != null,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                showCreateChannelDialog = true
+                                if (signer != null) showCreateChannelDialog = true
+                                else android.widget.Toast.makeText(context, "A writable Nostr signer is required", android.widget.Toast.LENGTH_LONG).show()
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
                         )
@@ -377,13 +383,16 @@ fun ConcordRoomScreen(
                         NavigationDrawerItem(
                             label = { Text("Manage selected channel") },
                             selected = false,
-                            enabled = selectedChannel != null && signer != null,
                             onClick = {
                                 scope.launch { drawerState.close() }
                                 selectedChannel?.let {
-                                    renamedChannelName = it.name
-                                    showManageChannelDialog = true
-                                    managementError = null
+                                    if (signer != null) {
+                                        renamedChannelName = it.name
+                                        showManageChannelDialog = true
+                                        managementError = null
+                                    } else {
+                                        android.widget.Toast.makeText(context, "A writable Nostr signer is required", android.widget.Toast.LENGTH_LONG).show()
+                                    }
                                 }
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
