@@ -1336,7 +1336,6 @@ class ConcordCommunityRepository(
         val privateKeyHex: String? = null,
         val privateChannelEpoch: Long? = null,
         val readPlanes: List<ConcordChatReadPlane> = emptyList(),
-        val isWriterRestricted: Boolean = false,
     )
 
     /** Loads the live Control Plane channel catalogue and every held CORD-03 read plane. */
@@ -1384,26 +1383,15 @@ class ConcordCommunityRepository(
                 val directPlanes = readKeys.map { (channelEpoch, key) ->
                     ConcordChatReadPlane(key, channelEpoch)
                 }
-                val writerLedger = control.state.writers[channelId]
-                val writerPlanes = writerLedger?.windows.orEmpty().flatMap { window ->
-                    readKeys.map { (channelEpoch, readKey) ->
-                        ConcordChatReadPlane(
-                            stream = GroupKey(ByteArray(0), window.writerPubKey, readKey.conversationKey),
-                            channelEpoch = channelEpoch,
-                            writerEpoch = window.epoch,
-                        )
-                    }
-                }
                 CommunityChannel(
                     id = channelId,
                     name = channel.definition.name,
                     isPrivate = channel.definition.private,
                     privateKeyHex = privateEntry?.key,
                     privateChannelEpoch = privateEntry?.epoch,
-                    readPlanes = (directPlanes + writerPlanes).distinctBy {
-                        "${it.stream.publicKeyHex}:${it.channelEpoch}:${it.writerEpoch}"
+                    readPlanes = directPlanes.distinctBy {
+                        "${it.stream.publicKeyHex}:${it.channelEpoch}"
                     },
-                    isWriterRestricted = writerLedger?.isRestricted == true,
                 )
             }
             .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
