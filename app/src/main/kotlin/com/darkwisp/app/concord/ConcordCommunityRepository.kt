@@ -16,6 +16,10 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFrag
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeyring
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordWritersLedger
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
+import com.vitorpamplona.quartz.concord.crypto.GroupKey
 import com.vitorpamplona.quartz.concord.cord02Community.HeldRoot
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
 import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
@@ -1333,24 +1337,75 @@ class ConcordCommunityRepository(
         /** Null means the membership does not currently hold this private channel key. */
         val privateKeyHex: String? = null,
         val privateChannelEpoch: Long? = null,
+        val readPlanes: List<ConcordChatReadPlane> = emptyList(),
+        val isWriterRestricted: Boolean = false,
     )
 
-    /** Loads the live Control Plane channel catalogue without requiring every community relay. */
+    /** Loads the live Control Plane channel catalogue and every held CORD-03 read plane. */
     suspend fun loadCommunityChannels(membership: ConcordCommunityListEntry): List<CommunityChannel> {
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
         return control.state.channels.values
             .map { channel ->
+                val channelId = channel.channelIdHex
                 val privateEntry = if (channel.definition.private) {
                     membership.privateChannels.firstOrNull {
-                        it.channelId.equals(channel.channelIdHex, ignoreCase = true)
+                        it.channelId.equals(channelId, ignoreCase = true)
                     }
                 } else null
+                val currentReadKey = if (channel.definition.private) {
+                    privateEntry?.let {
+                        ConcordChannelKeys.privateChannel(
+                            it.key.hexToByteArray(), channelId.hexToByteArray(), it.epoch,
+                        )
+                    }
+                } else {
+                    ConcordChannelKeys.publicChannel(
+                        membership.root.hexToByteArray(), channelId.hexToByteArray(), membership.rootEpoch,
+                    )
+                }
+                val historicalReadKeys = if (channel.definition.private) {
+                    ConcordChannelKeyring.historicalKeys(membership, channelId).map { old ->
+                        old.epoch to ConcordChannelKeys.privateChannel(
+                            old.key.hexToByteArray(), channelId.hexToByteArray(), old.epoch,
+                        )
+                    }
+                } else {
+                    membership.heldRoots
+                        .sortedByDescending { it.epoch }
+                        .take(8)
+                        .map { old ->
+                            old.epoch to ConcordChannelKeys.publicChannel(
+                                old.key.hexToByteArray(), channelId.hexToByteArray(), old.epoch,
+                            )
+                        }
+                }
+                val readKeys = buildList {
+                    if (currentReadKey != null) add((privateEntry?.epoch ?: membership.rootEpoch) to currentReadKey)
+                    addAll(historicalReadKeys)
+                }.distinctBy { (channelEpoch, key) -> "${channelEpoch}:${key.publicKeyHex}" }
+                val directPlanes = readKeys.map { (channelEpoch, key) ->
+                    ConcordChatReadPlane(key, channelEpoch)
+                }
+                val writerLedger = control.state.writers[channelId]
+                val writerPlanes = writerLedger?.windows.orEmpty().flatMap { window ->
+                    readKeys.map { (channelEpoch, readKey) ->
+                        ConcordChatReadPlane(
+                            stream = GroupKey(ByteArray(0), window.writerPubKey, readKey.conversationKey),
+                            channelEpoch = channelEpoch,
+                            writerEpoch = window.epoch,
+                        )
+                    }
+                }
                 CommunityChannel(
-                    id = channel.channelIdHex,
+                    id = channelId,
                     name = channel.definition.name,
                     isPrivate = channel.definition.private,
                     privateKeyHex = privateEntry?.key,
                     privateChannelEpoch = privateEntry?.epoch,
+                    readPlanes = (directPlanes + writerPlanes).distinctBy {
+                        "${it.stream.publicKeyHex}:${it.channelEpoch}:${it.writerEpoch}"
+                    },
+                    isWriterRestricted = writerLedger?.isRestricted == true,
                 )
             }
             .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
