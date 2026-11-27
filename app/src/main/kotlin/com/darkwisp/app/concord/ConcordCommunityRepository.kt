@@ -1266,6 +1266,7 @@ class ConcordCommunityRepository(
         val joinedAt: Long,
         val inviteCreator: String? = null,
         val inviteLabel: String? = null,
+        val lastSeenAt: Long = joinedAt * 1000L,
         val canKick: Boolean = false,
         val canBan: Boolean = false,
         val requiresRefounding: Boolean = false,
@@ -1501,6 +1502,7 @@ class ConcordCommunityRepository(
     suspend fun loadMembers(
         signer: PostillaQuartzSigner,
         communityId: String,
+        observedAuthors: Map<String, ConcordObservedAuthorActivity> = emptyMap(),
     ): List<CommunityMember> {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
@@ -1532,22 +1534,55 @@ class ConcordCommunityRepository(
         }
         val authority = control.state.authority
         val isPublic = control.state.isPublic
-        return Guestbook.coalesce(entries, System.currentTimeMillis(), authority)
-            .values
-            .filter { it.action == GuestbookAction.JOIN }
-            .sortedBy { it.createdAt }
-            .map {
-                CommunityMember(
-                    pubkey = it.member,
-                    joinedAt = it.createdAt,
-                    inviteCreator = it.inviteCreator,
-                    inviteLabel = it.inviteLabel,
-                    canKick = authority.canActOn(signer.pubKey, it.member, ConcordPermissions.KICK) &&
+        val coalesced = Guestbook.coalesce(entries, System.currentTimeMillis(), authority)
+        val members = LinkedHashMap<String, CommunityMember>()
+
+        // Self-reported Guestbook JOINs are the primary membership signal.
+        for (entry in coalesced.values.sortedBy { it.createdAt }) {
+            if (entry.action != GuestbookAction.JOIN) continue
+            val pubkey = entry.member.lowercase()
+            if (authority.isBanned(pubkey)) continue
+            val activity = observedAuthors[pubkey]
+            members[pubkey] = CommunityMember(
+                pubkey = pubkey,
+                joinedAt = entry.createdAt,
+                inviteCreator = entry.inviteCreator,
+                inviteLabel = entry.inviteLabel,
+                lastSeenAt = activity?.lastSeenAtMs ?: entry.ms,
+                canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
+                    (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
+                canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
+                requiresRefounding = !isPublic,
+            )
+        }
+
+        // CORD-02 §5: a valid author observed publishing is also present, even when their
+        // JOIN has not reached this device. Observation only revives a prior Leave/Kick
+        // when the activity is newer than that final Guestbook motion. The Control Plane
+        // Banlist always wins; a banned author can never be re-added by chat activity.
+        for ((rawPubkey, activity) in observedAuthors) {
+            val pubkey = rawPubkey.lowercase()
+            if (authority.isBanned(pubkey)) continue
+            val lastMotion = coalesced[pubkey]
+            if (lastMotion != null && activity.lastSeenAtMs <= lastMotion.ms) continue
+            if (pubkey in members) {
+                val current = members.getValue(pubkey)
+                members[pubkey] = current.copy(lastSeenAt = maxOf(current.lastSeenAt, activity.lastSeenAtMs))
+            } else {
+                members[pubkey] = CommunityMember(
+                    pubkey = pubkey,
+                    joinedAt = (activity.firstSeenAtMs / 1000L).coerceAtLeast(0L),
+                    lastSeenAt = activity.lastSeenAtMs,
+                    canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
                         (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
-                    canBan = authority.canActOn(signer.pubKey, it.member, ConcordPermissions.BAN),
+                    canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
                     requiresRefounding = !isPublic,
                 )
             }
+        }
+        return members.values.sortedWith(
+            compareBy<CommunityMember> { it.joinedAt }.thenBy { it.pubkey },
+        )
     }
 
     /**
