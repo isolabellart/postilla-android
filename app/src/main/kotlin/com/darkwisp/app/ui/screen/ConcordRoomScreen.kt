@@ -1,5 +1,6 @@
 package com.darkwisp.app.ui.screen
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,6 +43,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -86,6 +88,8 @@ fun ConcordRoomScreen(
 ) {
     val communities by viewModel.communities.collectAsState()
     val channels by viewModel.channels.collectAsState()
+    val membersState by viewModel.members.collectAsState()
+    val inviteState by viewModel.invite.collectAsState()
     val communityIcons by viewModel.communityIcons.collectAsState()
     val communityIcon = communityIcons[communityId]
     val community = communities.firstOrNull { it.id == communityId }
@@ -103,6 +107,17 @@ fun ConcordRoomScreen(
     var text by rememberSaveable(communityId) { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showCreateChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showManageChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showRenameChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showDeleteChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var directInviteRecipient by rememberSaveable(communityId) { mutableStateOf("") }
+    var newChannelName by rememberSaveable(communityId) { mutableStateOf("") }
+    var renamedChannelName by rememberSaveable(communityId) { mutableStateOf("") }
+    var managementError by remember { mutableStateOf<String?>(null) }
+    var managementBusy by remember { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null && !sending && signer != null) {
             scope.launch {
@@ -172,6 +187,17 @@ fun ConcordRoomScreen(
                     messages.sortBy { it.createdAt }
                 }
             }
+        }
+    }
+
+    LaunchedEffect(inviteState.url) {
+        inviteState.url?.let { url ->
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, url)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share Concord invite link"))
+            viewModel.clearInviteResult()
         }
     }
 
@@ -320,6 +346,32 @@ fun ConcordRoomScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    TextButton(onClick = {
+                        showMembersDialog = true
+                        viewModel.loadMembers(communityId, signer)
+                    }) { Text("Members") }
+                    TextButton(onClick = { showDirectInviteDialog = true }) { Text("Invite by npub") }
+                    TextButton(
+                        enabled = signer != null && !inviteState.isCreating,
+                        onClick = { viewModel.createInviteLink(communityId, signer) },
+                    ) { Text(if (inviteState.isCreating) "Preparing…" else "Share link") }
+                    TextButton(
+                        enabled = signer != null,
+                        onClick = { showCreateChannelDialog = true },
+                    ) { Text("New channel") }
+                }
+                inviteState.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                }
+                managementError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                }
                 if (channels.isNotEmpty()) {
                     LazyRow(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -336,6 +388,18 @@ fun ConcordRoomScreen(
                                 )
                             }
                         }
+                    }
+                }
+                if (selectedChannel != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = {
+                            renamedChannelName = selectedChannel.name
+                            showManageChannelDialog = true
+                            managementError = null
+                        }) { Text("Manage channel") }
                     }
                 }
                 if (selectedChannel?.isPrivate == true && selectedChannel.privateKeyHex.isNullOrBlank()) {
@@ -505,6 +569,240 @@ fun ConcordRoomScreen(
                 }
             }
         }
+    if (showMembersDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!membersState.isLoading) showMembersDialog = false },
+            title = { Text("Community members") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 440.dp)) {
+                    when {
+                        membersState.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Text("Loading members…", modifier = Modifier.padding(start = 10.dp))
+                        }
+                        membersState.error != null -> Text(
+                            membersState.error!!,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        membersState.members.isEmpty() -> Text("No Guestbook members were returned by the responding relays.")
+                        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(membersState.members, key = { it.pubkey }) { member ->
+                                var profile by remember(member.pubkey) {
+                                    mutableStateOf(eventRepository.getProfileData(member.pubkey))
+                                }
+                                LaunchedEffect(member.pubkey) {
+                                    if (profile == null) {
+                                        eventRepository.requestProfileIfMissing(member.pubkey)
+                                        repeat(8) {
+                                            if (profile == null) {
+                                                kotlinx.coroutines.delay(750)
+                                                profile = eventRepository.getProfileData(member.pubkey)
+                                            }
+                                        }
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    ProfilePicture(url = profile?.picture, size = 34)
+                                    Column(modifier = Modifier.padding(start = 10.dp)) {
+                                        Text(
+                                            profile?.displayString ?: member.pubkey.take(16) + "…",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            member.pubkey,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMembersDialog = false }) { Text("Close") }
+            },
+        )
+    }
+
+    if (showDirectInviteDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showDirectInviteDialog = false },
+            title = { Text("Invite by npub") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Send a private CORD-05 Direct Invite. The recipient receives the community keys in a NIP-59 giftwrap.")
+                    OutlinedTextField(
+                        value = directInviteRecipient,
+                        onValueChange = { directInviteRecipient = it; managementError = null },
+                        label = { Text("Recipient npub") },
+                        singleLine = true,
+                    )
+                    Text(
+                        "A Direct Invite cannot be revoked after delivery.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    managementError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null && directInviteRecipient.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            managementError = null
+                            try {
+                                viewModel.sendDirectInvite(communityId, directInviteRecipient, signer)
+                                directInviteRecipient = ""
+                                showDirectInviteDialog = false
+                                managementError = null
+                            } catch (error: Exception) {
+                                managementError = error.message ?: "Direct Invite failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Sending…" else "Send invite") }
+            },
+            dismissButton = {
+                TextButton(enabled = !managementBusy, onClick = { showDirectInviteDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showCreateChannelDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showCreateChannelDialog = false },
+            title = { Text("Create public channel") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newChannelName,
+                        onValueChange = { newChannelName = it; managementError = null },
+                        label = { Text("Channel name") },
+                        singleLine = true,
+                    )
+                    Text(
+                        "This creates a public CORD-03 channel. Private-channel creation needs a separate key-distribution flow and is not exposed until it can be handled safely.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    managementError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null && newChannelName.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            managementError = null
+                            try {
+                                viewModel.createPublicChannel(communityId, newChannelName, signer)
+                                newChannelName = ""
+                                showCreateChannelDialog = false
+                            } catch (error: Exception) {
+                                managementError = error.message ?: "Channel creation failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Creating…" else "Create") }
+            },
+            dismissButton = {
+                TextButton(enabled = !managementBusy, onClick = { showCreateChannelDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showManageChannelDialog && selectedChannel != null) {
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showManageChannelDialog = false },
+            title = { Text("Manage #${selectedChannel.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = renamedChannelName,
+                        onValueChange = { renamedChannelName = it; managementError = null },
+                        label = { Text("Channel name") },
+                        singleLine = true,
+                    )
+                    if (selectedChannel.name.equals("general", ignoreCase = true)) {
+                        Text(
+                            "The general channel is protected from deletion in Postilla.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    managementError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null && renamedChannelName.isNotBlank() && renamedChannelName != selectedChannel.name,
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            managementError = null
+                            try {
+                                viewModel.renameChannel(communityId, selectedChannel.id, renamedChannelName, signer)
+                                showManageChannelDialog = false
+                            } catch (error: Exception) {
+                                managementError = error.message ?: "Channel rename failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Saving…" else "Rename") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        enabled = !managementBusy && signer != null && !selectedChannel.name.equals("general", ignoreCase = true),
+                        onClick = { showManageChannelDialog = false; showDeleteChannelDialog = true },
+                    ) { Text("Delete") }
+                    TextButton(enabled = !managementBusy, onClick = { showManageChannelDialog = false }) { Text("Close") }
+                }
+            },
+        )
+    }
+
+    if (showDeleteChannelDialog && selectedChannel != null) {
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showDeleteChannelDialog = false },
+            title = { Text("Delete channel?") },
+            text = { Text("This is a terminal Concord channel deletion. The channel id cannot be reused. Continue only if you are certain.") },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null,
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            managementError = null
+                            try {
+                                viewModel.deleteChannel(communityId, selectedChannel.id, signer)
+                                showDeleteChannelDialog = false
+                            } catch (error: Exception) {
+                                managementError = error.message ?: "Channel deletion failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Deleting…" else "Delete permanently") }
+            },
+            dismissButton = {
+                TextButton(enabled = !managementBusy, onClick = { showDeleteChannelDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
     }
 }
 }
