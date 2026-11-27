@@ -111,9 +111,16 @@ fun ConcordRoomScreen(
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
     var replyToMessage by remember(communityId) { mutableStateOf<ConcordChatMessage?>(null) }
+    var inlineReplyMode by remember(communityId) { mutableStateOf(false) }
+    var selectedThreadRoot by remember(communityId) { mutableStateOf<ConcordChatMessage?>(null) }
+    var showThreadDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var loadingOlder by remember { mutableStateOf(false) }
     var suppressAutoScroll by remember { mutableStateOf(false) }
-    val timelineMessages = messages.filter { it.kind == 9 || it.kind == 1111 }
+    val timelineMessages = messages.filter { it.kind == 9 }
+    val selectedThreadReplies = messages.filter {
+        it.kind == 1111 && selectedThreadRoot != null &&
+            (it.rootId == selectedThreadRoot?.id || it.replyToId == selectedThreadRoot?.id)
+    }.sortedBy { it.orderingAtMs }
     var showRoomMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -234,6 +241,13 @@ fun ConcordRoomScreen(
         }
     }
 
+    LaunchedEffect(selectedChannelId) {
+        replyToMessage = null
+        inlineReplyMode = false
+        selectedThreadRoot = null
+        showThreadDialog = false
+    }
+
     LaunchedEffect(timelineMessages.size) {
         if (timelineMessages.isNotEmpty() && !suppressAutoScroll) {
             listState.animateScrollToItem((timelineMessages.size - 1).coerceAtLeast(0))
@@ -323,7 +337,7 @@ fun ConcordRoomScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            "Replying to ${parent.authorPubkey.take(12)}…",
+                            (if (inlineReplyMode) "Quoting " else "Replying to ") + parent.authorPubkey.take(12) + "…",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -348,6 +362,7 @@ fun ConcordRoomScreen(
                                             viewModel.sendChannelMessage(
                                                 communityId, selectedChannelId, outgoing, signer,
                                                 replyTo = replyToMessage,
+                                                inlineReply = inlineReplyMode,
                                             )
                                         }.getOrNull()
                                         if (sent != null) {
@@ -355,6 +370,7 @@ fun ConcordRoomScreen(
                                             messages.sortBy { it.orderingAtMs }
                                             text = ""
                                             replyToMessage = null
+                                            inlineReplyMode = false
                                         } else {
                                             sendError = "Message not confirmed by a relay"
                                         }
@@ -387,6 +403,7 @@ fun ConcordRoomScreen(
                                     messages.sortBy { it.orderingAtMs }
                                     text = ""
                                     replyToMessage = null
+                                    inlineReplyMode = false
                                 } else {
                                     sendError = "Message not confirmed by a relay"
                                 }
@@ -683,10 +700,30 @@ fun ConcordRoomScreen(
                                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    val threadReplyCount = messages.count {
+                                        it.kind == 1111 && (it.rootId == message.id || it.replyToId == message.id)
+                                    }
                                     TextButton(
-                                        onClick = { replyToMessage = message },
+                                        onClick = {
+                                            replyToMessage = message
+                                            inlineReplyMode = false
+                                        },
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                     ) { Text("Reply") }
+                                    TextButton(
+                                        onClick = {
+                                            selectedThreadRoot = message
+                                            showThreadDialog = true
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    ) { Text(if (threadReplyCount > 0) "Thread ($threadReplyCount)" else "Thread") }
+                                    TextButton(
+                                        onClick = {
+                                            replyToMessage = message
+                                            inlineReplyMode = true
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    ) { Text("Quote") }
                                     listOf("👍", "❤️", "😂").forEach { emoji ->
                                         TextButton(
                                             enabled = signer != null,
@@ -717,6 +754,72 @@ fun ConcordRoomScreen(
                 }
             }
         }
+    if (showThreadDialog && selectedThreadRoot != null) {
+        AlertDialog(
+            onDismissRequest = { showThreadDialog = false },
+            title = { Text("Thread") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            selectedThreadRoot!!.authorPubkey.take(16) + "…",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(selectedThreadRoot!!.content, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "${selectedThreadReplies.size} replies",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = {
+                                replyToMessage = selectedThreadRoot
+                                inlineReplyMode = false
+                                showThreadDialog = false
+                            },
+                        ) { Text("Reply to thread") }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    if (selectedThreadReplies.isEmpty()) {
+                        Text(
+                            "No replies yet. Start the thread.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(selectedThreadReplies, key = { it.id }) { reply ->
+                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        reply.authorPubkey.take(16) + "…",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(reply.content, style = MaterialTheme.typography.bodyMedium)
+                                    TextButton(
+                                        onClick = {
+                                            replyToMessage = reply
+                                            inlineReplyMode = false
+                                            showThreadDialog = false
+                                        },
+                                    ) { Text("Reply to this message") }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThreadDialog = false }) { Text("Close") }
+            },
+        )
+    }
+
     if (showMembersDialog) {
         AlertDialog(
             onDismissRequest = { if (!membersState.isLoading) showMembersDialog = false },
