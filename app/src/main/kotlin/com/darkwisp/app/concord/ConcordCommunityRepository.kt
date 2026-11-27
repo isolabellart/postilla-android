@@ -234,6 +234,8 @@ class ConcordCommunityRepository(
         val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
         val responded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val allEose = CompletableDeferred<Unit>()
+        val readQuorumEose = CompletableDeferred<Unit>()
+        val readQuorum = ConcordCommunityListWritePolicy.requiredReadRelayResponses(readRelays.size)
         var allResponded = false
 
         coroutineScope {
@@ -254,6 +256,7 @@ class ConcordCommunityRepository(
                     .filter { it.subscriptionId == subId && it.relayUrl in readRelays }
                     .collect { signal ->
                         responded.add(signal.relayUrl)
+                        if (responded.size >= readQuorum) readQuorumEose.complete(Unit)
                         if (responded.containsAll(readRelays)) allEose.complete(Unit)
                     }
             }
@@ -269,11 +272,13 @@ class ConcordCommunityRepository(
                     ),
                 ),
             )
-            allResponded = withTimeoutOrNull(8_000L) {
-                allEose.await()
-                true
-            } ?: false
-            delay(150)
+            // Do not make a slow tail of configured relays hold the whole screen hostage.
+            // Two EOSE responses are enough for a useful partial read; all remaining relays
+            // still receive REQ and can contribute events during the short settling window.
+            // A partial/apparently complete fragment set remains read-only under the write policy.
+            withTimeoutOrNull(5_000L) { readQuorumEose.await() }
+            allResponded = allEose.isCompleted
+            delay(350)
             eventCollector.cancelAndJoin()
             eoseCollector.cancelAndJoin()
             relayPool.closeOnAllRelays(subId)
