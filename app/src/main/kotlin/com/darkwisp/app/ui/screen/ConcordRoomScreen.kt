@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
-import com.darkwisp.app.concord.ConcordCommunityViewModel
+import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
 import com.darkwisp.app.nostr.Blossom
 import com.vitorpamplona.crypto.aes.AESGCM
 import com.vitorpamplona.crypto.random.RandomInstance
