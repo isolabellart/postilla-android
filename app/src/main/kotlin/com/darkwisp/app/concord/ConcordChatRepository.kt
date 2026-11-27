@@ -54,12 +54,13 @@ class ConcordChatRepository(
         val message = text.trim()
         require(message.isNotEmpty() || imetas.isNotEmpty()) { "Message cannot be empty" }
 
+        val channelEpoch = privateChannelEpoch ?: epoch
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
         val rumor = if (imetas.isNotEmpty()) {
             ChannelChat.imageMessage(
                 authorPubKey = signer.pubKey,
                 channelId = channelIdHex,
-                epoch = epoch,
+                epoch = channelEpoch,
                 text = message,
                 imetas = imetas,
                 createdAt = createdAt,
@@ -118,9 +119,10 @@ class ConcordChatRepository(
         privateChannelKeyHex: String? = null,
         privateChannelEpoch: Long? = null,
     ): Flow<ConcordChatMessage> = channelFlow {
+        val channelEpoch = privateChannelEpoch ?: epoch
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
         val targets = communityRelays.distinct().ifEmpty { relayPool.getReadRelayUrls() }
-        val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch-${UUID.randomUUID().toString().take(8)}"
+        val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$channelEpoch-${UUID.randomUUID().toString().take(8)}"
 
         val collector = launch {
             relayPool.relayEvents
@@ -135,7 +137,7 @@ class ConcordChatRepository(
                         val opened = ConcordStreamEnvelope.open(wrap, channelKey)
                         val rumor = opened.rumor
                         if (rumor.kind !in ChannelChat.CHAT_KINDS) return@collect
-                        if (!ChannelChat.isBoundTo(rumor, channelIdHex, epoch)) return@collect
+                        if (!ChannelChat.isBoundTo(rumor, channelIdHex, channelEpoch)) return@collect
                         if (rumor.kind != 9 || !seenMessageIds.add(rumor.id)) return@collect
 
                         send(
