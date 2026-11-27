@@ -86,6 +86,8 @@ fun ConcordRoomScreen(
 ) {
     val communities by viewModel.communities.collectAsState()
     val channels by viewModel.channels.collectAsState()
+    val communityIcons by viewModel.communityIcons.collectAsState()
+    val communityIcon = communityIcons[communityId]
     val community = communities.firstOrNull { it.id == communityId }
     var selectedChannelId by rememberSaveable(communityId) { mutableStateOf("") }
     val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
@@ -153,7 +155,10 @@ fun ConcordRoomScreen(
     }
 
     LaunchedEffect(communityId, community) {
-        if (community != null) viewModel.refreshChannels(communityId)
+        if (community != null) {
+            viewModel.refreshChannels(communityId)
+            viewModel.loadCommunityIcon(communityId)
+        }
     }
 
     LaunchedEffect(communityId, channels, community?.generalChannelId) {
@@ -190,9 +195,18 @@ fun ConcordRoomScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(community?.name ?: communityId.take(12), style = MaterialTheme.typography.titleMedium)
-                        Text("#" + (selectedChannel?.name ?: "general") + " · Concord", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (communityIcon != null) {
+                            AsyncImage(
+                                model = communityIcon,
+                                contentDescription = "Community icon",
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
+                        Column {
+                            Text(community?.name ?: communityId.take(12), style = MaterialTheme.typography.titleMedium)
+                            Text("#" + (selectedChannel?.name ?: "general") + " · Concord", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 },
                 navigationIcon = {
