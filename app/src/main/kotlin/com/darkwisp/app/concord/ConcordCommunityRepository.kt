@@ -1410,25 +1410,27 @@ class ConcordCommunityRepository(
                 }.distinctBy { "${it.stream.publicKeyHex}:${it.channelEpoch}" }
 
                 val writerLedger = control.state.writers[channelId]
-                val writerPlanes = writerLedger?.windows.orEmpty().flatMap { window ->
-                    directPlanes.map { readPlane ->
-                        val writerAddress = GroupKey(
-                            ByteArray(0),
-                            window.writerPubKey.hexToByteArray(),
-                            readPlane.stream.conversationKey,
-                        )
-                        ConcordChatReadPlane(
-                            stream = writerAddress,
-                            channelEpoch = readPlane.channelEpoch,
-                            writerContext = ConcordChatWriterContext(
-                                communityIdHex = membership.id,
-                                ledger = writerLedger,
-                                window = window,
-                                authority = control.state.authority,
-                            ),
-                        )
+                val writerPlanes = writerLedger?.let { ledger ->
+                    ledger.windows.flatMap { window ->
+                        directPlanes.map { readPlane ->
+                            val writerAddress = GroupKey(
+                                ByteArray(0),
+                                window.writerPubKey.hexToByteArray(),
+                                readPlane.stream.conversationKey,
+                            )
+                            ConcordChatReadPlane(
+                                stream = writerAddress,
+                                channelEpoch = readPlane.channelEpoch,
+                                writerContext = ConcordChatWriterContext(
+                                    communityIdHex = membership.id,
+                                    ledger = ledger,
+                                    window = window,
+                                    authority = control.state.authority,
+                                ),
+                            )
+                        }
                     }
-                }
+                }.orEmpty()
 
                 CommunityChannel(
                     id = channelId,
