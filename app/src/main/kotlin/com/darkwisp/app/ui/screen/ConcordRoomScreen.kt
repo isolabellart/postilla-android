@@ -128,7 +128,7 @@ fun ConcordRoomScreen(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (text.isNotBlank() && !sending && signer != null) {
+                                if (text.isNotBlank() && !sending && signer != null && community?.generalChannelId != null) {
                                     val outgoing = text
                                     scope.launch {
                                         sending = true
@@ -148,7 +148,7 @@ fun ConcordRoomScreen(
                         ),
                     )
                     IconButton(
-                        enabled = text.isNotBlank() && !sending && signer != null,
+                        enabled = text.isNotBlank() && !sending && signer != null && community?.generalChannelId != null,
                         onClick = {
                             val outgoing = text
                             scope.launch {
