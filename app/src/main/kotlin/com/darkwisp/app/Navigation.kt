@@ -2139,6 +2139,7 @@ fun WispNavHost(
                 concordCommunityViewModel = concordCommunityViewModel,
                 relayPool = feedViewModel.relayPool,
                 eventRepo = feedViewModel.eventRepo,
+                blossomRepository = feedViewModel.blossomRepo,
                 userPubkey = feedViewModel.getUserPubkey(),
                 signer = activeSigner,
                 onBack = null,
