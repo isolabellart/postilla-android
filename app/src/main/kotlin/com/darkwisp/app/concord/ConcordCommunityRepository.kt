@@ -222,7 +222,10 @@ class ConcordCommunityRepository(
             )
         ) return
 
+        val requiredResponses = ConcordCommunityListWritePolicy.requiredReadRelayResponses(snapshot.configuredReadRelays)
         val reason = when {
+            snapshot.respondingReadRelays < requiredResponses ->
+                "the safe read quorum was not reached (need $requiredResponses responding relays)"
             snapshot.fragments.isEmpty ->
                 "no kind-33302 membership fragment was found on the responding relays"
             snapshot.fragments.held.isEmpty() ->
@@ -256,7 +259,7 @@ class ConcordCommunityRepository(
     /**
      * Reads every configured read relay to a per-relay EOSE, then merges remote and
      * locally journaled fragments. A failed decrypt stays unreadable in the fragment
-     * set, so Quartz can scope a safe write instead of repacking missing memberships.
+     * set, so the scoped-write planner can preserve unseen memberships instead of repacking.
      */
     private suspend fun fetchCommunityList(signer: PostillaQuartzSigner): CommunityListSnapshot {
         val readRelays = relayPool.getReadRelayUrls().distinct()
@@ -381,8 +384,11 @@ class ConcordCommunityRepository(
     /** Loads remote and local memberships, retaining a visible warning for incomplete relay sync. */
     suspend fun loadLocalMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> = try {
         val snapshot = fetchCommunityList(signer)
+        val requiredResponses = ConcordCommunityListWritePolicy.requiredReadRelayResponses(snapshot.configuredReadRelays)
         communityListReadWarning = when {
             snapshot.allReadRelaysResponded -> null
+            snapshot.respondingReadRelays < requiredResponses ->
+                "Community list is read-only for now: ${snapshot.respondingReadRelays}/${snapshot.configuredReadRelays} relays answered; the safe quorum is $requiredResponses. Refresh when more relays are available."
             snapshot.fragments.isEmpty ->
                 "Community list check incomplete: ${snapshot.respondingReadRelays}/${snapshot.configuredReadRelays} read relays answered, but no membership fragment was found. Postilla will not treat this as an empty list."
             snapshot.fragments.complete ->
