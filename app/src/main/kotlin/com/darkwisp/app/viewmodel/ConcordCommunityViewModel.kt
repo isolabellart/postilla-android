@@ -518,6 +518,22 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         repo.sendDirectInvite(PostillaQuartzSigner(signer), communityId, recipient)
     }
 
+    suspend fun kickMember(communityId: String, targetPubkey: String, signer: NostrSigner?) {
+        require(signer != null) { "A writable Nostr signer is required" }
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.kickAndRotate(PostillaQuartzSigner(signer), communityId, targetPubkey)
+        refreshLocalCommunities(signer)
+        loadMembers(communityId, signer)
+    }
+
+    suspend fun banMember(communityId: String, targetPubkey: String, signer: NostrSigner?) {
+        require(signer != null) { "A writable Nostr signer is required" }
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.banAndRotate(PostillaQuartzSigner(signer), communityId, targetPubkey)
+        refreshLocalCommunities(signer)
+        loadMembers(communityId, signer)
+    }
+
     suspend fun createPublicChannel(communityId: String, name: String, signer: NostrSigner?) {
         require(signer != null) { "A writable Nostr signer is required" }
         val repo = repository ?: throw IllegalStateException("Community service is not initialized")
