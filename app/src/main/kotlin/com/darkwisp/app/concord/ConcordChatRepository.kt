@@ -9,6 +9,10 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordWritersLedger
+import com.vitorpamplona.quartz.concord.cord03Channels.WriterWindow
+import com.vitorpamplona.quartz.concord.cord04Roles.AuthorityResolver
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordImageAttachment
 import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
@@ -61,10 +65,20 @@ data class ConcordChatMessage(
     val rawRumorJson: String = "",
 )
 
-/** A CORD-03 read plane: direct channel address or a historical held-epoch address. */
+/** The authorization snapshot needed to accept a CORD-03 writer-address post. */
+data class ConcordChatWriterContext(
+    val communityIdHex: String,
+    val ledger: ConcordWritersLedger,
+    val window: WriterWindow,
+    val authority: AuthorityResolver,
+)
+
+/** A CORD-03 plane: a direct/historical read address or a writer address with its read key. */
 data class ConcordChatReadPlane(
     val stream: GroupKey,
     val channelEpoch: Long,
+    /** Non-null only for a writer address; carries the folded ledger and role snapshot. */
+    val writerContext: ConcordChatWriterContext? = null,
 )
 
 data class ConcordObservedAuthorActivity(
@@ -621,7 +635,19 @@ class ConcordChatRepository(
             .mapNotNull { plane ->
                 runCatching {
                     val envelope = ConcordStreamEnvelope.open(Event.fromJson(outer.toJson()), plane.stream)
-                    ChannelChat.acceptOpened(envelope, channelIdHex, plane.channelEpoch, ChannelChat.CHAT_KINDS)
+                    val writer = plane.writerContext
+                    if (writer == null) {
+                        ChannelChat.acceptOpened(envelope, channelIdHex, plane.channelEpoch, ChannelChat.CHAT_KINDS)
+                    } else {
+                        val rumor = ChannelChat.acceptWriterOpened(
+                            envelope,
+                            channelIdHex,
+                            plane.channelEpoch,
+                            writer.window.epoch,
+                            ChannelChat.CHAT_KINDS,
+                        ) ?: return@runCatching null
+                        acceptWriterPost(rumor, channelIdHex, plane, writer)
+                    }
                 }.getOrNull()
             }
             .firstOrNull() ?: return null
@@ -642,6 +668,51 @@ class ConcordChatRepository(
             orderingAtMs = orderingAt,
             rawRumorJson = opened.toJson(),
         )
+    }
+
+    /**
+     * A valid wrapper and matching wepoch prove only that a ledger writer published the post.
+     * The folded authority, certificate and stop window still have to authorize its author.
+     */
+    private fun acceptWriterPost(
+        rumor: Event,
+        channelIdHex: String,
+        plane: ConcordChatReadPlane,
+        writer: ConcordChatWriterContext,
+    ): Event? {
+        if (!writer.window.writerPubKey.equals(plane.stream.publicKeyHex, ignoreCase = true)) return null
+        val foldedWindow = writer.ledger.windowAt(plane.stream.publicKeyHex) ?: return null
+        if (foldedWindow.epoch != writer.window.epoch) return null
+
+        val author = rumor.pubKey
+        val privileged = writer.authority.isOwner(author) ||
+            (!writer.authority.isBanned(author) &&
+                writer.authority.hasPermission(author, ConcordPermissions.MANAGE_CHANNELS))
+        val postMs = ChannelChat.orderingMs(rumor) ?: return null
+        val certifier = writer.window.certifier
+
+        if (!privileged && certifier != null) {
+            val certificate = ConcordWritersLedger.wcertOf(rumor) ?: return null
+            val certificateValid = ConcordWritersLedger.verifyCertificate(
+                writer.communityIdHex.hexToByteArray(),
+                channelIdHex.hexToByteArray(),
+                writer.window.epoch,
+                author,
+                certifier,
+                certificate,
+            )
+            if (!certificateValid) return null
+        }
+
+        val stands = writer.ledger.postStands(
+            writer.communityIdHex.hexToByteArray(),
+            writer.window.copy(certifier = null),
+            author,
+            postMs,
+            null,
+            privileged,
+        )
+        return rumor.takeIf { stands }
     }
 
     private fun roomKey(owner: String, communityId: String, channelId: String) =
