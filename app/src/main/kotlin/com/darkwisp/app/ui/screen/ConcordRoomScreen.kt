@@ -107,6 +107,10 @@ fun ConcordRoomScreen(
     var text by rememberSaveable(communityId) { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    var replyToMessage by remember(communityId) { mutableStateOf<ConcordChatMessage?>(null) }
+    var loadingOlder by remember { mutableStateOf(false) }
+    var suppressAutoScroll by remember { mutableStateOf(false) }
+    val timelineMessages = messages.filter { it.kind == 9 || it.kind == 1111 }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showCreateChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -155,10 +159,13 @@ fun ConcordRoomScreen(
                         text.trim(),
                         signer,
                         imetas = listOf(imeta),
+                        replyTo = replyToMessage,
                     )
                     if (sent == null) throw IllegalStateException("Image message was not confirmed by a relay")
                     if (messages.none { it.id == sent.id }) messages.add(sent)
+                    messages.sortBy { it.orderingAtMs }
                     text = ""
+                    replyToMessage = null
                 } catch (error: Exception) {
                     sendError = error.message ?: "Image upload failed"
                 } finally {
@@ -188,7 +195,7 @@ fun ConcordRoomScreen(
             viewModel.observeChannel(communityId, selectedChannelId).collect { message ->
                 if (messages.none { it.id == message.id }) {
                     messages.add(message)
-                    messages.sortBy { it.createdAt }
+                    messages.sortBy { it.orderingAtMs }
                 }
             }
         }
@@ -212,7 +219,9 @@ fun ConcordRoomScreen(
     }
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isNotEmpty() && !suppressAutoScroll) {
+            listState.animateScrollToItem((messages.size - 1).coerceAtLeast(0))
+        }
     }
 
     Scaffold(
@@ -250,6 +259,20 @@ fun ConcordRoomScreen(
                 sendError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
+                replyToMessage?.let { parent ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            "Replying to ${parent.authorPubkey.take(12)}…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        TextButton(onClick = { replyToMessage = null }) { Text("Cancel reply") }
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = text,
@@ -265,11 +288,16 @@ fun ConcordRoomScreen(
                                     scope.launch {
                                         sending = true
                                         val sent = runCatching {
-                                            viewModel.sendChannelMessage(communityId, selectedChannelId, outgoing, signer)
+                                            viewModel.sendChannelMessage(
+                                                communityId, selectedChannelId, outgoing, signer,
+                                                replyTo = replyToMessage,
+                                            )
                                         }.getOrNull()
                                         if (sent != null) {
                                             if (messages.none { it.id == sent.id }) messages.add(sent)
+                                            messages.sortBy { it.orderingAtMs }
                                             text = ""
+                                            replyToMessage = null
                                         } else {
                                             sendError = "Message not confirmed by a relay"
                                         }
@@ -292,11 +320,16 @@ fun ConcordRoomScreen(
                             scope.launch {
                                 sending = true
                                 val sent = runCatching {
-                                    viewModel.sendChannelMessage(communityId, selectedChannelId, outgoing, signer)
+                                    viewModel.sendChannelMessage(
+                                        communityId, selectedChannelId, outgoing, signer,
+                                        replyTo = replyToMessage,
+                                    )
                                 }.getOrNull()
                                 if (sent != null) {
                                     if (messages.none { it.id == sent.id }) messages.add(sent)
+                                    messages.sortBy { it.orderingAtMs }
                                     text = ""
+                                    replyToMessage = null
                                 } else {
                                     sendError = "Message not confirmed by a relay"
                                 }
@@ -413,17 +446,48 @@ fun ConcordRoomScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                } else if (messages.isEmpty()) {
+                } else if (timelineMessages.isEmpty()) {
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("No messages yet. Start the conversation.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (loadingOlder) "Loading Concord history…" else "No messages in this channel yet. Waiting for relay history…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        state = listState,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                items(messages, key = { it.id }) { message ->
+                    Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                enabled = !loadingOlder,
+                                onClick = {
+                                    scope.launch {
+                                        loadingOlder = true
+                                        suppressAutoScroll = true
+                                        try {
+                                            val older = viewModel.loadOlderChannelMessages(communityId, selectedChannelId)
+                                            older.forEach { if (messages.none { existing -> existing.id == it.id }) messages.add(it) }
+                                            messages.sortBy { it.orderingAtMs }
+                                        } catch (error: Exception) {
+                                            sendError = error.message ?: "Could not load older messages"
+                                        } finally {
+                                            loadingOlder = false
+                                            suppressAutoScroll = false
+                                        }
+                                    }
+                                },
+                            ) {
+                                if (loadingOlder) CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                else Text("Load older messages")
+                            }
+                        }
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            state = listState,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                items(timelineMessages, key = { it.id }) { message ->
                     val ownMessage = message.authorPubkey == signer?.pubkeyHex
                     var profile by remember(message.authorPubkey) {
                         mutableStateOf(eventRepository.getProfileData(message.authorPubkey))
@@ -566,8 +630,49 @@ fun ConcordRoomScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                     )
                                 }
+                                if (message.kind == 1111) {
+                                    Text(
+                                        "↳ Thread reply",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                val reactions = messages.filter { it.kind == 7 && it.replyToId == message.id }
+                                    .groupingBy { it.content }.eachCount()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    TextButton(
+                                        onClick = { replyToMessage = message },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    ) { Text("Reply") }
+                                    listOf("👍", "❤️", "😂").forEach { emoji ->
+                                        TextButton(
+                                            enabled = signer != null,
+                                            onClick = {
+                                                scope.launch {
+                                                    val ok = viewModel.sendChannelReaction(
+                                                        communityId, selectedChannelId, message, emoji, signer,
+                                                    )
+                                                    if (!ok) sendError = "Reaction was not confirmed by a relay"
+                                                }
+                                            },
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        ) { Text(emoji + (reactions[emoji]?.let { " $it" } ?: "")) }
+                                    }
+                                    if (reactions.keys.any { it !in listOf("👍", "❤️", "😂") }) {
+                                        Text(
+                                            reactions.filterKeys { it !in listOf("👍", "❤️", "😂") }
+                                                .entries.joinToString(" ") { "${it.key} ${it.value}" },
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                }
                             }
                         }
+                    }
                     }
                     }
                 }
