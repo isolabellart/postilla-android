@@ -9,6 +9,7 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityFactory
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
@@ -111,6 +112,7 @@ class ConcordCommunityRepository(
         signer: PostillaQuartzSigner,
         name: String,
         description: String? = null,
+        icon: ImagePointer? = null,
         relays: List<String> = relayPool.getWriteRelayUrls(),
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): CreationResult {
@@ -127,6 +129,7 @@ class ConcordCommunityRepository(
             createdAt = createdAt,
             description = description?.trim()?.takeIf { it.isNotEmpty() },
             relays = relays.distinct(),
+            icon = icon,
         )
 
         val entry = ConcordCommunityListEntry(
