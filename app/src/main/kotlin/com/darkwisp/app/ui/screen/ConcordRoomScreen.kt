@@ -9,6 +9,9 @@ import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.darkwisp.app.concord.ConcordCommunityViewModel
 import com.darkwisp.app.nostr.Blossom
+import com.vitorpamplona.crypto.aes.AESGCM
+import com.vitorpamplona.crypto.random.RandomInstance
+import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.TranslationRepository
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -109,12 +113,25 @@ fun ConcordRoomScreen(
                         "png", "webp", "gif" -> mimeType.substringAfter('/').lowercase()
                         else -> "jpg"
                     }
-                    val url = blossomRepository.uploadMedia(bytes, mimeType, extension, signer)
-                    val hash = Blossom.sha256Hex(bytes)
-                    val caption = text.trim()
-                    val outgoing = listOf(caption, url).filter { it.isNotBlank() }.joinToString("\\n")
-                    val tags = arrayOf(arrayOf("imeta", "url $url", "m $mimeType", "x $hash"))
-                    val sent = viewModel.sendGeneralMessage(communityId, outgoing, signer, tags)
+                    val key = RandomInstance.bytes(32)
+                    val nonce = RandomInstance.bytes(16)
+                    val cipher = AESGCM(key, nonce)
+                    val encryptedBytes = cipher.encrypt(bytes)
+                    val url = blossomRepository.uploadMedia(encryptedBytes, "application/octet-stream", "bin", signer)
+                    val imeta = ChannelChat.encryptedImageImeta(
+                        url = url,
+                        mimeType = mimeType,
+                        dim = null,
+                        blurhash = null,
+                        cipher = cipher,
+                        originalHash = Blossom.sha256Hex(bytes),
+                    )
+                    val sent = viewModel.sendGeneralMessage(
+                        communityId,
+                        text.trim(),
+                        signer,
+                        imetas = listOf(imeta),
+                    )
                     if (sent == null) throw IllegalStateException("Image message was not confirmed by a relay")
                     if (messages.none { it.id == sent.id }) messages.add(sent)
                     text = ""
@@ -289,10 +306,27 @@ fun ConcordRoomScreen(
                     var showTranslated by remember(message.id) { mutableStateOf(false) }
                     val translation by translationRepository.stateFor(message.id)
                         .collectAsState(initial = TranslationState())
-                    val imageUrl = remember(message.content) {
-                        Regex("https?://[^\\\\s]+", RegexOption.IGNORE_CASE).findAll(message.content)
-                            .map { it.value.trimEnd(')', ']', '}', ',', '.') }
-                            .firstOrNull()
+                    var decryptedImage by remember(message.id) { mutableStateOf<ByteArray?>(null) }
+                    var imageLoadFailed by remember(message.id) { mutableStateOf(false) }
+                    LaunchedEffect(message.id, message.imageAttachments) {
+                        val attachment = message.imageAttachments.firstOrNull()
+                        if (attachment != null && decryptedImage == null && !imageLoadFailed) {
+                            runCatching {
+                                val ciphertext = withContext(Dispatchers.IO) {
+                                    val connection = java.net.URL(attachment.url).openConnection()
+                                    connection.connectTimeout = 8_000
+                                    connection.readTimeout = 15_000
+                                    connection.getInputStream().use { it.readBytes() }
+                                }
+                                val plain = AESGCM(attachment.key, attachment.nonce).decryptOrNull(ciphertext)
+                                    ?: throw IllegalStateException("Image decryption failed")
+                                val expectedHash = attachment.originalHash
+                                if (!expectedHash.isNullOrBlank() &&
+                                    !Blossom.sha256Hex(plain).equals(expectedHash, ignoreCase = true)
+                                ) throw IllegalStateException("Image integrity check failed")
+                                decryptedImage = plain
+                            }.onFailure { imageLoadFailed = true }
+                        }
                     }
                     LaunchedEffect(message.authorPubkey) {
                         if (profile == null) {
@@ -331,16 +365,30 @@ fun ConcordRoomScreen(
                                         )
                                     }
                                 }
-                                val visibleText = if (imageUrl != null) message.content.replace(imageUrl, "").trim() else message.content
+                                val visibleText = message.imageAttachments.fold(message.content) { content, attachment ->
+                                    content.replace(attachment.url, "").trim()
+                                }
                                 if (visibleText.isNotBlank()) {
                                     Text(visibleText, style = MaterialTheme.typography.bodyMedium)
                                 }
-                                if (imageUrl != null) {
-                                    AsyncImage(
-                                        model = imageUrl,
-                                        contentDescription = "Concord image",
-                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                    )
+                                if (message.imageAttachments.isNotEmpty()) {
+                                    when {
+                                        decryptedImage != null -> AsyncImage(
+                                            model = decryptedImage,
+                                            contentDescription = "Encrypted Concord image",
+                                            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(top = 8.dp),
+                                        )
+                                        imageLoadFailed -> Text(
+                                            "Image unavailable or failed its integrity check",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                        else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                            Text("Decrypting image…", modifier = Modifier.padding(start = 8.dp),
+                                                style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
                                 }
                                 TextButton(
                                     onClick = {
