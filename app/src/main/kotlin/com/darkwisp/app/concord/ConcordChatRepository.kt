@@ -5,6 +5,8 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordImageAttachment
+import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
 import com.vitorpamplona.quartz.concord.envelope.ConcordStreamEnvelope
 import com.vitorpamplona.quartz.nip01Core.core.Event
@@ -24,6 +26,7 @@ data class ConcordChatMessage(
     val authorPubkey: String,
     val content: String,
     val createdAt: Long,
+    val imageAttachments: List<ConcordImageAttachment> = emptyList(),
 )
 
 /**
@@ -43,20 +46,33 @@ class ConcordChatRepository(
         text: String,
         communityRelays: List<String> = emptyList(),
         extraTags: Array<Array<String>> = emptyArray(),
+        imetas: List<IMetaTag> = emptyList(),
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): ConcordChatMessage? {
         val message = text.trim()
         require(message.isNotEmpty()) { "Message cannot be empty" }
 
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
-        val rumor = ChannelChat.message(
-            authorPubKey = signer.pubKey,
-            channelId = channelIdHex,
-            epoch = epoch,
-            text = message,
-            createdAt = createdAt,
-            extraTags = extraTags,
-        )
+        val rumor = if (imetas.isNotEmpty()) {
+            ChannelChat.imageMessage(
+                authorPubKey = signer.pubKey,
+                channelId = channelIdHex,
+                epoch = epoch,
+                text = message,
+                imetas = imetas,
+                createdAt = createdAt,
+                extraTags = extraTags,
+            )
+        } else {
+            ChannelChat.message(
+                authorPubKey = signer.pubKey,
+                channelId = channelIdHex,
+                epoch = epoch,
+                text = message,
+                createdAt = createdAt,
+                extraTags = extraTags,
+            )
+        }
         val wrap = ConcordStreamEnvelope.wrap(
             rumor = rumor,
             stream = channelKey,
@@ -81,6 +97,7 @@ class ConcordChatRepository(
             authorPubkey = rumor.pubKey,
             content = rumor.content,
             createdAt = rumor.createdAt,
+            imageAttachments = ChannelChat.encryptedImagesOf(rumor),
         )
     }
 
@@ -123,6 +140,7 @@ class ConcordChatRepository(
                                 authorPubkey = rumor.pubKey,
                                 content = rumor.content,
                                 createdAt = rumor.createdAt,
+                                imageAttachments = ChannelChat.encryptedImagesOf(rumor),
                             )
                         )
                     } catch (cancelled: CancellationException) {
