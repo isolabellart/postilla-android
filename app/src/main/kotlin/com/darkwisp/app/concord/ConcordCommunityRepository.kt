@@ -1242,6 +1242,7 @@ class ConcordCommunityRepository(
         val isPrivate: Boolean,
         /** Null means the membership does not currently hold this private channel key. */
         val privateKeyHex: String? = null,
+        val privateChannelEpoch: Long? = null,
     )
 
     /** Loads the live Control Plane channel catalogue without requiring every community relay. */
@@ -1249,17 +1250,17 @@ class ConcordCommunityRepository(
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
         return control.state.channels.values
             .map { channel ->
-                val privateKey = if (channel.definition.private) {
+                val privateEntry = if (channel.definition.private) {
                     membership.privateChannels.firstOrNull {
-                        it.id.equals(channel.channelIdHex, ignoreCase = true) &&
-                            it.epoch == membership.rootEpoch
-                    }?.key
+                        it.id.equals(channel.channelIdHex, ignoreCase = true)
+                    }
                 } else null
                 CommunityChannel(
                     id = channel.channelIdHex,
                     name = channel.definition.name,
                     isPrivate = channel.definition.private,
-                    privateKeyHex = privateKey,
+                    privateKeyHex = privateEntry?.key,
+                    privateChannelEpoch = privateEntry?.epoch,
                 )
             }
             .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
