@@ -497,7 +497,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun declineDirectInvite(wrapId: String) {
-        repository?.declineDirectInvite(wrapId)
+        val owner = signerPubkey ?: return
+        repository?.declineDirectInvite(wrapId, owner)
         _directInvites.value = _directInvites.value.copy(
             invites = _directInvites.value.invites.filterNot { it.wrapId.equals(wrapId, ignoreCase = true) },
         )
