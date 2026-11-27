@@ -7,16 +7,45 @@ import org.junit.Test
 class ConcordCommunityListWritePolicyTest {
     @Test
     fun completeReadAllowsWriteWhenListIsEmpty() {
-        assertTrue(ConcordCommunityListWritePolicy.mayWrite(allReadRelaysResponded = true, hasObservedFragment = false))
+        assertTrue(
+            ConcordCommunityListWritePolicy.mayWrite(
+                allReadRelaysResponded = true,
+                hasObservedFragment = false,
+                observedSetIsComplete = true,
+            )
+        )
     }
 
     @Test
-    fun partialReadAllowsOnlyScopedWriteWhenAFragmentWasObserved() {
-        assertTrue(ConcordCommunityListWritePolicy.mayWrite(allReadRelaysResponded = false, hasObservedFragment = true))
+    fun partialReadAllowsScopedWriteOnlyWhenObservedFragmentsAreIncomplete() {
+        assertTrue(
+            ConcordCommunityListWritePolicy.mayWrite(
+                allReadRelaysResponded = false,
+                hasObservedFragment = true,
+                observedSetIsComplete = false,
+            )
+        )
+    }
+
+    @Test
+    fun partialReadThatLooksCompleteCannotAuthorizeARepack() {
+        assertFalse(
+            ConcordCommunityListWritePolicy.mayWrite(
+                allReadRelaysResponded = false,
+                hasObservedFragment = true,
+                observedSetIsComplete = true,
+            )
+        )
     }
 
     @Test
     fun partialEmptyReadNeverAuthorizesAWrite() {
-        assertFalse(ConcordCommunityListWritePolicy.mayWrite(allReadRelaysResponded = false, hasObservedFragment = false))
+        assertFalse(
+            ConcordCommunityListWritePolicy.mayWrite(
+                allReadRelaysResponded = false,
+                hasObservedFragment = false,
+                observedSetIsComplete = true,
+            )
+        )
     }
 }
