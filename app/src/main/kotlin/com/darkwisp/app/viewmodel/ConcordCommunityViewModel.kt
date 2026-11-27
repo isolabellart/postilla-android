@@ -64,6 +64,15 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _communityListWarning = MutableStateFlow<String?>(null)
+    val communityListWarning: StateFlow<String?> = _communityListWarning
+
+    private val _restoringGeneralChannel = MutableStateFlow<String?>(null)
+    val restoringGeneralChannel: StateFlow<String?> = _restoringGeneralChannel
+
+    private val _generalChannelError = MutableStateFlow<String?>(null)
+    val generalChannelError: StateFlow<String?> = _generalChannelError
+
     fun init(relayPool: RelayPool, signer: NostrSigner?) {
         if (repository == null) {
             repository = ConcordCommunityRepository(getApplication(), relayPool)
@@ -75,6 +84,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         else {
             memberships.clear()
             _communities.value = emptyList()
+            _communityListWarning.value = null
+            _generalChannelError.value = null
         }
     }
 
@@ -96,10 +107,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         relays = entry.relays,
                     )
                 }
+                _communityListWarning.value = repo.getCommunityListReadWarning()
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                _communities.value = emptyList()
+            } catch (error: Exception) {
+                _communityListWarning.value =
+                    error.message ?: "Could not load the Concord Community List"
+                // Keep the last known list visible; a failed refresh must not erase it.
             } finally {
                 _isLoading.value = false
             }
@@ -143,6 +157,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         relays = entry.relays,
                     )
                 }
+                _communityListWarning.value = repo.getCommunityListReadWarning()
                 _creation.value = CreationState(result = result)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -161,6 +176,47 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             epoch = entry.rootEpoch,
             communityRelays = entry.relays,
         ) ?: emptyFlow()
+    }
+
+    fun restoreGeneralChannel(communityId: String) {
+        val repo = repository ?: return
+        if (_restoringGeneralChannel.value == communityId) return
+
+        val cachedChannelId = repo.getLocalGeneralChannelId(communityId)
+        if (!cachedChannelId.isNullOrBlank()) {
+            _communities.value = _communities.value.map { item ->
+                if (item.id == communityId) item.copy(generalChannelId = cachedChannelId) else item
+            }
+            return
+        }
+
+        val membership = memberships[communityId]
+        if (membership == null) {
+            _generalChannelError.value = "The private membership for this community is not available on this device."
+            return
+        }
+
+        _generalChannelError.value = null
+        _restoringGeneralChannel.value = communityId
+        viewModelScope.launch {
+            try {
+                val channelId = repo.restoreGeneralChannelId(membership)
+                _communities.value = _communities.value.map { item ->
+                    if (item.id == communityId) item.copy(generalChannelId = channelId) else item
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _generalChannelError.value =
+                    error.message ?: "Could not restore the Concord #general channel"
+            } finally {
+                _restoringGeneralChannel.value = null
+            }
+        }
+    }
+
+    fun clearGeneralChannelError() {
+        _generalChannelError.value = null
     }
 
     suspend fun sendGeneralMessage(
@@ -212,6 +268,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         relays = entry.relays,
                     )
                 }
+                _communityListWarning.value = repo.getCommunityListReadWarning()
                 _join.value = JoinState(result = result)
             } catch (cancelled: CancellationException) {
                 throw cancelled
