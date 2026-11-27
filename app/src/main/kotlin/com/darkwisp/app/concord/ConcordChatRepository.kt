@@ -41,6 +41,7 @@ class ConcordChatRepository(
         channelIdHex: String,
         epoch: Long,
         text: String,
+        communityRelays: List<String> = emptyList(),
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): ConcordChatMessage? {
         val message = text.trim()
@@ -62,8 +63,14 @@ class ConcordChatRepository(
             createdAt = createdAt,
         )
         val event = NostrEvent.fromJson(wrap.toJson())
+        val message = ClientMessage.event(event)
+        val personalWriteRelays = relayPool.getWriteRelayUrls().toSet()
         val outcome = relayPool.publishWithConfirmation(event.id) {
-            relayPool.sendToWriteRelays(ClientMessage.event(event))
+            var sent = relayPool.sendToWriteRelays(message)
+            for (url in communityRelays.distinct().filterNot { it in personalWriteRelays }) {
+                if (relayPool.sendToRelayOrEphemeral(url, message, skipBadCheck = true, write = true)) sent++
+            }
+            sent
         }
         if (!outcome.confirmed) return null
         seenMessageIds.add(rumor.id)
@@ -85,14 +92,20 @@ class ConcordChatRepository(
         communityRootHex: String,
         channelIdHex: String,
         epoch: Long,
+        communityRelays: List<String> = emptyList(),
         since: Long? = null,
     ): Flow<ConcordChatMessage> = channelFlow {
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch)
+        val targets = communityRelays.distinct().ifEmpty { relayPool.getReadRelayUrls() }
         val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch-${UUID.randomUUID().toString().take(8)}"
 
         val collector = launch {
             relayPool.relayEvents
-                .filter { it.subscriptionId == subscriptionId && it.event.kind == ConcordStreamEnvelope.KIND_WRAP }
+                .filter {
+                    it.subscriptionId == subscriptionId &&
+                        it.relayUrl in targets &&
+                        it.event.kind == ConcordStreamEnvelope.KIND_WRAP
+                }
                 .collect { relayEvent ->
                     try {
                         val wrap = Event.fromJson(relayEvent.event.toJson())
@@ -118,19 +131,24 @@ class ConcordChatRepository(
                 }
         }
 
-        relayPool.sendToReadRelays(
-            ClientMessage.req(
-                subscriptionId,
-                listOf(
-                    Filter(
-                        kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
-                        authors = listOf(channelKey.publicKeyHex),
-                        since = since,
-                        limit = 500,
-                    ),
+        val request = ClientMessage.req(
+            subscriptionId,
+            listOf(
+                Filter(
+                    kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                    authors = listOf(channelKey.publicKeyHex),
+                    since = since,
+                    limit = 500,
                 ),
             ),
         )
+        val sent = targets.count { url ->
+            relayPool.sendToRelayOrEphemeral(url, request, skipBadCheck = true, write = false)
+        }
+        if (sent == 0) {
+            collector.cancel()
+            return@channelFlow
+        }
 
         awaitClose {
             collector.cancel()
