@@ -1,6 +1,7 @@
 package com.darkwisp.app.ui.screen
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +70,7 @@ fun ConcordCommunitiesScreen(
     val invite by viewModel.invite.collectAsState()
     val context = LocalContext.current
     val isLoading by viewModel.isLoading.collectAsState()
+    val communityListWarning by viewModel.communityListWarning.collectAsState()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var showJoinDialog by rememberSaveable { mutableStateOf(false) }
     var inviteUrl by rememberSaveable { mutableStateOf("") }
@@ -118,9 +120,53 @@ fun ConcordCommunitiesScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(
+                    onClick = { signer?.let(viewModel::refreshLocalCommunities) },
+                    enabled = signer != null && !isLoading,
+                ) { Text("Refresh list") }
                 TextButton(onClick = { showJoinDialog = true }) { Text("Join with invite link") }
             }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        "Discover public Concord communities",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Browse public community listings in Vector Hub. Open a listing to get its invite link, then join it here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://vectorapp.io/hub/"))
+                            )
+                        },
+                    ) { Text("Explore Vector Community Hub") }
+                }
+            }
+
+            communityListWarning?.let { warning ->
+                Text(
+                    warning,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
+
             creation.result?.let { result ->
                 val status = if (result.isFullyPublished) {
                     "Community created and acknowledged by relays"
