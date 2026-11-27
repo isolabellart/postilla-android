@@ -2176,6 +2176,9 @@ fun WispNavHost(
                 communityId = communityId,
                 viewModel = concordCommunityViewModel,
                 signer = activeSigner,
+                eventRepository = feedViewModel.eventRepo,
+                translationRepository = feedViewModel.translationRepo,
+                blossomRepository = feedViewModel.blossomRepo,
                 onBack = { navController.popBackStack() },
             )
         }
