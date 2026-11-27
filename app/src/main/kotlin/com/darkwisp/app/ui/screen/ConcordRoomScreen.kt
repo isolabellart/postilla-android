@@ -2,6 +2,8 @@ package com.darkwisp.app.ui.screen
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.width
@@ -43,9 +45,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -126,6 +132,8 @@ fun ConcordRoomScreen(
         it.kind == 1111 && selectedThreadRoot != null &&
             (it.rootId == selectedThreadRoot?.id || it.replyToId == selectedThreadRoot?.id)
     }.sortedBy { it.orderingAtMs }
+    var showCommunityMenu by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showChannelMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showCreateChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -442,6 +450,55 @@ fun ConcordRoomScreen(
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                         Icon(Icons.Default.Menu, contentDescription = "Open community navigation")
                     }
+                    Box {
+                        IconButton(onClick = { showCommunityMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Community actions")
+                        }
+                        DropdownMenu(
+                            expanded = showCommunityMenu,
+                            onDismissRequest = { showCommunityMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Members") },
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showMembersDialog = true
+                                    viewModel.loadMembers(communityId, signer)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Invite by npub") },
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showDirectInviteDialog = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (inviteState.isCreating) "Preparing invite link…" else "Share public invite link") },
+                                enabled = signer != null && !inviteState.isCreating,
+                                onClick = {
+                                    showCommunityMenu = false
+                                    viewModel.createInviteLink(communityId, signer)
+                                },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Create public channel") },
+                                enabled = signer != null,
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showCreateChannelDialog = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Refresh channels") },
+                                onClick = {
+                                    showCommunityMenu = false
+                                    viewModel.refreshChannels(communityId)
+                                },
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
@@ -597,6 +654,30 @@ fun ConcordRoomScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                if (channels.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        channels.forEach { channel ->
+                            FilterChip(
+                                selected = selectedChannelId == channel.id,
+                                enabled = !channel.isPrivate || !channel.privateKeyHex.isNullOrBlank(),
+                                onClick = { selectedChannelId = channel.id },
+                                label = {
+                                    Text(
+                                        (if (channel.isPrivate) "🔒 " else "# ") + channel.name,
+                                        maxLines = 1,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
                 inviteState.error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -607,14 +688,44 @@ fun ConcordRoomScreen(
                 }
                 if (selectedChannel != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        TextButton(onClick = {
-                            renamedChannelName = selectedChannel.name
-                            showManageChannelDialog = true
-                            managementError = null
-                        }) { Text("Manage channel") }
+                        Text(
+                            (if (selectedChannel.isPrivate) "🔒 " else "# ") + selectedChannel.name,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Box {
+                            IconButton(onClick = { showChannelMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Channel actions")
+                            }
+                            DropdownMenu(
+                                expanded = showChannelMenu,
+                                onDismissRequest = { showChannelMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Rename channel") },
+                                    enabled = signer != null,
+                                    onClick = {
+                                        showChannelMenu = false
+                                        renamedChannelName = selectedChannel.name
+                                        showManageChannelDialog = true
+                                        managementError = null
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete channel") },
+                                    enabled = signer != null && !selectedChannel.name.equals("general", ignoreCase = true),
+                                    onClick = {
+                                        showChannelMenu = false
+                                        showDeleteChannelDialog = true
+                                        managementError = null
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
                 if (selectedChannel?.isPrivate == true && selectedChannel.privateKeyHex.isNullOrBlank()) {
