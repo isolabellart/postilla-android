@@ -27,6 +27,7 @@ class ConcordCommunityListWritePolicyTest {
         assertTrue(
             ConcordCommunityListWritePolicy.mayWrite(
                 allReadRelaysResponded = true,
+                readQuorumReached = true,
                 hasWritableFragment = false,
             )
         )
@@ -37,6 +38,18 @@ class ConcordCommunityListWritePolicyTest {
         assertTrue(
             ConcordCommunityListWritePolicy.mayWrite(
                 allReadRelaysResponded = false,
+                readQuorumReached = true,
+                hasWritableFragment = true,
+            )
+        )
+    }
+
+    @Test
+    fun partialReadBelowQuorumCannotAuthorizeAWrite() {
+        assertFalse(
+            ConcordCommunityListWritePolicy.mayWrite(
+                allReadRelaysResponded = false,
+                readQuorumReached = false,
                 hasWritableFragment = true,
             )
         )
@@ -47,6 +60,7 @@ class ConcordCommunityListWritePolicyTest {
         assertFalse(
             ConcordCommunityListWritePolicy.mayWrite(
                 allReadRelaysResponded = false,
+                readQuorumReached = true,
                 hasWritableFragment = false,
             )
         )
