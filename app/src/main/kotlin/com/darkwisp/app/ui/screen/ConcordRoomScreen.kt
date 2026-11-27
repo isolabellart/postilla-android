@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -62,6 +63,8 @@ fun ConcordRoomScreen(
 ) {
     val communities by viewModel.communities.collectAsState()
     val community = communities.firstOrNull { it.id == communityId }
+    val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
+    val generalChannelError by viewModel.generalChannelError.collectAsState()
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -69,13 +72,19 @@ fun ConcordRoomScreen(
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(communityId) {
+    LaunchedEffect(communityId, community?.generalChannelId) {
         messages.clear()
         viewModel.observeGeneralChannel(communityId).collect { message ->
             if (messages.none { it.id == message.id }) {
                 messages.add(message)
                 messages.sortBy { it.createdAt }
             }
+        }
+    }
+
+    LaunchedEffect(communityId, community?.generalChannelId) {
+        if (community != null && community.generalChannelId.isNullOrBlank()) {
+            viewModel.restoreGeneralChannel(communityId)
         }
     }
 
@@ -164,13 +173,42 @@ fun ConcordRoomScreen(
             }
         },
     ) { padding ->
-        if (community?.generalChannelId == null) {
+        if (community == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(
-                    "The local channel key is unavailable. Refresh the community list or restore it from its membership event.",
+                    "This community is not in the current membership list. Refresh the Concord list and reopen it.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+        } else if (community.generalChannelId.isNullOrBlank()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                if (restoringCommunityId == communityId) {
+                    CircularProgressIndicator()
+                    Text(
+                        "Restoring the #general channel from the Concord Control Plane…",
+                        modifier = Modifier.padding(top = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    Text(
+                        generalChannelError
+                            ?: "The #general channel key is not cached on this device.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    TextButton(
+                        onClick = {
+                            viewModel.clearGeneralChannelError()
+                            viewModel.restoreGeneralChannel(communityId)
+                        },
+                    ) { Text("Retry channel recovery") }
+                }
             }
         } else if (messages.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
