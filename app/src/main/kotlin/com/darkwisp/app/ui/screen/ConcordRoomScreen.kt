@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,11 +42,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -106,6 +108,7 @@ fun ConcordRoomScreen(
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val context = LocalContext.current
     var text by rememberSaveable(communityId) { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
@@ -121,7 +124,6 @@ fun ConcordRoomScreen(
         it.kind == 1111 && selectedThreadRoot != null &&
             (it.rootId == selectedThreadRoot?.id || it.replyToId == selectedThreadRoot?.id)
     }.sortedBy { it.orderingAtMs }
-    var showRoomMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showCreateChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -255,6 +257,152 @@ fun ConcordRoomScreen(
         }
     }
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = true,
+        drawerContent = {
+            ModalDrawerSheet {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    item {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
+                            Text(
+                                community?.name ?: "Concord community",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "${channels.size} channels · encrypted community",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    item { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }
+                    item {
+                        Text(
+                            "CHANNELS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 22.dp, top = 10.dp, bottom = 4.dp),
+                        )
+                    }
+                    if (channels.isEmpty()) {
+                        item {
+                            Text(
+                                "No channels loaded yet",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                    items(channels, key = { "drawer-${it.id}" }) { channel ->
+                        NavigationDrawerItem(
+                            label = {
+                                Text(
+                                    (if (channel.isPrivate) "🔒 " else "# ") + channel.name,
+                                    maxLines = 1,
+                                )
+                            },
+                            selected = selectedChannelId == channel.id,
+                            enabled = !channel.isPrivate || !channel.privateKeyHex.isNullOrBlank(),
+                            onClick = {
+                                selectedChannelId = channel.id
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }
+                    item {
+                        Text(
+                            "COMMUNITY",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 22.dp, top = 10.dp, bottom = 4.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Members") },
+                            selected = false,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showMembersDialog = true
+                                viewModel.loadMembers(communityId, signer)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Invite by npub") },
+                            selected = false,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showDirectInviteDialog = true
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Share public invite link") },
+                            selected = false,
+                            enabled = signer != null && !inviteState.isCreating,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                viewModel.createInviteLink(communityId, signer)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Create public channel") },
+                            selected = false,
+                            enabled = signer != null,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showCreateChannelDialog = true
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Manage selected channel") },
+                            selected = false,
+                            enabled = selectedChannel != null && signer != null,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                selectedChannel?.let {
+                                    renamedChannelName = it.name
+                                    showManageChannelDialog = true
+                                    managementError = null
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Refresh channels") },
+                            selected = false,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                viewModel.refreshChannels(communityId)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                }
+            }
+        },
+    ) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -280,44 +428,8 @@ fun ConcordRoomScreen(
                     }
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { showRoomMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Community menu")
-                        }
-                        DropdownMenu(
-                            expanded = showRoomMenu,
-                            onDismissRequest = { showRoomMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Members") },
-                                onClick = {
-                                    showRoomMenu = false
-                                    showMembersDialog = true
-                                    viewModel.loadMembers(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Invite by npub") },
-                                onClick = { showRoomMenu = false; showDirectInviteDialog = true },
-                            )
-                            DropdownMenuItem(
-                                enabled = signer != null && !inviteState.isCreating,
-                                text = { Text(if (inviteState.isCreating) "Preparing share link…" else "Share public invite link") },
-                                onClick = {
-                                    showRoomMenu = false
-                                    viewModel.createInviteLink(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                enabled = signer != null,
-                                text = { Text("Create public channel") },
-                                onClick = { showRoomMenu = false; showCreateChannelDialog = true },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Refresh channels") },
-                                onClick = { showRoomMenu = false; viewModel.refreshChannels(communityId) },
-                            )
-                        }
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open community navigation")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -468,24 +580,6 @@ fun ConcordRoomScreen(
                 managementError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                }
-                if (channels.isNotEmpty()) {
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        items(channels, key = { it.id }) { channel ->
-                            TextButton(
-                                enabled = !channel.isPrivate || !channel.privateKeyHex.isNullOrBlank(),
-                                onClick = { selectedChannelId = channel.id },
-                            ) {
-                                Text(
-                                    (if (selectedChannelId == channel.id) "• " else "") +
-                                        (if (channel.isPrivate) "🔒 " else "#") + channel.name,
-                                )
-                            }
-                        }
-                    }
                 }
                 if (selectedChannel != null) {
                     Row(
@@ -758,6 +852,7 @@ fun ConcordRoomScreen(
                 }
             }
         }
+    }
     if (showThreadDialog && selectedThreadRoot != null) {
         AlertDialog(
             onDismissRequest = { showThreadDialog = false },
