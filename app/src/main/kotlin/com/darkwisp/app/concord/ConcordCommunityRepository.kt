@@ -14,7 +14,6 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
-import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
 import com.vitorpamplona.quartz.concord.cord02Community.HeldRoot
@@ -64,10 +63,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.content
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
