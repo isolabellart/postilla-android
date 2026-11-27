@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordChatRepository
+import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
@@ -224,6 +225,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         text: String,
         signer: NostrSigner?,
         extraTags: Array<Array<String>> = emptyArray(),
+        imetas: List<IMetaTag> = emptyList(),
     ): ConcordChatMessage? {
         val entry = memberships[communityId] ?: return null
         val channelId = repository?.getLocalGeneralChannelId(communityId) ?: return null
@@ -237,6 +239,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             text = text,
             communityRelays = entry.relays,
             extraTags = extraTags,
+            imetas = imetas,
         )
     }
 
