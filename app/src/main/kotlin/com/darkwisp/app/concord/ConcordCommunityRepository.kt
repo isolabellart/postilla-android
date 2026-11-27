@@ -1583,6 +1583,7 @@ class ConcordCommunityRepository(
                 )
             }
         }
+        require(membership.relays.isNotEmpty()) { "This community has no bootstrap relays; a Direct Invite cannot be delivered safely" }
         require(channels.size <= 256) { "This community has more channels than the Direct Invite limit (256)" }
         val invite = CommunityInvite(
             communityId = membership.id,
