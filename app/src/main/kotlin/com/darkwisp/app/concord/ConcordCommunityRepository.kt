@@ -216,11 +216,18 @@ class ConcordCommunityRepository(
                 observedSetIsComplete = snapshot.fragments.complete,
             )
         ) return
+        val reason = when {
+            snapshot.fragments.isEmpty ->
+                "no kind-33302 membership fragment was found on the responding relays"
+            snapshot.fragments.complete ->
+                "the observed fragments look complete, but slower relays may hold a newer copy"
+            else ->
+                "the observed membership fragments are incomplete and cannot be safely repacked"
+        }
         throw IllegalStateException(
             "$operation stopped safely: only ${snapshot.respondingReadRelays} of " +
-                "${snapshot.configuredReadRelays} read relays completed the Community List read, " +
-                "and no kind-33302 fragment was available. Check the read-relay connections and retry; " +
-                "Postilla will not assume that your existing memberships are empty."
+                "${snapshot.configuredReadRelays} read relays completed the Community List read; $reason. " +
+                "Check the read-relay connections and retry. Postilla will not overwrite a list it cannot verify."
         )
     }
 
