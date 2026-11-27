@@ -1605,7 +1605,7 @@ class ConcordCommunityRepository(
         // CORD-05 §6: deliver only to the recipient's kind-10050 DM relays, or
         // their NIP-65 read relays when no DM relay list exists. Never spray a
         // private key bundle to an unrelated public fallback relay.
-        val bootstrap = relayPool.getReadRelayUrls().distinct()
+        val bootstrap = relayPool.getRelayUrls().distinct()
         val recipientLists = if (bootstrap.isNotEmpty()) {
             fetchEventsFromRelays(
                 relays = bootstrap,
