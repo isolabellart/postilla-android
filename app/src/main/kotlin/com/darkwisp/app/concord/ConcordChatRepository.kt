@@ -116,8 +116,9 @@ class ConcordChatRepository(
         communityRelays: List<String> = emptyList(),
         since: Long? = null,
         privateChannelKeyHex: String? = null,
+        privateChannelEpoch: Long? = null,
     ): Flow<ConcordChatMessage> = channelFlow {
-        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex)
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
         val targets = communityRelays.distinct().ifEmpty { relayPool.getReadRelayUrls() }
         val subscriptionId = "concord-chat-${channelIdHex.take(12)}-$epoch-${UUID.randomUUID().toString().take(8)}"
 
@@ -189,7 +190,7 @@ class ConcordChatRepository(
         ConcordChannelKeys.privateChannel(
             channelKey = privateChannelKeyHex.hexToByteArray(),
             channelId = channelIdHex.hexToByteArray(),
-            rootEpoch = epoch,
+            channelEpoch = privateChannelEpoch ?: epoch,
         )
     } else {
         ConcordChannelKeys.publicChannel(
