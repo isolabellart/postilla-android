@@ -89,6 +89,9 @@ fun ConcordRoomScreen(
     val community = communities.firstOrNull { it.id == communityId }
     var selectedChannelId by rememberSaveable(communityId) { mutableStateOf("") }
     val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
+    val selectedChannelAccessible = selectedChannel?.let {
+        !it.isPrivate || !it.privateKeyHex.isNullOrBlank()
+    } ?: (selectedChannelId.isNotBlank() && selectedChannelId == community?.generalChannelId)
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
@@ -213,12 +216,12 @@ fun ConcordRoomScreen(
                         value = text,
                         onValueChange = { text = it; sendError = null },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Message #general") },
+                        placeholder = { Text("Message #" + (selectedChannel?.name ?: "general")) },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (text.isNotBlank() && !sending && signer != null && community?.generalChannelId != null) {
+                                if (text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible) {
                                     val outgoing = text
                                     scope.launch {
                                         sending = true
@@ -238,19 +241,19 @@ fun ConcordRoomScreen(
                         ),
                     )
                     IconButton(
-                        enabled = !sending && signer != null && community?.generalChannelId != null,
+                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible,
                         onClick = { imagePicker.launch("image/*") },
                     ) {
                         Icon(Icons.Default.Image, contentDescription = "Attach image")
                     }
                     IconButton(
-                        enabled = text.isNotBlank() && !sending && signer != null && community?.generalChannelId != null,
+                        enabled = text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible,
                         onClick = {
                             val outgoing = text
                             scope.launch {
                                 sending = true
                                 val sent = runCatching {
-                                    viewModel.sendGeneralMessage(communityId, outgoing, signer)
+                                    viewModel.sendChannelMessage(communityId, selectedChannelId, outgoing, signer)
                                 }.getOrNull()
                                 if (sent != null) {
                                     if (messages.none { it.id == sent.id }) messages.add(sent)
