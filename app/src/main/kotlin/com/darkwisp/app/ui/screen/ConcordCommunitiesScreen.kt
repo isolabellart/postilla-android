@@ -89,6 +89,7 @@ fun ConcordCommunitiesScreen(
     embedded: Boolean = false,
 ) {
     val communities by viewModel.communities.collectAsState()
+    val communityIcons by viewModel.communityIcons.collectAsState()
     val creation by viewModel.creation.collectAsState()
     val join by viewModel.join.collectAsState()
     val invite by viewModel.invite.collectAsState()
@@ -114,6 +115,10 @@ fun ConcordCommunitiesScreen(
     LaunchedEffect(signer?.pubkeyHex) {
         viewModel.init(relayPool, signer)
         viewModel.refreshDirectInvites(signer)
+    }
+
+    LaunchedEffect(communities) {
+        communities.forEach { viewModel.loadCommunityIcon(it.id) }
     }
     LaunchedEffect(join.result?.communityId) {
         if (join.result != null) {
@@ -320,11 +325,20 @@ fun ConcordCommunitiesScreen(
                                     color = MaterialTheme.colorScheme.primaryContainer,
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            community.name.take(1).uppercase(),
-                                            style = MaterialTheme.typography.titleLarge,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        )
+                                        val iconBytes = communityIcons[community.id]
+                                        if (iconBytes != null) {
+                                            AsyncImage(
+                                                model = iconBytes,
+                                                contentDescription = "${community.name} community icon",
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
+                                        } else {
+                                            Text(
+                                                community.name.take(1).uppercase(),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            )
+                                        }
                                     }
                                 }
                                 Spacer(Modifier.width(12.dp))
