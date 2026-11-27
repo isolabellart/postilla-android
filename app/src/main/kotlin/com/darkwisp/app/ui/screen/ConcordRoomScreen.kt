@@ -96,7 +96,7 @@ fun ConcordRoomScreen(
     var selectedChannelId by rememberSaveable(communityId) { mutableStateOf("") }
     val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
     val selectedChannelAccessible = selectedChannel?.let {
-        !it.isWriterRestricted && (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
+        !it.isPrivate || !it.privateKeyHex.isNullOrBlank()
     } ?: (selectedChannelId.isNotBlank() && selectedChannelId == community?.generalChannelId)
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
@@ -401,14 +401,6 @@ fun ConcordRoomScreen(
                             managementError = null
                         }) { Text("Manage channel") }
                     }
-                }
-                if (selectedChannel?.isWriterRestricted == true) {
-                    Text(
-                        "Restricted CORD-03 channel: Postilla can read messages, but sending is disabled until writer certificates are supported.",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    )
                 }
                 if (selectedChannel?.isPrivate == true && selectedChannel.privateKeyHex.isNullOrBlank()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
