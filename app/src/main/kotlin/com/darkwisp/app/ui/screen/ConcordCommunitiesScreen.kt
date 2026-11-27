@@ -3,6 +3,8 @@ package com.darkwisp.app.ui.screen
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,6 +41,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,6 +55,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.darkwisp.app.nostr.Blossom
+import com.darkwisp.app.repo.BlossomRepository
+import com.vitorpamplona.crypto.aes.AESGCM
+import com.vitorpamplona.crypto.random.RandomInstance
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
+import com.vitorpamplona.quartz.nip01Core.core.toHexKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
 import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
@@ -60,6 +75,7 @@ fun ConcordCommunitiesScreen(
     viewModel: ConcordCommunityViewModel,
     relayPool: RelayPool,
     signer: NostrSigner?,
+    blossomRepository: BlossomRepository,
     onOpenCommunity: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     embedded: Boolean = false,
@@ -69,6 +85,7 @@ fun ConcordCommunitiesScreen(
     val join by viewModel.join.collectAsState()
     val invite by viewModel.invite.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val isLoading by viewModel.isLoading.collectAsState()
     val communityListWarning by viewModel.communityListWarning.collectAsState()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
@@ -76,6 +93,13 @@ fun ConcordCommunitiesScreen(
     var inviteUrl by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
+    var iconUri by remember { mutableStateOf<Uri?>(null) }
+    var uploadingIcon by remember { mutableStateOf(false) }
+    var iconUploadError by remember { mutableStateOf<String?>(null) }
+    val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        iconUri = uri
+        iconUploadError = null
+    }
 
     LaunchedEffect(signer?.pubkeyHex) {
         viewModel.init(relayPool, signer)
@@ -91,6 +115,8 @@ fun ConcordCommunitiesScreen(
             showCreateDialog = false
             name = ""
             description = ""
+            iconUri = null
+            iconUploadError = null
         }
     }
     LaunchedEffect(invite.url) {
@@ -350,6 +376,34 @@ fun ConcordCommunitiesScreen(
                         label = { Text("Description (optional)") },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Surface(
+                            modifier = Modifier.size(56.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                        ) {
+                            if (iconUri != null) {
+                                AsyncImage(model = iconUri, contentDescription = "Community icon preview",
+                                    modifier = Modifier.fillMaxSize())
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Image, contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Community icon", style = MaterialTheme.typography.labelLarge)
+                            Text("Encrypted for community members", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = { iconPicker.launch("image/*") }) {
+                                Text(if (iconUri == null) "Choose image" else "Change image")
+                            }
+                        }
+                    }
+                    iconUploadError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                     if (creation.error != null) {
                         Text(creation.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
@@ -357,13 +411,49 @@ fun ConcordCommunitiesScreen(
             },
             confirmButton = {
                 TextButton(
-                    enabled = name.isNotBlank() && !creation.isCreating && signer != null,
+                    enabled = name.isNotBlank() && !creation.isCreating && !uploadingIcon && signer != null,
                     onClick = {
                         viewModel.clearResult()
-                        viewModel.createCommunity(signer, name.trim(), description.trim().ifBlank { null })
+                        scope.launch {
+                            uploadingIcon = true
+                            iconUploadError = null
+                            try {
+                                val pointer = iconUri?.let { uri ->
+                                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                                    val bytes = withContext(Dispatchers.IO) {
+                                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                            ?: throw IllegalStateException("Could not read the selected icon")
+                                    }
+                                    require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 * 1024) {
+                                        "Community icon must be smaller than 8 MB"
+                                    }
+                                    val key = RandomInstance.bytes(32)
+                                    val nonce = RandomInstance.bytes(16)
+                                    val cipher = AESGCM(key, nonce)
+                                    val encrypted = cipher.encrypt(bytes)
+                                    val url = blossomRepository.uploadMedia(encrypted, "application/octet-stream", "bin", signer)
+                                    ImagePointer(
+                                        url = url,
+                                        key = key.toHexKey(),
+                                        nonce = nonce.toHexKey(),
+                                        hash = Blossom.sha256Hex(bytes),
+                                    )
+                                }
+                                viewModel.createCommunity(
+                                    signer,
+                                    name.trim(),
+                                    description.trim().ifBlank { null },
+                                    icon = pointer,
+                                )
+                            } catch (error: Exception) {
+                                iconUploadError = error.message ?: "Community icon upload failed"
+                            } finally {
+                                uploadingIcon = false
+                            }
+                        }
                     },
                 ) {
-                    if (creation.isCreating) CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    if (creation.isCreating || uploadingIcon) CircularProgressIndicator(modifier = Modifier.size(18.dp))
                     else Text("Create")
                 }
             },
