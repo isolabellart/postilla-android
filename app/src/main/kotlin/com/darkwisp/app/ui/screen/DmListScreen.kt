@@ -110,7 +110,6 @@ fun DmListScreen(
     onNewLegacyDm: () -> Unit = {}
 ) {
     val conversations by viewModel.conversationList.collectAsState()
-    val groups by groupListViewModel.groups.collectAsState()
 
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -137,28 +136,10 @@ fun DmListScreen(
     LaunchedEffect(legacyDmEnabled) {
         if (!legacyDmEnabled && selectedTab == "classic") selectedTab = "private"
     }
-    var showJoinDialog by remember { mutableStateOf(false) }
-    var showCreateDialog by remember { mutableStateOf(false) }
-    var showDiscoverSheet by remember { mutableStateOf(false) }
-    var showFabMenu by remember { mutableStateOf(false) }
-    var joinError by remember { mutableStateOf<GroupListViewModel.JoinError?>(null) }
-    var adminError by remember { mutableStateOf<GroupListViewModel.AdminError?>(null) }
-
-    // Collect one-shot join rejections from the relay and surface them as a dialog.
-    LaunchedEffect(groupListViewModel) {
-        groupListViewModel.joinErrors.collect { joinError = it }
-    }
-    // Admin-action rejections (create group / invite / edit / kick / leave / delete) that
-    // would otherwise fail silently. A shared dialog tells the admin what the relay said.
-    LaunchedEffect(groupListViewModel) {
-        groupListViewModel.adminErrors.collect { adminError = it }
-    }
-    // Ensure the public Postilla community is present for the active account.
+    // Concord membership is discovered from the user's encrypted community list;
+    // do not create or restore a parallel NIP-29 default room.
     LaunchedEffect(userPubkey, signer) {
         concordCommunityViewModel.init(relayPool, signer)
-        if (!userPubkey.isNullOrBlank()) {
-            groupListViewModel.ensureDefaultCommunityGroup(signer)
-        }
     }
 
     Scaffold(
@@ -225,42 +206,20 @@ fun DmListScreen(
             )
         },
         floatingActionButton = {
-            if (selectedTab != "concord") Box {
-                FloatingActionButton(
-                    onClick = {
-                        when (selectedTab) {
-                            "private" -> onNewGroupDm()
-                            "classic" -> onNewLegacyDm()
-                            else -> showFabMenu = true
-                        }
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary
+            when (selectedTab) {
+                "private" -> FloatingActionButton(
+                    onClick = onNewGroupDm,
+                    containerColor = MaterialTheme.colorScheme.primary,
                 ) {
-                    when (selectedTab) {
-                        "private" -> Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
-                        "classic" -> Icon(Icons.Outlined.MailOutline, contentDescription = stringResource(R.string.action_new_legacy_dm))
-                        else -> Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
-                    }
+                    Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
                 }
-                if (selectedTab == "rooms") {
-                    DropdownMenu(
-                        expanded = showFabMenu,
-                        onDismissRequest = { showFabMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_discover_groups)) },
-                            onClick = { showFabMenu = false; showDiscoverSheet = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_join_group)) },
-                            onClick = { showFabMenu = false; showJoinDialog = true }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_create_group)) },
-                            onClick = { showFabMenu = false; showCreateDialog = true }
-                        )
-                    }
+                "classic" -> FloatingActionButton(
+                    onClick = onNewLegacyDm,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(Icons.Outlined.MailOutline, contentDescription = stringResource(R.string.action_new_legacy_dm))
                 }
+                // Concord creation/join/invites are managed inside its own workspace.
             }
         }
     ) { padding ->
@@ -273,7 +232,7 @@ fun DmListScreen(
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { _, amount -> drag += amount },
                         onDragEnd = {
-                            val tabs = if (legacyDmEnabled) listOf("private", "classic", "rooms", "concord") else listOf("private", "rooms", "concord")
+                            val tabs = if (legacyDmEnabled) listOf("private", "classic", "concord") else listOf("private", "concord")
                             val index = tabs.indexOf(selectedTab).coerceAtLeast(0)
                             if (drag < -70f && index < tabs.lastIndex) selectedTab = tabs[index + 1]
                             if (drag > 70f && index > 0) selectedTab = tabs[index - 1]
@@ -286,8 +245,7 @@ fun DmListScreen(
             val selectedTabIndex = when (selectedTab) {
                 "private" -> 0
                 "classic" -> 1
-                "rooms" -> if (legacyDmEnabled) 2 else 1
-                else -> if (legacyDmEnabled) 3 else 2
+                else -> if (legacyDmEnabled) 2 else 1
             }
             TabRow(selectedTabIndex = selectedTabIndex) {
                 Tab(
@@ -313,16 +271,6 @@ fun DmListScreen(
                     )
                 }
                 Tab(
-                    selected = selectedTab == "rooms",
-                    onClick = { selectedTab = "rooms" },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Icon(Icons.Outlined.Groups, contentDescription = null, modifier = Modifier.size(17.dp))
-                            Text(stringResource(R.string.tab_chat_rooms), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                )
-                Tab(
                     selected = selectedTab == "concord",
                     onClick = { selectedTab = "concord" },
                     text = {
@@ -333,9 +281,6 @@ fun DmListScreen(
                     }
                 )
             }
-
-            val unreadGroups by groupListViewModel.unreadGroups.collectAsState()
-            val notifiedGroups by groupListViewModel.notifiedGroups.collectAsState()
 
             when (selectedTab) {
                 "private" -> DmListContent(
@@ -354,16 +299,6 @@ fun DmListScreen(
                         selectedConversationKeys = if (key in selectedConversationKeys) selectedConversationKeys - key else selectedConversationKeys + key
                     }
                 )
-                "rooms" -> GroupListContent(
-                    groups = groups,
-                    eventRepo = eventRepo,
-                    onGroupRoom = onGroupRoom,
-                    unreadGroups = unreadGroups,
-                    notifiedGroups = notifiedGroups,
-                    onToggleNotify = { relayUrl, groupId, enabled ->
-                        groupListViewModel.setGroupNotified(relayUrl, groupId, enabled)
-                    }
-                )
                 "concord" -> ConcordCommunitiesScreen(
                     viewModel = concordCommunityViewModel,
                     relayPool = relayPool,
@@ -374,42 +309,6 @@ fun DmListScreen(
                 )
             }
         }
-    }
-
-    if (showJoinDialog) {
-        JoinGroupDialog(
-            onDismiss = { showJoinDialog = false },
-            onJoin = { relayUrl, groupId, inviteCode ->
-                showJoinDialog = false
-                groupListViewModel.joinGroup(relayUrl, groupId, signer, inviteCode)
-            }
-        )
-    }
-
-    if (showCreateDialog) {
-        CreateGroupDialog(
-            onDismiss = { showCreateDialog = false },
-            onCreate = { relayUrl, name, isPrivate, isClosed, isRestricted, isHidden ->
-                showCreateDialog = false
-                groupListViewModel.createGroup(relayUrl, name, signer,
-                    isPrivate = isPrivate,
-                    isClosed = isClosed,
-                    isRestricted = isRestricted,
-                    isHidden = isHidden)
-            }
-        )
-    }
-
-    if (showDiscoverSheet) {
-        DiscoverGroupsSheet(
-            groupListViewModel = groupListViewModel,
-            eventRepo = eventRepo,
-            onDismiss = { showDiscoverSheet = false },
-            onJoin = { relayUrl, groupId ->
-                showDiscoverSheet = false
-                groupListViewModel.joinGroup(relayUrl, groupId, signer)
-            }
-        )
     }
 
     joinError?.let { err ->
