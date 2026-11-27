@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,7 +85,10 @@ fun ConcordRoomScreen(
     onBack: () -> Unit,
 ) {
     val communities by viewModel.communities.collectAsState()
+    val channels by viewModel.channels.collectAsState()
     val community = communities.firstOrNull { it.id == communityId }
+    var selectedChannelId by rememberSaveable(communityId) { mutableStateOf("") }
+    val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
@@ -126,8 +130,9 @@ fun ConcordRoomScreen(
                         cipher = cipher,
                         originalHash = Blossom.sha256Hex(bytes),
                     )
-                    val sent = viewModel.sendGeneralMessage(
+                    val sent = viewModel.sendChannelMessage(
                         communityId,
+                        selectedChannelId,
                         text.trim(),
                         signer,
                         imetas = listOf(imeta),
@@ -144,12 +149,25 @@ fun ConcordRoomScreen(
         }
     }
 
-    LaunchedEffect(communityId, community?.generalChannelId) {
+    LaunchedEffect(communityId, community) {
+        if (community != null) viewModel.refreshChannels(communityId)
+    }
+
+    LaunchedEffect(communityId, channels, community?.generalChannelId) {
+        if (selectedChannelId.isBlank() || channels.none { it.id == selectedChannelId }) {
+            selectedChannelId = channels.firstOrNull { it.name.equals("general", ignoreCase = true) }?.id
+                ?: community?.generalChannelId.orEmpty()
+        }
+    }
+
+    LaunchedEffect(communityId, selectedChannelId) {
         messages.clear()
-        viewModel.observeGeneralChannel(communityId).collect { message ->
-            if (messages.none { it.id == message.id }) {
-                messages.add(message)
-                messages.sortBy { it.createdAt }
+        if (selectedChannelId.isNotBlank()) {
+            viewModel.observeChannel(communityId, selectedChannelId).collect { message ->
+                if (messages.none { it.id == message.id }) {
+                    messages.add(message)
+                    messages.sortBy { it.createdAt }
+                }
             }
         }
     }
@@ -171,7 +189,7 @@ fun ConcordRoomScreen(
                 title = {
                     Column {
                         Text(community?.name ?: communityId.take(12), style = MaterialTheme.typography.titleMedium)
-                        Text("general · Concord", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("#" + (selectedChannel?.name ?: "general") + " · Concord", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 navigationIcon = {
@@ -205,7 +223,7 @@ fun ConcordRoomScreen(
                                     scope.launch {
                                         sending = true
                                         val sent = runCatching {
-                                            viewModel.sendGeneralMessage(communityId, outgoing, signer)
+                                            viewModel.sendChannelMessage(communityId, selectedChannelId, outgoing, signer)
                                         }.getOrNull()
                                         if (sent != null) {
                                             if (messages.none { it.id == sent.id }) messages.add(sent)
@@ -288,16 +306,43 @@ fun ConcordRoomScreen(
                     ) { Text("Retry channel recovery") }
                 }
             }
-        } else if (messages.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No messages yet. Start the conversation.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                if (channels.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(channels, key = { it.id }) { channel ->
+                            TextButton(
+                                enabled = !channel.isPrivate || !channel.privateKeyHex.isNullOrBlank(),
+                                onClick = { selectedChannelId = channel.id },
+                            ) {
+                                Text(
+                                    (if (selectedChannelId == channel.id) "• " else "") +
+                                        (if (channel.isPrivate) "🔒 " else "#") + channel.name,
+                                )
+                            }
+                        }
+                    }
+                }
+                if (selectedChannel?.isPrivate == true && selectedChannel.privateKeyHex.isNullOrBlank()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "This private channel is listed, but its access key is not present in this membership.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (messages.isEmpty()) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("No messages yet. Start the conversation.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                 items(messages, key = { it.id }) { message ->
                     val ownMessage = message.authorPubkey == signer?.pubkeyHex
                     var profile by remember(message.authorPubkey) {
@@ -423,6 +468,7 @@ fun ConcordRoomScreen(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
