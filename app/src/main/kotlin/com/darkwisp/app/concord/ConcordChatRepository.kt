@@ -56,6 +56,11 @@ data class ConcordChatReadPlane(
     val channelEpoch: Long,
 )
 
+data class ConcordObservedAuthorActivity(
+    val firstSeenAtMs: Long,
+    val lastSeenAtMs: Long,
+)
+
 private data class ConcordRelayHistoryPage(
     val relayUrl: String,
     val events: List<NostrEvent>,
@@ -313,6 +318,114 @@ class ConcordChatRepository(
         }
     }
 
+    /**
+     * CORD-02 §5 Complete Member List input: observe authors of valid decrypted Chat Plane
+     * events. Guestbook alone is not enough because a Join can be missing or a late member
+     * may publish before their Join reaches this client. Only cryptographically opened and
+     * channel/epoch-bound rumors contribute.
+     */
+    suspend fun loadObservedAuthorActivity(
+        ownerPubkey: String,
+        communityIdHex: String,
+        channels: List<ConcordCommunityRepository.CommunityChannel>,
+        communityRelays: List<String>,
+    ): Map<String, ConcordObservedAuthorActivity> {
+        val usable = channels.mapNotNull { channel ->
+            val planes = channel.readPlanes
+            val authors = planes.map { it.stream.publicKeyHex }.distinct()
+            if (authors.isEmpty()) null else channel to (planes to authors)
+        }
+        if (usable.isEmpty()) return emptyMap()
+
+        val activity = LinkedHashMap<String, ConcordObservedAuthorActivity>()
+        val authorsToChannels = HashMap<String, MutableList<Pair<ConcordCommunityRepository.CommunityChannel, List<ConcordChatReadPlane>>>>()
+        for ((channel, pair) in usable) {
+            val (planes, authors) = pair
+            for (author in authors) {
+                authorsToChannels.getOrPut(author.lowercase()) { mutableListOf() }.add(channel to planes)
+            }
+            // Local encrypted cache is always useful even when every relay is currently silent.
+            val cached = withContext(Dispatchers.IO) {
+                loadCachedWraps(roomKey(ownerPubkey, communityIdHex, channel.id))
+            }
+            for (wrap in cached) {
+                val decoded = decode(wrap, planes, channel.id) ?: continue
+                mergeObserved(activity, decoded)
+            }
+        }
+
+        val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
+        val filters = usable.map { (_, pair) ->
+            Filter(
+                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                authors = pair.second,
+                limit = MEMBER_ACTIVITY_PAGE_SIZE,
+            )
+        }
+        if (targets.isEmpty() || filters.isEmpty()) return activity
+
+        coroutineScope {
+            targets.map { relayUrl ->
+                async {
+                    val subscriptionId = "concord-members-${UUID.randomUUID().toString().take(12)}"
+                    val events = ConcurrentHashMap<String, NostrEvent>()
+                    val eose = CompletableDeferred<Unit>()
+                    val request = ClientMessage.req(subscriptionId, filters)
+                    val eventCollector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        relayPool.relayEvents
+                            .filter { it.subscriptionId == subscriptionId && it.relayUrl == relayUrl }
+                            .collect { events.putIfAbsent(it.event.id, it.event) }
+                    }
+                    val eoseCollector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        relayPool.relayEoseSignals
+                            .filter { it.subscriptionId == subscriptionId && it.relayUrl == relayUrl }
+                            .collect { eose.complete(Unit) }
+                    }
+                    val sent = relayPool.sendToRelayOrEphemeral(
+                        relayUrl, request, skipBadCheck = true, write = false, autoReconnect = true,
+                    )
+                    if (sent) {
+                        val completed = withTimeoutOrNull(HISTORY_PAGE_TIMEOUT_MS) {
+                            eose.await()
+                            true
+                        } ?: false
+                        if (completed) delay(100)
+                    }
+                    eventCollector.cancel()
+                    eoseCollector.cancel()
+                    relayPool.closeOnAllRelays(subscriptionId)
+
+                    for (wrap in events.values) {
+                        val candidates = authorsToChannels[wrap.pubkey.lowercase()].orEmpty()
+                        for ((channel, planes) in candidates) {
+                            val decoded = decode(wrap, planes, channel.id) ?: continue
+                            persistEncryptedWrap(ownerPubkey, communityIdHex, channel.id, wrap)
+                            mergeObserved(activity, decoded)
+                            break
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+        return activity
+    }
+
+    private fun mergeObserved(
+        target: MutableMap<String, ConcordObservedAuthorActivity>,
+        message: ConcordChatMessage,
+    ) {
+        val key = message.authorPubkey.lowercase()
+        val current = target[key]
+        target[key] = if (current == null) {
+            ConcordObservedAuthorActivity(message.orderingAtMs, message.orderingAtMs)
+        } else {
+            ConcordObservedAuthorActivity(
+                firstSeenAtMs = minOf(current.firstSeenAtMs, message.orderingAtMs),
+                lastSeenAtMs = maxOf(current.lastSeenAtMs, message.orderingAtMs),
+            )
+        }
+    }
+
     /** Fetches the next older page for each relay that has not been exhausted. */
     suspend fun loadOlder(
         ownerPubkey: String,
@@ -538,5 +651,6 @@ class ConcordChatRepository(
         private const val HISTORY_PAGE_TIMEOUT_MS = 5000L
         private const val LIVE_OVERLAP_SECONDS = 60L
         private const val CACHE_MESSAGE_LIMIT = 500
+        private const val MEMBER_ACTIVITY_PAGE_SIZE = 500
     }
 }
