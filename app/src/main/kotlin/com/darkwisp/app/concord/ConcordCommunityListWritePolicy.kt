@@ -1,14 +1,15 @@
 package com.darkwisp.app.concord
 
 /**
- * A Community List write may use a partial fragment set only when at least one
- * kind-33302 fragment was actually observed. Quartz then scopes the update to
- * held fragments. An empty partial read is ambiguous and must never be treated
- * as proof that the account has no existing memberships.
+ * A partial relay read may authorize a Community List write only when the observed
+ * kind-33302 set is explicitly incomplete. Quartz then scopes the update to held
+ * fragments. A set that merely appears complete on one responding relay is not
+ * proof that slower relays have no newer fragments.
  */
 internal object ConcordCommunityListWritePolicy {
     fun mayWrite(
         allReadRelaysResponded: Boolean,
         hasObservedFragment: Boolean,
-    ): Boolean = allReadRelaysResponded || hasObservedFragment
+        observedSetIsComplete: Boolean,
+    ): Boolean = allReadRelaysResponded || (hasObservedFragment && !observedSetIsComplete)
 }
