@@ -1669,7 +1669,6 @@ class ConcordCommunityRepository(
     ): JoinResult {
         val parsed = ConcordInviteLink.parseUrl(inviteUrl.trim())
             ?: throw IllegalArgumentException("This is not a valid Concord invite link")
-
         val bundleEvents = fetchEventsFromRelays(
             relays = parsed.fragment.relays,
             filter = Filter(
@@ -1694,7 +1693,46 @@ class ConcordCommunityRepository(
                     is InviteBundleStatus.Live -> "Invite is valid"
                 },
             )
+        return joinCommunityFromBundle(signer, invite, ConcordInviteLink.bareForm(inviteUrl))
+    }
 
+    /** Fetches only indexed CORD-05 Direct Invites addressed to this account. */
+    suspend fun fetchDirectInvites(signer: PostillaQuartzSigner): List<OpenedDirectInvite> {
+        val inboxRelays = relayPool.getDmRelayUrls().distinct().ifEmpty { relayPool.getReadRelayUrls().distinct() }
+        val events = fetchEventsFromRelays(
+            relays = inboxRelays,
+            filter = Filter(
+                kinds = listOf(1059),
+                tags = mapOf(
+                    "p" to listOf(signer.pubKey),
+                    "k" to listOf(ConcordDirectInvite.KIND.toString()),
+                ),
+                limit = 500,
+            ),
+            label = "direct-invites",
+            requireAllResponders = false,
+        )
+        return events.mapNotNull { event ->
+            ConcordDirectInvite.open(Event.fromJson(event.toJson()), signer)
+        }.distinctBy { it.wrapId }.sortedByDescending { it.sentAt }
+    }
+
+    suspend fun joinCommunityFromDirectInvite(
+        signer: PostillaQuartzSigner,
+        opened: OpenedDirectInvite,
+    ): JoinResult {
+        if (opened.isExpired()) throw IllegalStateException("This Direct Invite has expired")
+        if (!ConcordInviteBundle.validate(opened.invite)) {
+            throw IllegalStateException("This Direct Invite failed community identity validation")
+        }
+        return joinCommunityFromBundle(signer, opened.invite, inviteRef = null)
+    }
+
+    private suspend fun joinCommunityFromBundle(
+        signer: PostillaQuartzSigner,
+        invite: CommunityInvite,
+        inviteRef: String?,
+    ): JoinResult {
         val communityIdBytes = invite.communityId.hexToByteArray()
         val communityRootBytes = invite.communityRoot.hexToByteArray()
         val controlKeys = ControlPlaneKeys.of(
@@ -1796,7 +1834,7 @@ class ConcordCommunityRepository(
             relays = savedRelays,
             name = metadata.name.ifBlank { invite.name },
             addedAt = System.currentTimeMillis(),
-            inviteRef = ConcordInviteLink.bareForm(inviteUrl),
+            inviteRef = inviteRef,
         )
 
         val mergedEntries = ConcordCommunityList.merge(currentList.document.entries, listOf(newEntry))
@@ -1861,6 +1899,7 @@ class ConcordCommunityRepository(
             pendingEventIds = pending,
         )
     }
+
 
     private suspend fun fetchEventsFromRelays(
         relays: List<String>,
