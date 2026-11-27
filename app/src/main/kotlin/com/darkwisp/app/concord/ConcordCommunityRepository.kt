@@ -14,6 +14,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityList
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFragmentEvent
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragments
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
 import com.vitorpamplona.quartz.concord.cord02Community.HeldRoot
@@ -63,6 +64,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.content
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -146,7 +151,7 @@ class ConcordCommunityRepository(
         )
         val mergedEntries = ConcordCommunityList.merge(existingList.document.entries, listOf(entry))
         val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, existingList.document.residue)
-        val listWrites = existingList.fragments.planWrites(nextDocument, createdAt)
+        val listWrites = planCommunityListWrites(existingList, nextDocument, createdAt)
         val listEvents = listWrites.map { write ->
             ConcordCommunityListFragmentEvent.create(
                 signer = signer,
@@ -204,32 +209,51 @@ class ConcordCommunityRepository(
     )
 
     /**
-     * A partial relay read is safe to update only when the observed fragment set is
-     * explicitly incomplete. If it merely appears complete, a silent relay may hold a
-     * newer fragment and a repack could erase it.
+     * A partial relay read may proceed only when at least one readable fragment exists.
+     * Its update is then scoped to the fragment(s) being changed; a full repack is reserved
+     * for a read completed by every configured read relay.
      */
     private fun requireSafeCommunityListForWrite(snapshot: CommunityListSnapshot, operation: String) {
+        val hasWritableFragment = snapshot.fragments.held.keys.any {
+            it < snapshot.fragments.declared && it !in snapshot.fragments.unreadable
+        }
         if (
             ConcordCommunityListWritePolicy.mayWrite(
                 allReadRelaysResponded = snapshot.allReadRelaysResponded,
-                hasObservedFragment = !snapshot.fragments.isEmpty,
-                observedSetIsComplete = snapshot.fragments.complete,
+                hasWritableFragment = hasWritableFragment,
             )
         ) return
+
         val reason = when {
             snapshot.fragments.isEmpty ->
                 "no kind-33302 membership fragment was found on the responding relays"
-            snapshot.fragments.complete ->
-                "the observed fragments look complete, but slower relays may hold a newer copy"
+            snapshot.fragments.held.isEmpty() ->
+                "the membership fragments found on the responding relays could not be decrypted"
             else ->
-                "the observed membership fragments are incomplete and cannot be safely repacked"
+                "no readable fragment is available for a scoped update"
         }
         throw IllegalStateException(
             "$operation stopped safely: only ${snapshot.respondingReadRelays} of " +
                 "${snapshot.configuredReadRelays} read relays completed the Community List read; $reason. " +
-                "Check the read-relay connections and retry. Postilla will not overwrite a list it cannot verify."
+                "Postilla will not assume that an unavailable list is empty."
         )
     }
+
+    /**
+     * On a partial read, always use the CORD-02 scoped-write path—even if the fragments
+     * currently look complete. This avoids repacking from a snapshot that may be missing
+     * a newer copy held by one of the relays that did not answer.
+     */
+    private fun planCommunityListWrites(
+        snapshot: CommunityListSnapshot,
+        nextDocument: JsonObject,
+        createdAt: Long,
+    ): List<ConcordListFragmentSet.Write> =
+        if (snapshot.allReadRelaysResponded) {
+            snapshot.fragments.planWrites(nextDocument, createdAt)
+        } else {
+            ConcordCommunityListWritePolicy.planScopedWrites(snapshot.fragments, nextDocument, createdAt)
+        }
 
     /**
      * Reads every configured read relay to a per-relay EOSE, then merges remote and
@@ -283,16 +307,16 @@ class ConcordCommunityRepository(
                 ),
             )
             // Do not make a slow tail of configured relays hold the whole screen hostage.
-            // Two EOSE responses are enough for a useful partial read; all remaining relays
-            // still receive REQ and can contribute events during the short settling window.
-            // A partial/apparently complete fragment set remains read-only under the write policy.
+            // A two-thirds EOSE quorum provides a useful snapshot; remaining relays still
+            // receive REQ and may contribute during the settling window. Partial snapshots
+            // are updated only through scoped writes, never by repacking unseen fragments.
             withTimeoutOrNull(5_000L) { readQuorumEose.await() }
             // Let the first responders' EVENT frames drain before deciding the list is empty.
             // If no fragment arrived, give slower relays a second bounded window: treating two
             // fast empty responses as proof of an empty private list caused false-safe blocks.
             delay(1_000)
             if (events.isEmpty() && !allEose.isCompleted) {
-                withTimeoutOrNull(7_000L) { allEose.await() }
+                withTimeoutOrNull(4_000L) { allEose.await() }
             }
             allResponded = allEose.isCompleted
             delay(350)
@@ -359,11 +383,14 @@ class ConcordCommunityRepository(
     /** Loads remote and local memberships, retaining a visible warning for incomplete relay sync. */
     suspend fun loadLocalMemberships(signer: PostillaQuartzSigner): List<ConcordCommunityListEntry> = try {
         val snapshot = fetchCommunityList(signer)
-        communityListReadWarning = if (snapshot.allReadRelaysResponded) {
-            null
-        } else {
-            "Community list partly synchronized: ${snapshot.respondingReadRelays} of " +
-                "${snapshot.configuredReadRelays} read relays responded. Some memberships may still be missing."
+        communityListReadWarning = when {
+            snapshot.allReadRelaysResponded -> null
+            snapshot.fragments.isEmpty ->
+                "Community list check incomplete: ${snapshot.respondingReadRelays}/${snapshot.configuredReadRelays} read relays answered, but no membership fragment was found. Postilla will not treat this as an empty list."
+            snapshot.fragments.complete ->
+                "Community list loaded from ${snapshot.respondingReadRelays}/${snapshot.configuredReadRelays} read relays. The others did not answer; changes will use scoped updates to preserve fragments not seen."
+            else ->
+                "Community list partially loaded from ${snapshot.respondingReadRelays}/${snapshot.configuredReadRelays} read relays. Some fragments are still missing; changes will be scoped and will not repack unseen fragments."
         }
         snapshot.document.entries
     } catch (cancelled: CancellationException) {
@@ -1154,7 +1181,7 @@ class ConcordCommunityRepository(
         )
         val mergedEntries = ConcordCommunityList.merge(currentList.document.entries, listOf(rotatedEntry))
         val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, currentList.document.residue)
-        val listWrites = currentList.fragments.planWrites(nextDocument, nowSecs)
+        val listWrites = planCommunityListWrites(currentList, nextDocument, nowSecs)
         val membershipEvents = listWrites.map { write ->
             NostrEvent.fromJson(
                 ConcordCommunityListFragmentEvent.create(
@@ -1510,7 +1537,7 @@ class ConcordCommunityRepository(
             throw IllegalStateException("This invite conflicts with the keys already stored for the same community epoch")
         }
         val nextDocument = ConcordCommunityList.encodeInternal(mergedEntries, currentList.document.residue)
-        val writes = currentList.fragments.planWrites(nextDocument, System.currentTimeMillis() / 1000)
+        val writes = planCommunityListWrites(currentList, nextDocument, System.currentTimeMillis() / 1000)
         val listEvents = writes.map { write ->
             ConcordCommunityListFragmentEvent.create(
                 signer = signer,
