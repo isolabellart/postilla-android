@@ -1738,7 +1738,10 @@ class ConcordCommunityRepository(
         } catch (_: Exception) {
             emptySet()
         }
-        val visible = opened.filterNot { it.invite.communityId in joinedIds }
+        val declined = prefs.getStringSet(PREF_DECLINED_DIRECT_INVITES, emptySet()).orEmpty()
+        val visible = opened.filterNot {
+            it.invite.communityId in joinedIds || it.wrapId.lowercase() in declined
+        }
         val newest = events.maxOfOrNull { it.created_at } ?: cursor
         if (newest != null && newest > (cursor ?: 0L)) {
             withContext(Dispatchers.IO) {
@@ -1746,6 +1749,13 @@ class ConcordCommunityRepository(
             }
         }
         return visible
+    }
+
+    /** Remember an explicit decline so the same NIP-59 wrap does not resurface on the next sweep. */
+    fun declineDirectInvite(wrapId: String) {
+        val declined = prefs.getStringSet(PREF_DECLINED_DIRECT_INVITES, emptySet()).orEmpty().toMutableSet()
+        declined.add(wrapId.lowercase())
+        prefs.edit().putStringSet(PREF_DECLINED_DIRECT_INVITES, declined).apply()
     }
 
     suspend fun joinCommunityFromDirectInvite(
@@ -2394,6 +2404,7 @@ class ConcordCommunityRepository(
 
     private companion object {
         const val PREFS_NAME = "concord_community_journal"
+        private const val PREF_DECLINED_DIRECT_INVITES = "declined_direct_invite_wrap_ids"
         val REFUNDING_CATEGORIES = listOf("control", "invite_list", "registry", "invite_bundles", "kick", "rekey", "membership", "guestbook")
         val journalLock = Any()
     }
