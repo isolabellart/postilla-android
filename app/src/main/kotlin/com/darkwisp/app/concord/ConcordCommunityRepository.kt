@@ -1287,7 +1287,7 @@ class ConcordCommunityRepository(
             .map { channel ->
                 val privateEntry = if (channel.definition.private) {
                     membership.privateChannels.firstOrNull {
-                        it.id.equals(channel.channelIdHex, ignoreCase = true)
+                        it.channelId.equals(channel.channelIdHex, ignoreCase = true)
                     }
                 } else null
                 CommunityChannel(
