@@ -201,13 +201,18 @@ class ConcordCommunityRepository(
     )
 
     /**
-     * A partial relay read is safe to update only when we hold at least one kind-33302
-     * fragment: Quartz then scopes the write to known fragments instead of repacking an
-     * apparently empty list. With no fragment observed, every read relay must have sent
-     * EOSE or we cannot prove that the private list is empty.
+     * A partial relay read is safe to update only when the observed fragment set is
+     * explicitly incomplete. If it merely appears complete, a silent relay may hold a
+     * newer fragment and a repack could erase it.
      */
     private fun requireSafeCommunityListForWrite(snapshot: CommunityListSnapshot, operation: String) {
-        if (ConcordCommunityListWritePolicy.mayWrite(snapshot.allReadRelaysResponded, !snapshot.fragments.isEmpty)) return
+        if (
+            ConcordCommunityListWritePolicy.mayWrite(
+                allReadRelaysResponded = snapshot.allReadRelaysResponded,
+                hasObservedFragment = !snapshot.fragments.isEmpty,
+                observedSetIsComplete = snapshot.fragments.complete,
+            )
+        ) return
         throw IllegalStateException(
             "$operation stopped safely: only ${snapshot.respondingReadRelays} of " +
                 "${snapshot.configuredReadRelays} read relays completed the Community List read, " +
