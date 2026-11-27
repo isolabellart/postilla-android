@@ -1721,14 +1721,17 @@ class ConcordCommunityRepository(
         val opened = events.mapNotNull { event ->
             ConcordDirectInvite.openOrRetry(Event.fromJson(event.toJson()), signer)
         }.distinctBy { it.wrapId }.sortedByDescending { it.sentAt }
+        val joinedIds = runCatching {
+            loadLocalMemberships(signer).mapTo(HashSet()) { it.id }
+        }.getOrDefault(emptySet())
+        val visible = opened.filterNot { it.invite.communityId in joinedIds }
         val newest = events.maxOfOrNull { it.created_at } ?: cursor
         if (newest != null && newest > (cursor ?: 0L)) {
             withContext(Dispatchers.IO) {
                 prefs.edit().putLong("concord_direct_invites_newest_wrap", newest).apply()
             }
         }
-        val joinedIds = loadLocalMemberships(signer).mapTo(HashSet()) { it.id }
-        return opened.filterNot { it.invite.communityId in joinedIds }
+        return visible
     }
 
     suspend fun joinCommunityFromDirectInvite(
