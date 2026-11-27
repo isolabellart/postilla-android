@@ -12,6 +12,7 @@ import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
+import com.vitorpamplona.quartz.concord.cord05Invites.OpenedDirectInvite
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,12 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val communityId: String? = null,
         val isLoading: Boolean = false,
         val members: List<ConcordCommunityRepository.CommunityMember> = emptyList(),
+        val error: String? = null,
+    )
+
+    data class DirectInvitesState(
+        val isLoading: Boolean = false,
+        val invites: List<OpenedDirectInvite> = emptyList(),
         val error: String? = null,
     )
 
@@ -79,6 +86,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _members = MutableStateFlow(MembersState())
     val members: StateFlow<MembersState> = _members
 
+    private val _directInvites = MutableStateFlow(DirectInvitesState())
+    val directInvites: StateFlow<DirectInvitesState> = _directInvites
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
@@ -101,8 +111,12 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         memberships.clear()
         _channels.value = emptyList()
         _members.value = MembersState()
+        _directInvites.value = DirectInvitesState()
         _communityIcons.value = emptyMap()
-        if (signer != null) refreshLocalCommunities(signer)
+        if (signer != null) {
+            refreshLocalCommunities(signer)
+            refreshDirectInvites(signer)
+        }
         else {
             _communities.value = emptyList()
             _communityListWarning.value = null
@@ -405,6 +419,73 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearInviteResult() {
         if (!_invite.value.isCreating) _invite.value = InviteState()
+    }
+
+    fun refreshDirectInvites(signer: NostrSigner?) {
+        val repo = repository ?: return
+        if (signer == null) {
+            _directInvites.value = DirectInvitesState()
+            return
+        }
+        if (_directInvites.value.isLoading) return
+        _directInvites.value = _directInvites.value.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val invites = repo.fetchDirectInvites(PostillaQuartzSigner(signer))
+                _directInvites.value = DirectInvitesState(invites = invites)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _directInvites.value = _directInvites.value.copy(
+                    error = error.message ?: "Could not load Direct Invites",
+                )
+            } finally {
+                _directInvites.value = _directInvites.value.copy(isLoading = false)
+            }
+        }
+    }
+
+    fun acceptDirectInvite(opened: OpenedDirectInvite, signer: NostrSigner?) {
+        if (_join.value.isJoining) return
+        if (signer == null) {
+            _join.value = JoinState(error = "A writable Nostr signer is required")
+            return
+        }
+        val repo = repository ?: run {
+            _join.value = JoinState(error = "Community service is not initialized")
+            return
+        }
+        _join.value = JoinState(isJoining = true)
+        viewModelScope.launch {
+            try {
+                val quartzSigner = PostillaQuartzSigner(signer)
+                val result = repo.joinCommunityFromDirectInvite(quartzSigner, opened)
+                val entries = repo.loadLocalMemberships(quartzSigner)
+                val warning = repo.getCommunityListReadWarning()
+                if (!(entries.isEmpty() && memberships.isNotEmpty() && warning != null)) {
+                    memberships.clear()
+                    entries.forEach { memberships[it.id] = it }
+                    _communities.value = entries.map { entry ->
+                        CommunityItem(
+                            id = entry.id,
+                            name = entry.name.ifBlank { entry.id.take(12) },
+                            generalChannelId = repo.getLocalGeneralChannelId(entry.id),
+                            rootEpoch = entry.rootEpoch,
+                            relays = entry.relays,
+                        )
+                    }
+                }
+                _communityListWarning.value = warning
+                _directInvites.value = _directInvites.value.copy(
+                    invites = _directInvites.value.invites.filterNot { it.wrapId == opened.wrapId },
+                )
+                _join.value = JoinState(result = result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _join.value = JoinState(error = error.message ?: "Could not accept Direct Invite")
+            }
+        }
     }
 
     fun loadMembers(communityId: String, signer: NostrSigner?) {
