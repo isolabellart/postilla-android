@@ -1,6 +1,17 @@
 pluginManagement {
     repositories {
-        google()
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        // Keep the Magpie plugin marker on the Plugin Portal; Maven Central can rate-limit.
+        exclusiveContent {
+            forRepository { gradlePluginPortal() }
+            filter { includeGroup("com.vitorpamplona.magpie") }
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -11,6 +22,17 @@ pluginManagement {
             }
         }
     }
+}
+
+plugins {
+    id("com.vitorpamplona.magpie") version "0.2.3"
+}
+
+magpie {
+    group("com.vitorpamplona.quartz")
+    group("com.vitorpamplona.crypto")
+    group("com.vitorpamplona.negentropy")
+    group("com.vitorpamplona.schnorr256k1")
 }
 
 @Suppress("UnstableApiUsage")
