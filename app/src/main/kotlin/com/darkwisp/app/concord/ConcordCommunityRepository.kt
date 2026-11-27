@@ -1243,6 +1243,27 @@ class ConcordCommunityRepository(
         return ControlPlaneSnapshot(keys, wraps, editions, state)
     }
 
+    /** Downloads and decrypts the community icon using its member-sealed CORD-02 pointer. */
+    suspend fun loadCommunityIcon(membership: ConcordCommunityListEntry): ByteArray? {
+        val pointer = loadControlPlaneSnapshot(membership, requireAllResponders = false).state.metadata?.icon
+            ?: return null
+        require(pointer.url.startsWith("https://", ignoreCase = true)) {
+            "Community icon URL must use HTTPS"
+        }
+        val ciphertext = withContext(Dispatchers.IO) {
+            val connection = java.net.URL(pointer.url).openConnection()
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 15_000
+            connection.getInputStream().use { it.readBytes() }
+        }
+        return if (pointer.isResolvable()) {
+            pointer.decryptOrNull(ciphertext)
+                ?: throw IllegalStateException("Community icon failed its decryption or integrity check")
+        } else {
+            ciphertext
+        }
+    }
+
     data class CommunityChannel(
         val id: String,
         val name: String,
