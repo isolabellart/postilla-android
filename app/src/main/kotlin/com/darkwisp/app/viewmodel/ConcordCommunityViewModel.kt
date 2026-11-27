@@ -168,20 +168,18 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 val warning = repo.getCommunityListReadWarning()
                 // An incomplete/empty remote snapshot is not proof that existing memberships
                 // were removed. Keep the last known list visible until a usable snapshot arrives.
-                if (entries.isEmpty() && memberships.isNotEmpty() && warning != null) {
-                    _communityListWarning.value = warning
-                    return@launch
-                }
-                memberships.clear()
-                entries.forEach { memberships[it.id] = it }
-                _communities.value = entries.map { entry ->
-                    CommunityItem(
-                        id = entry.id,
-                        name = entry.name.ifBlank { entry.id.take(12) },
-                        generalChannelId = repo.getLocalGeneralChannelId(entry.id),
-                        rootEpoch = entry.rootEpoch,
-                        relays = entry.relays,
-                    )
+                if (!(entries.isEmpty() && memberships.isNotEmpty() && warning != null)) {
+                    memberships.clear()
+                    entries.forEach { memberships[it.id] = it }
+                    _communities.value = entries.map { entry ->
+                        CommunityItem(
+                            id = entry.id,
+                            name = entry.name.ifBlank { entry.id.take(12) },
+                            generalChannelId = repo.getLocalGeneralChannelId(entry.id),
+                            rootEpoch = entry.rootEpoch,
+                            relays = entry.relays,
+                        )
+                    }
                 }
                 _communityListWarning.value = warning
                 _creation.value = CreationState(result = result)
@@ -342,20 +340,18 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 val warning = repo.getCommunityListReadWarning()
                 // An incomplete/empty remote snapshot is not proof that existing memberships
                 // were removed. Keep the last known list visible until a usable snapshot arrives.
-                if (entries.isEmpty() && memberships.isNotEmpty() && warning != null) {
-                    _communityListWarning.value = warning
-                    return@launch
-                }
-                memberships.clear()
-                entries.forEach { memberships[it.id] = it }
-                _communities.value = entries.map { entry ->
-                    CommunityItem(
-                        id = entry.id,
-                        name = entry.name.ifBlank { entry.id.take(12) },
-                        generalChannelId = repo.getLocalGeneralChannelId(entry.id),
-                        rootEpoch = entry.rootEpoch,
-                        relays = entry.relays,
-                    )
+                if (!(entries.isEmpty() && memberships.isNotEmpty() && warning != null)) {
+                    memberships.clear()
+                    entries.forEach { memberships[it.id] = it }
+                    _communities.value = entries.map { entry ->
+                        CommunityItem(
+                            id = entry.id,
+                            name = entry.name.ifBlank { entry.id.take(12) },
+                            generalChannelId = repo.getLocalGeneralChannelId(entry.id),
+                            rootEpoch = entry.rootEpoch,
+                            relays = entry.relays,
+                        )
+                    }
                 }
                 _communityListWarning.value = warning
                 _join.value = JoinState(result = result)
