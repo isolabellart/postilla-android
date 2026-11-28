@@ -60,6 +60,9 @@ import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteRegistry
 import com.vitorpamplona.quartz.concord.cord06Rekey.ConcordRefounding
 import com.vitorpamplona.quartz.concord.cord06Rekey.ConcordRotationAuthority
 import com.vitorpamplona.quartz.concord.cord06Rekey.PendingRefounding
+import com.vitorpamplona.quartz.concord.cord06Rekey.ConcordRekey
+import com.vitorpamplona.quartz.nip59Giftwrap.rumors.RumorAssembler
+import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.Event
@@ -77,12 +80,17 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A read is complete only when every requested relay accepted the subscription and
@@ -141,6 +149,70 @@ internal fun concordGuestbookEpochs(
 ): List<Long> = (heldEpochs + currentEpoch).distinct().sorted()
 
 /**
+ * Appends a CORD-03 writer epoch without dropping unknown ledger fields or retired windows.
+ * Quartz validates the resulting ledger before it can be published.
+ */
+internal fun concordAppendWriterLedgerContent(
+    previousContent: String?,
+    channelIdHex: String,
+    atMs: Long,
+    epoch: Long,
+    writerPubKey: String,
+    rootEpoch: Long,
+    minterPubKey: String,
+    certifierPubKey: String,
+): String {
+    val channel = channelIdHex.lowercase()
+    val previous = previousContent?.let { raw ->
+        Json.parseToJsonElement(raw) as? JsonObject
+            ?: throw IllegalStateException("The existing Writers Ledger is not a JSON object")
+    }
+    if (previous != null) {
+        val previousChannel = (previous["channel"] as? JsonPrimitive)?.content
+        require(previousChannel.equals(channel, ignoreCase = true)) {
+            "The existing Writers Ledger belongs to another channel"
+        }
+    }
+    val entries = previous?.get("ledger")?.let { it as? JsonArray }
+        ?: if (previous == null) JsonArray(emptyList())
+        else throw IllegalStateException("The existing Writers Ledger has no valid ledger array")
+    require(entries.size < 64) {
+        "The Writers Ledger reached its 64-entry limit; safe compaction is required before another writer epoch"
+    }
+    require(epoch > 0L && rootEpoch >= 0L && atMs > 0L) { "Invalid Concord writer epoch metadata" }
+    fun validXOnly(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+    require(validXOnly(writerPubKey) && validXOnly(minterPubKey) && validXOnly(certifierPubKey)) {
+        "A Concord writer or certifier public key is malformed"
+    }
+    val previousEpoch = entries.maxOfOrNull { entry ->
+        val objectEntry = entry as? JsonObject
+        (objectEntry?.get("epoch") as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+    } ?: 0L
+    require(epoch > previousEpoch) { "The new writer epoch must be greater than every existing epoch" }
+    val lastAt = entries.lastOrNull()?.let { entry ->
+        val objectEntry = entry as? JsonObject
+        (objectEntry?.get("at") as? JsonPrimitive)?.content?.toLongOrNull()
+    } ?: 0L
+    require(atMs > lastAt) { "The writer ledger entry timestamp must advance monotonically" }
+    val writerEntry = buildJsonObject {
+        put("at", JsonPrimitive(atMs))
+        put("epoch", JsonPrimitive(epoch))
+        put("writer", JsonPrimitive(writerPubKey.lowercase()))
+        put("root", JsonPrimitive(rootEpoch))
+        put("by", JsonPrimitive(minterPubKey.lowercase()))
+        put("certifier", JsonPrimitive(certifierPubKey.lowercase()))
+    }
+    return buildJsonObject {
+        previous?.forEach { (key, value) ->
+            if (key != "channel" && key != "ledger") put(key, value)
+        }
+        put("channel", JsonPrimitive(channel))
+        put("ledger", JsonArray(entries + writerEntry))
+    }.toString()
+}
+
+/**
  * First Concord vertical slice: create a CORD-02 community, publish its two genesis
  * Control Plane wraps, and publish the owner's self-encrypted fragmented membership list.
  *
@@ -165,6 +237,7 @@ class ConcordCommunityRepository(
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
+    private val writerDutyLocks = ConcurrentHashMap<String, Mutex>()
 
     @Volatile
     private var communityListReadWarning: String? = null
@@ -2051,8 +2124,9 @@ class ConcordCommunityRepository(
     suspend fun loadCommunityChannelSnapshot(
         membership: ConcordCommunityListEntry,
         signer: PostillaQuartzSigner? = null,
+        requireAllResponders: Boolean = false,
     ): CommunityChannelSnapshot {
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireAllResponders)
         val accessPlanes = if (signer == null) emptyMap() else control.state.writers
             .filterValues { it.live != null }
             .keys
@@ -2078,7 +2152,7 @@ class ConcordCommunityRepository(
                     limit = 5000,
                 ),
                 label = "writer-access-${membership.id.take(12)}",
-                requireAllResponders = false,
+                requireAllResponders = requireAllResponders,
             )
         }
         val accessEventsByAddress = accessRead?.events?.groupBy { it.pubkey.lowercase() }.orEmpty()
@@ -2692,17 +2766,312 @@ class ConcordCommunityRepository(
     }
 
     /** Reads and coalesces the Guestbook against the currently folded authority roster. */
+    /**
+     * First writer mint for a channel whose Roles v2 policy restricts @everyone from sending.
+     * A complete Control Plane and complete current/historical Guestbook read are mandatory
+     * before a new writer epoch is published.
+     */
+    suspend fun ensureWriterAccess(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        channelId: String,
+    ): CommunityChannelSnapshot {
+        val lockKey = "${signer.pubKey.lowercase()}:${communityId.lowercase()}:${channelId.lowercase()}"
+        return writerDutyLocks.getOrPut(lockKey) { Mutex() }.withLock {
+            val membership = loadLocalMemberships(signer).firstOrNull {
+                it.id.equals(communityId, ignoreCase = true)
+            } ?: throw IllegalArgumentException("Community membership is not available on this device")
+            val channelHex = channelId.lowercase()
+            val channelBytes = channelHex.hexToByteArray()
+            val communityBytes = membership.id.hexToByteArray()
+            val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+            if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+            val channel = control.state.channels[channelHex]
+                ?: throw IllegalArgumentException("The channel is not present in the complete Concord Control Plane")
+            if (channel.definition.deleted) throw IllegalStateException("This channel has been deleted")
+            val authority = control.state.authority
+            if (authority.isBanned(signer.pubKey)) throw IllegalStateException("This account is banned from the community")
+            val canManage = authority.isOwner(signer.pubKey) || authority.channelPermissions(
+                signer.pubKey, channelHex, isPrivate = channel.definition.private,
+            ).has(ConcordPermissions.MANAGE_CHANNELS)
+            if (!canManage) throw IllegalStateException("Only the owner or a channel manager can initialize writer access")
+            require(membership.relays.isNotEmpty()) { "This community has no relays for writer-key delivery" }
+
+            val identity = writerDutyIdentity(signer.pubKey, membership.id, channelHex)
+            retryWriterDutyPending(signer, membership, channelHex)
+
+            var snapshot = loadCommunityChannelSnapshot(membership, signer, requireAllResponders = true)
+            var currentChannel = snapshot.channels.firstOrNull { it.id.equals(channelHex, ignoreCase = true) }
+                ?: throw IllegalStateException("The channel catalogue is not available")
+            if (currentChannel.writerCredential != null) return@withLock snapshot
+
+            val everyonePermissions = authority.everyonePermissions()
+            val everyoneScope = control.state.syncs[channelHex] ?: channelHex
+            val everyoneOverwrite = control.state.overwritesIn(everyoneScope).firstOrNull { it.targetKind == "everyone" }
+            val effectiveEveryone = if (everyonePermissions != null && everyoneOverwrite != null) {
+                (everyonePermissions minus everyoneOverwrite.deny) union everyoneOverwrite.allow
+            } else {
+                everyonePermissions
+            }
+            val restricted = control.state.isRolesV2 &&
+                effectiveEveryone != null &&
+                !effectiveEveryone.has(ConcordPermissions.SEND_MESSAGES)
+            val existingLedger = control.state.writers[channelHex]
+            if (!restricted && existingLedger?.live == null) return@withLock snapshot
+
+            val members = loadMembers(
+                signer = signer,
+                communityId = membership.id,
+                requireCompleteRead = true,
+            )
+            val memberPubkeys = (members.map { it.pubkey } + authority.roleHolders() + membership.owner + signer.pubKey)
+                .map { it.lowercase() }
+                .filter { it.isNotBlank() && !authority.isBanned(it) }
+                .toSet()
+            require(membership.owner.lowercase() in memberPubkeys) {
+                "The community owner is missing from the complete member roster"
+            }
+
+            val recipients = memberPubkeys.filter { pubkey ->
+                val permissions = authority.channelPermissions(pubkey, channelHex, isPrivate = channel.definition.private)
+                authority.isOwner(pubkey) ||
+                    permissions.has(ConcordPermissions.SEND_MESSAGES) ||
+                    permissions.has(ConcordPermissions.MANAGE_CHANNELS)
+            }.distinct().sorted()
+            val managers = recipients.filter { pubkey ->
+                authority.isOwner(pubkey) || authority.channelPermissions(
+                    pubkey, channelHex, isPrivate = channel.definition.private,
+                ).has(ConcordPermissions.MANAGE_CHANNELS)
+            }
+            require(recipients.isNotEmpty() && signer.pubKey.lowercase() in recipients) {
+                "This account is not entitled to a writer key in the selected channel"
+            }
+            require(managers.isNotEmpty()) { "No authorized manager can hold the channel certifier key" }
+
+            val writersEntityId = ConcordKeyDerivation.writersCoordinate(communityBytes, channelBytes)
+            val writersEntityHex = writersEntityId.toHexKey()
+            val heads = ConcordCommunityState.authorizedHeads(control.editions, communityBytes, membership.owner)
+            val head = heads[writersEntityHex]
+            val previousContent = head?.known?.content
+            val previousLedger = if (previousContent != null) {
+                ConcordWritersLedger.parse(previousContent, communityBytes, writersEntityHex)
+                    ?: throw IllegalStateException("The existing Writers Ledger is malformed; refusing to overwrite it")
+            } else {
+                if (existingLedger != null) {
+                    throw IllegalStateException("The Writers Ledger state exists but its authorized edition content is unavailable")
+                }
+                null
+            }
+            val epoch = (previousLedger?.windows?.maxOfOrNull { it.epoch } ?: 0L) + 1L
+            require(epoch > 0L) { "The Writers Ledger epoch overflowed" }
+            val nowMs = System.currentTimeMillis()
+            val lastAt = previousContent?.let { raw ->
+                val json = Json.parseToJsonElement(raw) as? JsonObject
+                (json?.get("ledger") as? JsonArray)?.lastOrNull()?.let { entry ->
+                    ((entry as? JsonObject)?.get("at") as? JsonPrimitive)?.content?.toLongOrNull()
+                }
+            } ?: 0L
+            val entryAtMs = maxOf(nowMs, lastAt + 1L)
+
+            val writerSecret = RandomInstance.bytes(32)
+            val certifierPair = KeyPair()
+            val certifierSecret = requireNotNull(certifierPair.privKey) { "Quartz did not generate a certifier private key" }
+            val certifierPub = certifierPair.pubKey.toHexKey()
+            val writerKey = ConcordKeyDerivation.channelWriterKey(writerSecret, channelBytes, epoch)
+            val writerPub = writerKey.publicKeyHex.lowercase()
+            val content = concordAppendWriterLedgerContent(
+                previousContent = previousContent,
+                channelIdHex = channelHex,
+                atMs = entryAtMs,
+                epoch = epoch,
+                writerPubKey = writerPub,
+                rootEpoch = membership.rootEpoch,
+                minterPubKey = signer.pubKey,
+                certifierPubKey = certifierPub,
+            )
+            check(ConcordWritersLedger.parse(content, communityBytes, writersEntityHex) != null) {
+                "Quartz rejected the generated Writers Ledger; nothing was published"
+            }
+
+            val binding = RankedRoster.bindingForWrite(
+                authority, communityBytes, ControlEntityKind.WRITERS,
+            )
+            val ledgerRumor = ControlEditionBuilder.rumor(
+                authorPubKey = signer.pubKey,
+                entityKind = ControlEntityKind.WRITERS,
+                entityId = writersEntityId,
+                version = (head?.version ?: 0L) + 1L,
+                prevHash = head?.hashHex?.hexToByteArray(),
+                content = content,
+                createdAt = entryAtMs / 1000L,
+                authorityCitation = authority.citationFor(signer.pubKey),
+                binding = binding,
+            )
+            val ledgerEvent = NostrEvent.fromJson(
+                ConcordStreamEnvelope.wrap(
+                    rumor = ledgerRumor,
+                    keys = control.keys,
+                    authorSigner = signer,
+                    encrypted = false,
+                    createdAt = entryAtMs / 1000L,
+                ).toJson(),
+            )
+
+            val accessPlane = ConcordChannelAccess.plane(
+                membership.root.hexToByteArray(), channelBytes, membership.rootEpoch,
+            )
+            relayPool.registerConcordStreamKeys(listOf(accessPlane), membership.relays)
+            val certs = recipients.associate { recipient ->
+                recipient to ConcordWritersLedger.signCertificate(
+                    communityBytes, channelBytes, epoch, writerPub, certifierSecret, certifierPub,
+                )
+            }
+            val writerDeliveries = buildWriterAccessEvents(
+                signer, accessPlane, ConcordKeyDerivation.writerScope(channelBytes),
+                epoch, writerSecret, writerPub, recipients, certs, mint = true,
+            )
+            val certifierDeliveries = buildWriterAccessEvents(
+                signer, accessPlane, ConcordKeyDerivation.certifierScope(channelBytes),
+                epoch, certifierSecret, certifierPub, managers, emptyMap(), mint = false,
+            )
+            val accessEvents = writerDeliveries + certifierDeliveries
+            require(accessEvents.isNotEmpty()) { "Quartz produced no writer-access delivery events" }
+
+            val pendingControlKey = "$identity:control"
+            val pendingAccessKey = "$identity:access"
+            val pendingEpochKey = "$identity:epoch"
+            securePrefs.edit()
+                .putString(pendingControlKey, ledgerEvent.toJson())
+                .putStringSet(pendingAccessKey, accessEvents.map { it.toJson() }.toSet())
+                .putLong(pendingEpochKey, epoch)
+                .putString("$identity:secret:$epoch", writerSecret.toHexKey())
+                .putString("$identity:certifier:$epoch", certifierSecret.toHexKey())
+                .commit()
+            journalEvents(membership.id, listOf(ledgerEvent) + accessEvents)
+
+            if (!publishConfirmed(ledgerEvent, membership.relays)) {
+                throw IllegalStateException("The Writers Ledger has not been confirmed by a relay; writer deliveries remain safely queued")
+            }
+            securePrefs.edit().remove(pendingControlKey).commit()
+
+            val confirmedControl = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+            val confirmedLive = confirmedControl.state.writers[channelHex]?.live
+            if (confirmedLive?.epoch != epoch || !confirmedLive.writerPubKey.equals(writerPub, ignoreCase = true)) {
+                throw IllegalStateException("The Writers Ledger is not yet visible in the complete Control Plane; writer deliveries remain queued")
+            }
+            for (event in accessEvents) {
+                if (!publishConfirmed(event, membership.relays)) {
+                    throw IllegalStateException("Writer keys are not yet confirmed on the Access Plane; refresh to retry the same signed deliveries")
+                }
+            }
+            securePrefs.edit().remove(pendingAccessKey).remove(pendingEpochKey).commit()
+
+            snapshot = loadCommunityChannelSnapshot(membership, signer, requireAllResponders = true)
+            currentChannel = snapshot.channels.firstOrNull { it.id.equals(channelHex, ignoreCase = true) }
+                ?: throw IllegalStateException("The channel disappeared after writer-key delivery")
+            if (currentChannel.writerCredential?.canSendMessages != true &&
+                currentChannel.writerCredential?.canManageChannel != true
+            ) {
+                throw IllegalStateException("Writer deliveries were confirmed, but Quartz could not open a valid credential for this account")
+            }
+            snapshot
+        }
+    }
+
+    private fun writerDutyIdentity(ownerPubkey: String, communityId: String, channelId: String): String =
+        "writer_duty:${ownerPubkey.lowercase()}:${communityId.lowercase()}:${channelId.lowercase()}"
+
+    private suspend fun buildWriterAccessEvents(
+        signer: PostillaQuartzSigner,
+        accessPlane: GroupKey,
+        scopeId: ByteArray,
+        epoch: Long,
+        key: ByteArray,
+        writerPubKey: String,
+        recipients: List<String>,
+        certificates: Map<String, String>,
+        mint: Boolean,
+    ): List<NostrEvent> {
+        val blobs = recipients.map { recipient ->
+            ConcordRekey.blobForSigner(signer, recipient.hexToByteArray(), scopeId, epoch, key)
+        }
+        val chunks = ConcordRekey.chunkBlobs(
+            blobs,
+            envelopeBytes = 2_048,
+            perEvent = if (certificates.isEmpty()) ConcordChannelAccess.MAX_BLOBS else ConcordChannelAccess.MAX_BLOBS_WITH_CERTS,
+        )
+        val recipientByLocator = blobs.zip(recipients).associate { it.first.locator to it.second }
+        val createdAt = System.currentTimeMillis() / 1000L
+        return chunks.mapIndexed { index, chunk ->
+            val tags = ConcordChannelAccess.accessTags(scopeId, epoch, writerPubKey).toMutableList()
+            chunk.forEach { blob ->
+                val recipient = recipientByLocator[blob.locator]
+                    ?: throw IllegalStateException("A writer delivery lost its recipient locator")
+                certificates[recipient]?.let { tags += arrayOf(ConcordChannelAccess.TAG_CERT, recipient, it) }
+            }
+            if (mint) tags += arrayOf(ConcordChannelAccess.TAG_MINT, (index + 1).toString(), chunks.size.toString())
+            val rumor = RumorAssembler.assembleRumor<Event>(
+                pubKey = signer.pubKey,
+                createdAt = createdAt,
+                kind = ConcordRekey.KIND,
+                tags = tags.toTypedArray(),
+                content = ConcordRekey.encodeContent(chunk),
+            )
+            NostrEvent.fromJson(
+                ConcordStreamEnvelope.wrap(
+                    rumor = rumor,
+                    stream = accessPlane,
+                    authorSigner = signer,
+                    encrypted = true,
+                    createdAt = createdAt,
+                ).toJson(),
+            )
+        }
+    }
+
+    private suspend fun retryWriterDutyPending(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        channelId: String,
+    ) {
+        val identity = writerDutyIdentity(signer.pubKey, membership.id, channelId)
+        val pendingControlKey = "$identity:control"
+        val pendingAccessKey = "$identity:access"
+        val pendingEpochKey = "$identity:epoch"
+        securePrefs.getString(pendingControlKey, null)?.let { raw ->
+            if (!publishConfirmed(NostrEvent.fromJson(raw), membership.relays)) {
+                throw IllegalStateException("The Writers Ledger is still pending relay confirmation")
+            }
+            securePrefs.edit().remove(pendingControlKey).commit()
+        }
+        val pending = securePrefs.getStringSet(pendingAccessKey, emptySet()).orEmpty().toList()
+        if (pending.isEmpty()) return
+        val expectedEpoch = securePrefs.getLong(pendingEpochKey, -1L)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        val live = control.state.writers[channelId]?.live
+        if (expectedEpoch <= 0L || live?.epoch != expectedEpoch) {
+            throw IllegalStateException("Pending writer deliveries do not match the current Writers Ledger")
+        }
+        for (raw in pending.sorted()) {
+            if (!publishConfirmed(NostrEvent.fromJson(raw), membership.relays)) {
+                throw IllegalStateException("Writer keys are still awaiting relay confirmation")
+            }
+        }
+        securePrefs.edit().remove(pendingAccessKey).remove(pendingEpochKey).commit()
+    }
+
     suspend fun loadMembers(
         signer: PostillaQuartzSigner,
         communityId: String,
         observedAuthors: Map<String, ConcordObservedAuthorActivity> = emptyMap(),
+        requireCompleteRead: Boolean = false,
     ): List<CommunityMember> {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         // Member visibility is read-only and can use a partial snapshot when relays are
         // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
         // immediately before publishing, so this display snapshot cannot authorize a write.
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireCompleteRead)
         // A Refounding changes the current Guestbook plane. Older roots remain in the
         // member's private list so the roster can still apply historical JOIN/LEAVE/KICK
         // motions in timestamp order instead of losing everyone who joined before rotation.
@@ -2736,7 +3105,7 @@ class ConcordCommunityRepository(
             label = "guestbook",
             // Membership visibility must degrade gracefully when a relay is silent.
             // A partial Guestbook is useful for display; it must never authorize destructive actions.
-            requireAllResponders = false,
+            requireAllResponders = requireCompleteRead,
         )
         val entries = events.mapNotNull { event ->
             val guestbookKey = guestbookKeyByAddress[event.pubkey.lowercase()] ?: return@mapNotNull null
