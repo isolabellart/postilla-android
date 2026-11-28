@@ -228,7 +228,7 @@ class ConcordChatRepository(
         require(message.isNotEmpty() || imetas.isNotEmpty()) { "Message cannot be empty" }
         val channelEpoch = privateChannelEpoch ?: epoch
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
-        val messageTags = writerExtraTags(extraTags, writerCredential)
+        val messageTags = writerExtraTags(extraTags, writerCredential, kind = 9)
         val parent = replyTo?.rawRumorJson?.takeIf { it.isNotBlank() }?.let(Event::fromJson)
 
         val rumor = when {
@@ -320,7 +320,7 @@ class ConcordChatRepository(
         require(reaction.isNotBlank()) { "Reaction cannot be empty" }
         val channelEpoch = privateChannelEpoch ?: epoch
         val key = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
-        val reactionTags = writerExtraTags(emptyArray(), writerCredential)
+        val reactionTags = writerExtraTags(emptyArray(), writerCredential, kind = 7)
         val rumor = ChannelChat.reaction(
             authorPubKey = signer.pubKey,
             channelId = channelIdHex,
@@ -350,14 +350,30 @@ class ConcordChatRepository(
     private fun writerExtraTags(
         existing: Array<Array<String>>,
         credential: ConcordChatWriterCredential?,
+        kind: Int,
     ): Array<Array<String>> {
-        require(existing.none { it.firstOrNull() == ConcordWritersLedger.WEPOCH || it.firstOrNull() == ConcordWritersLedger.WCERT }) {
-            "Writer binding tags are reserved for the authorized writer credential"
+        require(existing.none {
+            it.firstOrNull() == ConcordWritersLedger.WEPOCH ||
+                it.firstOrNull() == ConcordWritersLedger.WCERT ||
+                it.firstOrNull() == "rcert"
+        }) { "Writer binding tags are reserved for the authorized writer credential" }
+        val useWriter = credential != null && (kind != 7 || credential.locked)
+        if (!useWriter) return existing
+        val allowed = if (kind == 7) credential!!.canAddReactions else credential!!.canSendMessages
+        require(allowed) {
+            if (kind == 7) "This account does not have ADD_REACTIONS in this channel"
+            else "This account does not have SEND_MESSAGES in this channel"
         }
-        if (credential == null) return existing
-        require(credential.canSendMessages) { "This account does not have SEND_MESSAGES in this channel" }
-        val base = existing + arrayOf(arrayOf(ConcordWritersLedger.WEPOCH, credential.context.window.epoch.toString()))
-        return credential.certificate?.let { base + arrayOf(arrayOf(ConcordWritersLedger.WCERT, it)) } ?: base
+        val base = existing + arrayOf(arrayOf(ConcordWritersLedger.WEPOCH, credential!!.context.window.epoch.toString()))
+        credential.certificate?.let { return base + arrayOf(arrayOf(ConcordWritersLedger.WCERT, it)) }
+        credential.scopedCertificate?.let { signature ->
+            val rights = credential.scopedRights ?: throw IllegalStateException("Scoped writer certificate has no rights")
+            return base + arrayOf(arrayOf("rcert", signature, rights.toString()))
+        }
+        require(credential.context.window.certifier == null || credential.canManageChannel) {
+            "The current writer delivery has no certificate for this account"
+        }
+        return base
     }
 
     private suspend fun encodeOutboundRumor(
@@ -370,43 +386,107 @@ class ConcordChatRepository(
         writerCredential: ConcordChatWriterCredential?,
         createdAt: Long,
     ): Pair<NostrEvent, ConcordChatReadPlane> {
-        val stream = if (writerCredential == null) {
+        // Restricted channels route normal posts to the writer address. A reaction stays
+        // on the read address unless the Channel is locked, in which case every kind rides
+        // the writer plane and an ADD_REACTIONS-scoped certificate may be used.
+        val writer = writerCredential?.takeIf { rumor.kind != 7 || it.locked }
+        val stream = if (writer == null) {
             channelKey
         } else {
-            val context = writerCredential.context
+            val context = writer.context
             val window = context.window
             val live = context.ledger.live
-            require(writerCredential.canSendMessages) { "This account does not have SEND_MESSAGES in this channel" }
+            val allowed = if (rumor.kind == 7) writer.canAddReactions else writer.canSendMessages
+            require(allowed) {
+                if (rumor.kind == 7) "This account does not have ADD_REACTIONS in this channel"
+                else "This account does not have SEND_MESSAGES in this channel"
+            }
             require(!context.authority.isBanned(signer.pubKey)) { "This account is banned from the community" }
             require(live?.epoch == window.epoch && live.writerPubKey.equals(window.writerPubKey, ignoreCase = true)) {
                 "The writer authorization changed; refresh the channel before sending"
             }
-            require(writerCredential.streamKey.publicKeyHex.equals(window.writerPubKey, ignoreCase = true)) {
+            require(writer.streamKey.publicKeyHex.equals(window.writerPubKey, ignoreCase = true)) {
                 "The delivered writer key does not match the live writer address"
             }
             val postMs = ChannelChat.orderingMs(rumor)
                 ?: throw IllegalStateException("The message has an invalid Concord ordering timestamp")
-            val stands = context.ledger.postStands(
-                context.communityIdHex.hexToByteArray(),
-                window,
-                signer.pubKey,
-                postMs,
-                writerCredential.certificate,
-                writerCredential.canManageChannel || context.authority.isOwner(signer.pubKey),
-            )
+            require(postMs >= window.fromMs && (window.toMs == null || postMs < window.toMs)) {
+                "The writer window is not active for this post"
+            }
+            val privileged = writer.canManageChannel || context.authority.isOwner(signer.pubKey)
+            val stands = when {
+                writer.certificate != null -> context.ledger.postStands(
+                    context.communityIdHex.hexToByteArray(),
+                    window,
+                    signer.pubKey,
+                    postMs,
+                    writer.certificate,
+                    privileged,
+                )
+                writer.scopedCertificate != null -> {
+                    val rights = writer.scopedRights ?: return null
+                    val requiredBit = if (rumor.kind == 7) ConcordPermissions.ADD_REACTIONS else return null
+                    val covers = (rights and (1uL shl requiredBit)) != 0uL
+                    val certifier = window.certifier
+                    covers && certifier != null &&
+                        verifyConcordScopedWriterCertificate(
+                            context.communityIdHex.hexToByteArray(),
+                            channelIdHex.hexToByteArray(),
+                            window.epoch,
+                            signer.pubKey,
+                            certifier,
+                            writer.scopedCertificate,
+                            rights,
+                        ) && !context.ledger.isStopped(window, signer.pubKey, postMs)
+                }
+                else -> context.ledger.postStands(
+                    context.communityIdHex.hexToByteArray(),
+                    window,
+                    signer.pubKey,
+                    postMs,
+                    null,
+                    privileged,
+                )
+            }
             require(stands) { "The writer certificate or active writer window does not authorize this post" }
-            GroupKey(writerCredential.streamKey.secretKey, writerCredential.streamKey.publicKey, channelKey.conversationKey)
+            GroupKey(writer.streamKey.secretKey, writer.streamKey.publicKey, channelKey.conversationKey)
         }
 
         val seal = ConcordStreamEnvelope.seal(rumor, stream, signer, encrypted = true)
-        val wrap = ConcordStreamEnvelope.wrapSeal(
-            seal = seal,
-            signerKey = stream,
-            readConversationKey = channelKey.conversationKey,
-            createdAt = createdAt,
-        )
+        val wrap = if (writer == null) {
+            ConcordStreamEnvelope.wrap(
+                rumor = rumor,
+                stream = channelKey,
+                authorSigner = signer,
+                encrypted = true,
+                createdAt = createdAt,
+            )
+        } else {
+            ConcordStreamEnvelope.wrapSeal(
+                seal = seal,
+                signerKey = stream,
+                readConversationKey = channelKey.conversationKey,
+                createdAt = createdAt,
+            )
+        }
         val event = NostrEvent.fromJson(wrap.toJson())
-        return event to ConcordChatReadPlane(stream, channelEpoch, writerCredential?.context)
+        val accessContext = writerCredential?.context?.let { context ->
+            val state = context.communityState
+            if (state == null) null else ConcordChatChannelContext(
+                communityIdHex = context.communityIdHex,
+                channelIdHex = channelIdHex,
+                communityState = state,
+                channelPrivate = context.channelPrivate,
+                locked = context.locked,
+                ledger = context.ledger,
+            )
+        }
+        return event to ConcordChatReadPlane(
+            stream = stream,
+            channelEpoch = channelEpoch,
+            writerContext = writer?.context,
+            channelContext = accessContext,
+        )
     }
 
     private suspend fun publish(event: NostrEvent, communityRelays: List<String>): Boolean {
