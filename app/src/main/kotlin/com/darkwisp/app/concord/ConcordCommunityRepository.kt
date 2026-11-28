@@ -141,19 +141,20 @@ internal fun concordRolePermissionAllowsChannelAction(
 ): Boolean = !rolesV2 || isOwner || rolePermissionGranted
 
 /**
- * Current Control Plane relay metadata is trusted only after a verified read quorum.
- * Until then, keep using the user's encrypted bootstrap relay hints.
+ * The Control Plane is a procedural, authenticated stream: a successfully opened and
+ * folded metadata edition is usable even when some relays have not reached EOSE yet.
+ * Requiring a relay quorum before adopting its relay list can strand a member on stale
+ * bootstrap relays after an Armada-side relay change. Operations that mutate authority
+ * still enforce their own complete/quorum read policy before publishing.
  */
 internal fun concordEffectiveCommunityRelays(
     metadataRelays: Collection<String>,
     fallbackRelays: Collection<String>,
-    controlReadHasQuorum: Boolean,
+    @Suppress("UNUSED_PARAMETER") controlReadHasQuorum: Boolean,
 ): List<String> {
-    val preferred = if (controlReadHasQuorum) {
-        metadataRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
-    } else {
-        emptyList()
-    }
+    val preferred = metadataRelays
+        .mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
+        .distinct()
     return preferred.ifEmpty {
         fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
     }
@@ -2546,13 +2547,11 @@ class ConcordCommunityRepository(
             channels = channels,
             controlRead = control.readSummary,
             writerAccessRead = accessRead?.summary,
-            communityName = control.state.metadata?.name
-                ?.takeIf { it.isNotBlank() && control.readSummary.hasQuorum },
-            communityDescription = control.state.metadata?.description
-                ?.takeIf { control.readSummary.hasQuorum },
-            communityRelays = currentCommunityRelays
-                .takeIf { control.readSummary.hasQuorum }
-                .orEmpty(),
+            // The snapshot is already authenticated/decrypted and successfully folded.
+            // A missing relay EOSE must not hide valid newer metadata from Armada.
+            communityName = control.state.metadata?.name?.takeIf { it.isNotBlank() },
+            communityDescription = control.state.metadata?.description,
+            communityRelays = currentCommunityRelays,
         )
     }
 
