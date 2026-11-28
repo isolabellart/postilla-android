@@ -2261,6 +2261,8 @@ class ConcordCommunityRepository(
         val lastSeenAt: Long = joinedAt * 1000L,
         val roleIds: List<String> = emptyList(),
         val roleNames: List<String> = emptyList(),
+        /** The community owner is a protocol authority, not an ordinary assignable role. */
+        val isOwner: Boolean = false,
         val canKick: Boolean = false,
         val canBan: Boolean = false,
         val requiresRefounding: Boolean = false,
@@ -3588,12 +3590,14 @@ class ConcordCommunityRepository(
         // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
         // immediately before publishing, so this display snapshot cannot authorize a write.
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
-        val memberRelays = concordEffectiveCommunityRelays(
+        val currentMemberRelays = concordEffectiveCommunityRelays(
             metadataRelays = control.state.metadata?.relays.orEmpty(),
             fallbackRelays = membership.relays,
             controlReadHasQuorum = control.readSummary.hasQuorum,
         )
-        require(memberRelays.isNotEmpty()) { "This community has no usable relay for member history" }
+        val bootstrapMemberRelays = concordNormalizeRelayTargets(membership.relays)
+        val memberRelays = concordNormalizeRelayTargets(currentMemberRelays + bootstrapMemberRelays)
+        require(memberRelays.isNotEmpty()) { "This community has no usable current or bootstrap relay for member history" }
         if (requireCompleteRead) {
             require(control.readSummary.hasQuorum) {
                 "The Control Plane did not reach the verified member-read quorum"
@@ -3622,7 +3626,7 @@ class ConcordCommunityRepository(
         require(guestbookKeys.isNotEmpty()) { "No current or historical Guestbook key is available" }
         val guestbookKeyByAddress = guestbookKeys.associateBy { it.publicKeyHex.lowercase() }
         relayPool.registerConcordStreamKeys(guestbookKeys, memberRelays)
-        val guestbookRead = fetchEventsFromRelaysDetailed(
+        val guestbookReadRaw = fetchEventsFromRelaysDetailed(
             relays = memberRelays,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
@@ -3632,9 +3636,23 @@ class ConcordCommunityRepository(
             label = "guestbook",
             requireAllResponders = false,
         )
+        val bestMemberTargets = concordBestRelayReadTargets(
+            currentTargets = currentMemberRelays,
+            bootstrapTargets = bootstrapMemberRelays,
+            sentRelays = guestbookReadRaw.summary.sentRelays,
+            eoseRelays = guestbookReadRaw.summary.respondedRelays,
+        )
+        val guestbookRead = RelayFetchResult(
+            events = guestbookReadRaw.events,
+            summary = RelayReadSummary(
+                requestedRelays = bestMemberTargets,
+                sentRelays = guestbookReadRaw.summary.sentRelays.filter { it in bestMemberTargets },
+                respondedRelays = guestbookReadRaw.summary.respondedRelays.filter { it in bestMemberTargets },
+            ),
+        )
         if (requireCompleteRead) {
             require(guestbookRead.summary.hasQuorum) {
-                "The Guestbook did not reach the verified two-thirds member-read quorum"
+                "The Guestbook did not reach a verified two-thirds quorum on either current or bootstrap relays"
             }
         }
         val events = guestbookRead.events
@@ -3673,7 +3691,8 @@ class ConcordCommunityRepository(
                 joinedAt = activity?.firstSeenAtMs?.div(1000L)?.coerceAtLeast(0L) ?: 0L,
                 lastSeenAt = activity?.lastSeenAtMs ?: 0L,
                 roleIds = heldRoleIds,
-                roleNames = heldRoleNames,
+                                roleNames = heldRoleNames,
+                isOwner = authority.isOwner(pubkey),
                 canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
                     (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
                 canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
@@ -3695,7 +3714,8 @@ class ConcordCommunityRepository(
                 inviteLabel = entry.inviteLabel,
                 lastSeenAt = activity?.lastSeenAtMs ?: entry.ms,
                 roleIds = heldRoleIds,
-                roleNames = heldRoleNames,
+                                roleNames = heldRoleNames,
+                isOwner = authority.isOwner(pubkey),
                 canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
                     (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
                 canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
@@ -3722,7 +3742,8 @@ class ConcordCommunityRepository(
                     joinedAt = (activity.firstSeenAtMs / 1000L).coerceAtLeast(0L),
                     lastSeenAt = activity.lastSeenAtMs,
                     roleIds = heldRoleIds,
-                    roleNames = heldRoleNames,
+                                    roleNames = heldRoleNames,
+                isOwner = authority.isOwner(pubkey),
                     canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
                         (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
                     canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),

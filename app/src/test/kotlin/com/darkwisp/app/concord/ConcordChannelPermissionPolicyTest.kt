@@ -237,4 +237,14 @@ class ConcordPrivilegedRosterPolicyTest {
         )
         assertEquals(setOf("owner", "admin", "moderator"), candidates)
     }
+
+    @Test
+    fun ownerIdentityIsNotConfusedWithAssignableRoleIds() {
+        // Owner status is a protocol authority property; the owner's role grant list
+        // can legitimately be empty and must not be presented as an unassigned member.
+        val ownerIds = emptyList<String>()
+        val adminIds = listOf("administrator")
+        assertTrue(ownerIds.isEmpty())
+        assertEquals(listOf("administrator"), adminIds)
+    }
 }

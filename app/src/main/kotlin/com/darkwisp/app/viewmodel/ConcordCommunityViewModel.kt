@@ -776,6 +776,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 "A valid Concord Control Plane snapshot is not available yet ($detail relays responded). Refresh channels before sending.",
             )
         }
+        if (channelSync.controlComplete != true) {
+            throw IllegalStateException(
+                "The Control Plane has not reached a verified relay quorum " +
+                    "(${channelSync.controlResponded}/${channelSync.controlRequested}). " +
+                    "Postilla remains read-only until channel permissions are verified.",
+            )
+        }
         val channelInfo = findChannel(communityId, channelId)
             ?: throw IllegalStateException("Channel access is not loaded yet. Refresh the channel list before sending.")
         if (!channelInfo.canViewChannel) {
@@ -843,7 +850,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         if (signerPubkey?.lowercase() != activeSigner.pubkeyHex.lowercase()) return false
         val entry = memberships[communityId] ?: return false
         val channelSync = _channelSyncByCommunity.value[communityId] ?: return false
-        if (!channelSync.controlReady) return false
+        if (!channelSync.controlReady || !channelSync.controlComplete) return false
         val channel = findChannel(communityId, channelId) ?: return false
         if (!channel.canViewChannel || !channel.canAddReactions) return false
         if (channel.isPrivate && channel.privateKeyHex.isNullOrBlank()) return false

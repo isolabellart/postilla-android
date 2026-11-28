@@ -122,12 +122,13 @@ fun ConcordRoomScreen(
     val selectedChannelAccessible = selectedChannel?.let {
         it.canViewChannel && (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
     } ?: false
-    // Relay EOSE completeness is diagnostic, not a prerequisite for using an
-    // authenticated/folded Control Plane snapshot. Restricted channels still require
-    // the recipient's current, cryptographically validated CORD-03 writer credential.
+    // A partial authenticated snapshot may render readable group data, but it does
+    // not authorize outbound actions. Sending and reactions require a verified relay
+    // quorum plus the channel permission, private key and any restricted writer credential.
     val selectedChannelCanSend = selectedChannel?.let {
         !channelSync.isLoading &&
             channelSync.controlReady &&
+            channelSync.controlComplete &&
             it.canSendMessages &&
             (!it.writeRestricted || it.writerCredential?.canSendMessages == true) &&
             (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
@@ -187,7 +188,10 @@ fun ConcordRoomScreen(
     var metadataDraftDescription by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftRelays by rememberSaveable(communityId) { mutableStateOf("") }
     val memberRoleOptions = remember(membersState.members) {
-        membersState.members.flatMap { it.roleNames }.filter(String::isNotBlank).distinct().sorted()
+        buildList {
+            if (membersState.members.any { it.isOwner }) add("Owner")
+            addAll(membersState.members.flatMap { it.roleNames }.filter(String::isNotBlank))
+        }.distinct().sorted()
     }
     val filteredMembers = remember(membersState.members, memberSearchQuery, memberRoleFilter) {
         membersState.members.filter { member ->
@@ -197,6 +201,7 @@ fun ConcordRoomScreen(
                 member.pubkey.contains(query, ignoreCase = true) ||
                 profileName.contains(query, ignoreCase = true)
             val matchesRole = memberRoleFilter.isBlank() ||
+                (memberRoleFilter.equals("Owner", ignoreCase = true) && member.isOwner) ||
                 member.roleNames.any { it.equals(memberRoleFilter, ignoreCase = true) }
             matchesQuery && matchesRole
         }
@@ -326,9 +331,11 @@ fun ConcordRoomScreen(
     LaunchedEffect(showMembersDialog, communityId, signer?.pubkeyHex) {
         val activeSigner = signer
         if (showMembersDialog && activeSigner != null) {
+            viewModel.refreshRoles(communityId, activeSigner)
             viewModel.loadMembers(communityId, activeSigner)
             while (true) {
                 kotlinx.coroutines.delay(60_000L)
+                viewModel.refreshRoles(communityId, activeSigner)
                 viewModel.loadMembers(communityId, activeSigner)
             }
         }
@@ -628,6 +635,8 @@ fun ConcordRoomScreen(
                                 "The private channel key is not available on this account."
                             !channelSync.controlReady ->
                                 "A verified Control Plane snapshot is not available yet. Refresh channels."
+                            !channelSync.controlComplete ->
+                                "The Control Plane relay quorum is not verified. Sending remains disabled until permissions are confirmed."
                             channelSync.isLoading ->
                                 "Concord channel synchronization is still in progress."
                             else -> "Channel access is not ready for this account."
@@ -784,7 +793,7 @@ fun ConcordRoomScreen(
                     !channelSync.controlReady ->
                         "No authenticated Control Plane snapshot is available yet. Refresh the channel list and check the community relays."
                     !channelSync.controlComplete ->
-                        "Control Plane snapshot available; relay synchronization is partial (${channelSync.controlResponded}/${channelSync.controlRequested} confirmed). Postilla will continue converging without blocking channels whose permissions and keys are already validated."
+                        "The Control Plane snapshot is readable, but its relay quorum is not verified (${channelSync.controlResponded}/${channelSync.controlRequested}). Channels remain read-only until permissions are confirmed."
                     selectedChannel?.writeRestricted == true &&
                         selectedChannel.writerCredential?.canSendMessages != true ->
                         "This channel requires a current CORD-03 writer delivery for this account. Refresh channel access."
@@ -1269,7 +1278,10 @@ fun ConcordRoomScreen(
                     Text("Community members", modifier = Modifier.weight(1f))
                     TextButton(
                         enabled = signer != null && !membersState.isLoading,
-                        onClick = { viewModel.loadMembers(communityId, signer) },
+                        onClick = {
+                            viewModel.refreshRoles(communityId, signer)
+                            viewModel.loadMembers(communityId, signer)
+                        },
                     ) { Text(if (membersState.isLoading) "Refreshing…" else "Refresh") }
                 }
             },
@@ -1367,13 +1379,16 @@ fun ConcordRoomScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                             Text(
-                                                if (member.roleNames.isEmpty()) "No assigned roles" else member.roleNames.joinToString(" · "),
+                                                (if (member.isOwner) listOf("Owner") else emptyList())
+                                                    .plus(member.roleNames)
+                                                    .distinct()
+                                                    .let { labels -> if (labels.isEmpty()) "No assigned roles" else labels.joinToString(" · ") },
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.primary,
                                             )
                                         }
                                     }
-                                    if (rolesState.canManageRoles) {
+                                    if (rolesState.canManageRoles && !member.isOwner) {
                                         Row(
                                             horizontalArrangement = Arrangement.End,
                                             modifier = Modifier.fillMaxWidth(),
@@ -1436,7 +1451,7 @@ fun ConcordRoomScreen(
                     when {
                         rolesState.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                            Text("Reading the complete Control Plane…", modifier = Modifier.padding(start = 10.dp))
+                            Text("Verifying the Control Plane relay quorum…", modifier = Modifier.padding(start = 10.dp))
                         }
                         rolesState.error != null -> Text(rolesState.error!!, color = MaterialTheme.colorScheme.error)
                         else -> {
