@@ -1,6 +1,7 @@
 package com.darkwisp.app.ui.screen
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -9,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import coil3.compose.AsyncImage
@@ -17,6 +19,8 @@ import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
 import com.darkwisp.app.nostr.Blossom
 import com.vitorpamplona.crypto.aes.AESGCM
 import com.vitorpamplona.crypto.random.RandomInstance
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
+import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.BlossomRepository
@@ -31,6 +35,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -190,7 +195,6 @@ fun ConcordRoomScreen(
         it.kind == 1111 && selectedThreadRoot != null &&
             (it.rootId == selectedThreadRoot?.id || it.replyToId == selectedThreadRoot?.id)
     }.sortedBy { it.orderingAtMs }
-    var showCommunityMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showChannelMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var memberSearchQuery by rememberSaveable(communityId) { mutableStateOf("") }
@@ -222,6 +226,10 @@ fun ConcordRoomScreen(
     var metadataDraftName by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftDescription by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftRelays by rememberSaveable(communityId) { mutableStateOf("") }
+    var metadataIconUri by remember(communityId) { mutableStateOf<Uri?>(null) }
+    var metadataBannerUri by remember(communityId) { mutableStateOf<Uri?>(null) }
+    val metadataIconPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { metadataIconUri = it }
+    val metadataBannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { metadataBannerUri = it }
     val memberRoleOptions = remember(membersState.members) {
         buildList {
             if (membersState.members.any { it.isOwner }) add("Owner")
@@ -496,6 +504,53 @@ fun ConcordRoomScreen(
                     }
                     item {
                         NavigationDrawerItem(
+                            label = { Text("Edit group details") },
+                            icon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            selected = false,
+                            enabled = signer != null,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                metadataDraftName = community?.name.orEmpty()
+                                metadataDraftDescription = community?.description.orEmpty()
+                                metadataDraftRelays = community?.relays.orEmpty().joinToString("\n")
+                                metadataIconUri = null
+                                metadataBannerUri = null
+                                managementError = null
+                                showEditMetadataDialog = true
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Manage roles") },
+                            icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                            selected = false,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showRolesDialog = true
+                                roleDialogError = null
+                                viewModel.refreshRoles(communityId, signer)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Manage public invite links") },
+                            icon = { Icon(Icons.Default.Link, contentDescription = null) },
+                            selected = false,
+                            enabled = signer != null,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showInviteLinksDialog = true
+                                viewModel.refreshInviteLinks(communityId, signer)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
                             label = { Text("Members") },
                             icon = { Icon(Icons.Default.Group, contentDescription = null) },
                             selected = false,
@@ -617,93 +672,6 @@ fun ConcordRoomScreen(
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                         Icon(Icons.Default.Menu, contentDescription = "Open community navigation")
                     }
-                    Box {
-                        IconButton(onClick = { showCommunityMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Community actions")
-                        }
-                        DropdownMenu(
-                            expanded = showCommunityMenu,
-                            onDismissRequest = { showCommunityMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Edit group details") },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    metadataDraftName = community?.name.orEmpty()
-                                    metadataDraftDescription = community?.description.orEmpty()
-                                    metadataDraftRelays = community?.relays.orEmpty().joinToString("\n")
-                                    managementError = null
-                                    showEditMetadataDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Manage roles") },
-                                leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showRolesDialog = true
-                                    roleDialogError = null
-                                    viewModel.refreshRoles(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Members") },
-                                leadingIcon = { Icon(Icons.Default.Group, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showMembersDialog = true
-                                    viewModel.loadMembers(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Invite by npub") },
-                                leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showDirectInviteDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (inviteState.isCreating) "Preparing invite link…" else "Share public invite link") },
-                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                                enabled = signer != null && !inviteState.isCreating,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    viewModel.createInviteLink(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Manage public invite links") },
-                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showInviteLinksDialog = true
-                                    viewModel.refreshInviteLinks(communityId, signer)
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Create public channel") },
-                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showCreateChannelDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Refresh channels") },
-                                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    viewModel.refreshChannels(communityId)
-                                },
-                            )
-                        }
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
@@ -717,8 +685,8 @@ fun ConcordRoomScreen(
                     modifier = Modifier.fillMaxWidth()
                         .imePadding()
                         .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     if (selectedChannel != null && !selectedChannelCanSend) {
                         val accessMessage = when {
@@ -738,19 +706,20 @@ fun ConcordRoomScreen(
                             else -> "Channel access is not ready for this account."
                         }
                         Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(10.dp),
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                                modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
                                     accessMessage,
                                     modifier = Modifier.weight(1f),
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 2,
                                 )
                                 TextButton(
                                     enabled = !channelSync.isLoading,
@@ -770,38 +739,16 @@ fun ConcordRoomScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(
                             1.dp,
                             MaterialTheme.colorScheme.outlineVariant,
                         ),
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    "MESSAGE TO",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    "#" + (selectedChannel?.name ?: "general"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    "· Concord",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                             replyToMessage?.let { parent ->
                                 Surface(
                                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -843,12 +790,12 @@ fun ConcordRoomScreen(
                                 }
                                 Box(
                                     modifier = Modifier.weight(1f)
-                                        .heightIn(min = 54.dp, max = 144.dp)
+                                        .heightIn(min = 42.dp, max = 112.dp)
                                         .background(
                                             MaterialTheme.colorScheme.surface,
                                             RoundedCornerShape(18.dp),
                                         )
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
                                     contentAlignment = Alignment.CenterStart,
                                 ) {
                                     BasicTextField(
@@ -907,12 +854,6 @@ fun ConcordRoomScreen(
                                     }
                                 }
                             }
-                            Text(
-                                "Enter adds a new line. Messages are sent only after relay confirmation.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 4.dp),
-                            )
                         }
                     }
                 }
@@ -1438,8 +1379,8 @@ fun ConcordRoomScreen(
                                         Icon(
                                             painter = painterResource(R.drawable.ic_bolt),
                                             contentDescription = "Zap author without exposing this group message",
-                                            tint = if (!ownMessage && signer != null) WispThemeColors.zapColor
-                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                            // A zap action being available is not proof that a zap was received.
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(17.dp),
                                         )
                                     }
@@ -2046,8 +1987,20 @@ fun ConcordRoomScreen(
                         minLines = 2,
                         maxLines = 5,
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { metadataIconPicker.launch("image/*") }) {
+                            Icon(Icons.Default.Image, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (metadataIconUri == null) "Replace icon" else "Icon selected")
+                        }
+                        TextButton(onClick = { metadataBannerPicker.launch("image/*") }) {
+                            Icon(Icons.Default.Photo, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (metadataBannerUri == null) "Replace banner" else "Banner selected")
+                        }
+                    }
                     Text(
-                        "Enter one secure wss:// relay per line. Existing encrypted icon and banner images are preserved.",
+                        "Images are encrypted before upload. Leave either image unchanged by not selecting a replacement.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2068,11 +2021,35 @@ fun ConcordRoomScreen(
                                     .map { it.trim() }
                                     .filter { it.isNotBlank() }
                                     .distinct()
+                                suspend fun uploadEncryptedMetadataImage(uri: Uri): ImagePointer {
+                                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                                    val bytes = withContext(Dispatchers.IO) {
+                                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                            ?: throw IllegalStateException("Could not read the selected image")
+                                    }
+                                    require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 * 1024) {
+                                        "Community image must be smaller than 8 MB"
+                                    }
+                                    val key = RandomInstance.bytes(32)
+                                    val nonce = RandomInstance.bytes(16)
+                                    val encrypted = AESGCM(key, nonce).encrypt(bytes)
+                                    val url = blossomRepository.uploadMedia(encrypted, "application/octet-stream", "bin", signer!!)
+                                    return ImagePointer(
+                                        url = url,
+                                        key = key.toHexKey(),
+                                        nonce = nonce.toHexKey(),
+                                        hash = Blossom.sha256Hex(bytes),
+                                    )
+                                }
+                                val icon = metadataIconUri?.let { uploadEncryptedMetadataImage(it) }
+                                val banner = metadataBannerUri?.let { uploadEncryptedMetadataImage(it) }
                                 viewModel.updateCommunityMetadata(
                                     communityId = communityId,
                                     name = metadataDraftName,
                                     description = metadataDraftDescription,
                                     relays = relays,
+                                    icon = icon,
+                                    banner = banner,
                                     signer = signer,
                                 )
                                 showEditMetadataDialog = false
