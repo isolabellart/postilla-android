@@ -910,7 +910,13 @@ class ConcordChatRepository(
                     val envelope = ConcordStreamEnvelope.open(Event.fromJson(outer.toJson()), plane.stream)
                     val writer = plane.writerContext
                     if (writer == null) {
-                        ChannelChat.acceptOpened(envelope, channelIdHex, plane.channelEpoch, ChannelChat.CHAT_KINDS)
+                        val rumor = ChannelChat.acceptOpened(
+                            envelope,
+                            channelIdHex,
+                            plane.channelEpoch,
+                            ChannelChat.CHAT_KINDS,
+                        ) ?: return@runCatching null
+                        acceptReadPlanePost(rumor, channelIdHex, plane)
                     } else {
                         val rumor = ChannelChat.acceptWriterOpened(
                             envelope,
@@ -943,10 +949,53 @@ class ConcordChatRepository(
         )
     }
 
-    /**
-     * A valid wrapper and matching wepoch prove only that a ledger writer published the post.
-     * The folded authority, certificate and stop window still have to authorize its author.
-     */
+    private fun permissionAllows(
+        state: ConcordCommunityState?,
+        channelIdHex: String,
+        channelPrivate: Boolean,
+        author: String,
+        kind: Int,
+    ): Boolean {
+        if (state?.authority?.isBanned(author) == true) return false
+        // Legacy Concord roles have no channel-scoped CORD-04 permission model.
+        if (state == null || !state.isRolesV2) return true
+        val permissions = state.channelPermissions(author, channelIdHex, isPrivate = channelPrivate)
+        return when (kind) {
+            7 -> permissions.has(ConcordPermissions.ADD_REACTIONS)
+            5 -> permissions.has(ConcordPermissions.MANAGE_MESSAGES)
+            else -> permissions.has(ConcordPermissions.SEND_MESSAGES)
+        }
+    }
+
+    private fun acceptReadPlanePost(
+        rumor: Event,
+        channelIdHex: String,
+        plane: ConcordChatReadPlane,
+    ): Event? {
+        val context = plane.channelContext ?: return rumor
+        if (!permissionAllows(
+                context.communityState,
+                channelIdHex,
+                context.channelPrivate,
+                rumor.pubKey,
+                rumor.kind,
+            )
+        ) return null
+
+        val postMs = ChannelChat.orderingMs(rumor) ?: return null
+        val matchingWriterWindow = context.ledger?.windows?.firstOrNull { window ->
+            postMs >= window.fromMs && (window.toMs == null || postMs < window.toMs)
+        }
+        if (matchingWriterWindow != null) {
+            // In restricted (not locked) channels ordinary posts belong to the writer
+            // stream, while reactions and deletes remain on the read stream. A locked
+            // channel moves every kind to the writer address.
+            val shouldRideWriter = context.locked || (rumor.kind != 7 && rumor.kind != 5)
+            if (shouldRideWriter) return null
+        }
+        return rumor
+    }
+
     private fun acceptWriterPost(
         rumor: Event,
         channelIdHex: String,
@@ -956,42 +1005,81 @@ class ConcordChatRepository(
         if (!writer.window.writerPubKey.equals(plane.stream.publicKeyHex, ignoreCase = true)) return null
         val foldedWindow = writer.ledger.windowAt(plane.stream.publicKeyHex) ?: return null
         if (foldedWindow.epoch != writer.window.epoch) return null
+        if (!writer.locked && (rumor.kind == 7 || rumor.kind == 5)) return null
 
         val author = rumor.pubKey
-        val permissions = writer.communityState?.channelPermissions(
+        if (!permissionAllows(writer.communityState, channelIdHex, writer.channelPrivate, author, rumor.kind)) return null
+        val postMs = ChannelChat.orderingMs(rumor) ?: return null
+        if (postMs < writer.window.fromMs || (writer.window.toMs != null && postMs >= writer.window.toMs)) return null
+
+        val state = writer.communityState
+        val authorPermissions = state?.takeIf { it.isRolesV2 }?.channelPermissions(
             author,
             channelIdHex,
             isPrivate = writer.channelPrivate,
         )
         val privileged = writer.authority.isOwner(author) ||
             (!writer.authority.isBanned(author) &&
-                (permissions?.has(ConcordPermissions.MANAGE_CHANNELS)
+                (authorPermissions?.has(ConcordPermissions.MANAGE_CHANNELS)
                     ?: writer.authority.hasPermission(author, ConcordPermissions.MANAGE_CHANNELS)))
-        val postMs = ChannelChat.orderingMs(rumor) ?: return null
         val certifier = writer.window.certifier
+        val fullTags = rumor.tags.count { it.firstOrNull() == ConcordWritersLedger.WCERT }
+        val scopedTags = rumor.tags.filter { it.firstOrNull() == "rcert" }
+        if (fullTags > 1 || scopedTags.size > 1 || (fullTags > 0 && scopedTags.isNotEmpty())) return null
 
-        val certificate = ConcordWritersLedger.wcertOf(rumor)
-        if (!privileged && certifier != null) {
-            if (certificate == null) return null
-            val certificateValid = ConcordWritersLedger.verifyCertificate(
-                writer.communityIdHex.hexToByteArray(),
-                channelIdHex.hexToByteArray(),
-                writer.window.epoch,
-                author,
-                certifier,
-                certificate,
-            )
-            if (!certificateValid) return null
+        val fullCertificate = ConcordWritersLedger.wcertOf(rumor)
+        if (fullTags == 1 && fullCertificate == null) return null
+        val scoped = scopedTags.singleOrNull()?.let { tag ->
+            if (tag.size != 3) return null
+            val signature = tag.getOrNull(1)?.takeIf {
+                it.length == 128 && it.hexToByteArrayOrNull()?.size == 64
+            } ?: return null
+            val rightsText = tag.getOrNull(2) ?: return null
+            val rights = rightsText.toULongOrNull()?.takeIf { it.toString() == rightsText } ?: return null
+            signature to rights
         }
 
-        val stands = !writer.authority.isBanned(author) && writer.ledger.postStands(
-            writer.communityIdHex.hexToByteArray(),
-            writer.window,
-            author,
-            postMs,
-            certificate,
-            privileged,
-        )
+        val stands = when {
+            fullCertificate != null -> writer.ledger.postStands(
+                writer.communityIdHex.hexToByteArray(),
+                writer.window,
+                author,
+                postMs,
+                fullCertificate,
+                privileged,
+            )
+            scoped != null -> {
+                val (signature, rights) = scoped
+                val scopedMask =
+                    (1uL shl ConcordPermissions.ADD_REACTIONS) or
+                        (1uL shl ConcordPermissions.CONNECT)
+                if ((rights and scopedMask.inv()) != 0uL) return null
+                val requiredBit = when (rumor.kind) {
+                    7 -> ConcordPermissions.ADD_REACTIONS
+                    ChannelChat.KIND_TYPING -> ConcordPermissions.CONNECT
+                    else -> return null
+                }
+                val covers = (rights and (1uL shl requiredBit)) != 0uL
+                covers && certifier != null &&
+                    verifyConcordScopedWriterCertificate(
+                        writer.communityIdHex.hexToByteArray(),
+                        channelIdHex.hexToByteArray(),
+                        writer.window.epoch,
+                        author,
+                        certifier,
+                        signature,
+                        rights,
+                    ) && !writer.ledger.isStopped(writer.window, author, postMs)
+            }
+            else -> writer.ledger.postStands(
+                writer.communityIdHex.hexToByteArray(),
+                writer.window,
+                author,
+                postMs,
+                null,
+                privileged,
+            )
+        }
         return rumor.takeIf { stands }
     }
 
