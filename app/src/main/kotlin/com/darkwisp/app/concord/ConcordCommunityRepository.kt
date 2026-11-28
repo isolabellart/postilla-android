@@ -110,10 +110,10 @@ internal fun concordRelayReadIsComplete(
 }
 
 /**
- * A chat read is ready when a safe two-thirds quorum of the requested relays accepted
- * the subscription and reached EOSE. A relay which did not accept REQ never counts.
- * Administrative writes continue to use [concordRelayReadIsComplete] and require every
- * requested relay, so a quorum can never authorize a potentially stale Control Plane edit.
+ * A chat read is ready only when strictly more than two thirds of the requested relays
+ * both accepted the subscription and reached EOSE. A relay which did not accept REQ never
+ * counts, even if an EOSE-like callback is observed. Administrative writes continue to use
+ * [concordRelayReadIsComplete] and require every requested relay.
  */
 internal fun concordRelayReadHasQuorum(
     requestedRelays: Collection<String>,
@@ -125,7 +125,11 @@ internal fun concordRelayReadHasQuorum(
     val sent = sentRelays.toSet()
     val eose = eoseRelays.toSet()
     val confirmed = requested.count { it in sent && it in eose }
-    return confirmed >= ConcordCommunityListWritePolicy.requiredReadRelayResponses(requested.size)
+    val required = minOf(
+        requested.size,
+        maxOf(2, (requested.size * 2L / 3L + 1L).toInt()),
+    )
+    return confirmed >= required
 }
 
 /** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
