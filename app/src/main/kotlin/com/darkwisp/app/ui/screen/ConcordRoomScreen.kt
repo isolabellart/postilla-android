@@ -707,7 +707,7 @@ fun ConcordRoomScreen(
                                     accessMessage,
                                     modifier = Modifier.weight(1f),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.labelSmall
+                                    style = MaterialTheme.typography.labelSmall,
                                     maxLines = 2,
                                 )
                                 TextButton(
