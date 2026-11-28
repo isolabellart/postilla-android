@@ -14,6 +14,9 @@ import com.vitorpamplona.quartz.concord.cord03Channels.ConcordWritersLedger
 import com.vitorpamplona.quartz.concord.cord03Channels.WriterWindow
 import com.vitorpamplona.quartz.concord.cord04Roles.AuthorityResolver
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
+import com.vitorpamplona.crypto.sha2.sha256
+import com.vitorpamplona.quartz.utils.Secp256k1Instance
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArrayOrNull
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordImageAttachment
 import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
@@ -92,6 +95,16 @@ data class ConcordChatMessage(
 )
 
 /** The authorization snapshot needed to accept a CORD-03 writer-address post. */
+data class ConcordChatChannelContext(
+    val communityIdHex: String,
+    val channelIdHex: String,
+    val communityState: ConcordCommunityState,
+    val channelPrivate: Boolean,
+    val locked: Boolean,
+    val ledger: ConcordWritersLedger?,
+)
+
+/** The authorization snapshot needed to accept a CORD-03 writer-address post. */
 data class ConcordChatWriterContext(
     val communityIdHex: String,
     val ledger: ConcordWritersLedger,
@@ -99,6 +112,7 @@ data class ConcordChatWriterContext(
     val authority: AuthorityResolver,
     val channelPrivate: Boolean = false,
     val communityState: ConcordCommunityState? = null,
+    val locked: Boolean = false,
 )
 
 /** In-memory restricted-stream credential. The secret never enters persistent storage. */
@@ -108,6 +122,12 @@ data class ConcordChatWriterCredential(
     val certificate: String?,
     val canSendMessages: Boolean,
     val canManageChannel: Boolean,
+    val scopedCertificate: String? = null,
+    val scopedRights: ULong? = null,
+    val canAddReactions: Boolean = false,
+    val canConnect: Boolean = false,
+    val canManageMessages: Boolean = false,
+    val locked: Boolean = false,
 )
 
 /** A CORD-03 plane: a direct/historical read address or a writer address with its read key. */
@@ -116,7 +136,47 @@ data class ConcordChatReadPlane(
     val channelEpoch: Long,
     /** Non-null only for a writer address; carries the folded ledger and role snapshot. */
     val writerContext: ConcordChatWriterContext? = null,
+    /** Permission and routing snapshot used for read-plane events as well as writer events. */
+    val channelContext: ConcordChatChannelContext? = null,
 )
+
+/** CORD-03 scoped writer certificate digest, wire-compatible with Vector's rcert. */
+internal fun concordScopedWriterCertificateDigest(
+    communityId: ByteArray,
+    channelId: ByteArray,
+    epoch: Long,
+    writerPubkey: ByteArray,
+    rights: ULong,
+): ByteArray {
+    require(communityId.size == 32 && channelId.size == 32 && writerPubkey.size == 32)
+    val epochBytes = ByteArray(8) { i -> (epoch ushr (56 - i * 8)).toByte() }
+    val rightsBytes = ByteArray(8) { i -> (rights shr (56 - i * 8)).toByte() }
+    return sha256(
+        "concord/writer-cert-scoped".encodeToByteArray() +
+            communityId + channelId + epochBytes + writerPubkey + rightsBytes,
+    )
+}
+
+internal fun verifyConcordScopedWriterCertificate(
+    communityId: ByteArray,
+    channelId: ByteArray,
+    epoch: Long,
+    writerPubkeyHex: String,
+    certifierHex: String,
+    signatureHex: String,
+    rights: ULong,
+): Boolean {
+    val signature = signatureHex.hexToByteArrayOrNull()?.takeIf { it.size == 64 } ?: return false
+    val writer = writerPubkeyHex.hexToByteArrayOrNull()?.takeIf { it.size == 32 } ?: return false
+    val certifier = certifierHex.hexToByteArrayOrNull()?.takeIf { it.size == 32 } ?: return false
+    val digest = concordScopedWriterCertificateDigest(communityId, channelId, epoch, writer, rights)
+    val eventId = ConcordWritersLedger.certificateEventId(certifierHex, digest)
+    return try {
+        Secp256k1Instance.verifySchnorr(signature, eventId, certifier)
+    } catch (_: Exception) {
+        false
+    }
+}
 
 data class ConcordObservedAuthorActivity(
     val firstSeenAtMs: Long,
