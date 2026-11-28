@@ -160,6 +160,20 @@ internal fun concordEffectiveCommunityRelays(
 }
 
 /**
+ * Writer-key and ledger publications must reach both the current metadata relay set
+ * and the encrypted membership's bootstrap relays. Readers may use the current set
+ * alone, but dual publication avoids writing to one set and then reading from another.
+ */
+internal fun concordCommunityRelayTargets(
+    metadataRelays: Collection<String>,
+    fallbackRelays: Collection<String>,
+    controlReadHasQuorum: Boolean,
+): List<String> = (
+    concordEffectiveCommunityRelays(metadataRelays, fallbackRelays, controlReadHasQuorum) +
+        fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
+    ).distinct()
+
+/**
  * Concord writer streams are required as soon as @everyone cannot send, even when
  * @everyone may still react or connect. A live ledger also keeps the channel on its
  * established writer plane until the ledger is retired.
@@ -2952,6 +2966,11 @@ class ConcordCommunityRepository(
             require(control.readSummary.hasQuorum) {
                 "Writer Duty requires a verified two-thirds Control Plane read quorum"
             }
+            var writerRelayTargets = concordCommunityRelayTargets(
+                control.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                control.readSummary.hasQuorum,
+            )
             if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
             var channel = control.state.channels[channelHex]
                 ?: throw IllegalArgumentException("The channel is not present in the complete Concord Control Plane")
@@ -2970,6 +2989,11 @@ class ConcordCommunityRepository(
             require(control.readSummary.hasQuorum) {
                 "Writer Duty could not re-read a verified Control Plane quorum after retry"
             }
+            writerRelayTargets = concordCommunityRelayTargets(
+                control.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                control.readSummary.hasQuorum,
+            )
             if (control.state.dissolved || control.state.authority.isBanned(signer.pubKey)) {
                 throw IllegalStateException("This account no longer has valid community authority")
             }
@@ -3115,7 +3139,7 @@ class ConcordCommunityRepository(
             val accessPlane = ConcordChannelAccess.plane(
                 membership.root.hexToByteArray(), channelBytes, membership.rootEpoch,
             )
-            relayPool.registerConcordStreamKeys(listOf(accessPlane), membership.relays)
+            relayPool.registerConcordStreamKeys(listOf(accessPlane), writerRelayTargets)
             val certs = recipients.associate { recipient ->
                 recipient to ConcordWritersLedger.signCertificate(
                     communityBytes, channelBytes, epoch, writerPub, certifierSecret, certifierPub,
@@ -3144,7 +3168,7 @@ class ConcordCommunityRepository(
                 .commit()
             journalEvents(membership.id, listOf(ledgerEvent) + accessEvents)
 
-            if (!publishConfirmed(ledgerEvent, membership.relays)) {
+            if (!publishConfirmed(ledgerEvent, writerRelayTargets)) {
                 throw IllegalStateException("The Writers Ledger has not been confirmed by a relay; writer deliveries remain safely queued")
             }
             securePrefs.edit().remove(pendingControlKey).commit()
@@ -3153,12 +3177,17 @@ class ConcordCommunityRepository(
             require(confirmedControl.readSummary.hasQuorum) {
                 "The Writers Ledger cannot be verified because the Control Plane quorum was lost"
             }
+            writerRelayTargets = concordCommunityRelayTargets(
+                confirmedControl.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                confirmedControl.readSummary.hasQuorum,
+            )
             val confirmedLive = confirmedControl.state.writers[channelHex]?.live
             if (confirmedLive?.epoch != epoch || !confirmedLive.writerPubKey.equals(writerPub, ignoreCase = true)) {
                 throw IllegalStateException("The Writers Ledger is not yet visible in the complete Control Plane; writer deliveries remain queued")
             }
             for (event in accessEvents) {
-                if (!publishConfirmed(event, membership.relays)) {
+                if (!publishConfirmed(event, writerRelayTargets)) {
                     throw IllegalStateException("Writer keys are not yet confirmed on the Access Plane; refresh to retry the same signed deliveries")
                 }
             }
@@ -3240,12 +3269,21 @@ class ConcordCommunityRepository(
         membership: ConcordCommunityListEntry,
         channelId: String,
     ) {
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        require(control.readSummary.hasQuorum) {
+            "Pending writer deliveries require a verified two-thirds Control Plane quorum"
+        }
+        val deliveryRelays = concordCommunityRelayTargets(
+            control.state.metadata?.relays.orEmpty(),
+            membership.relays,
+            control.readSummary.hasQuorum,
+        )
         val identity = writerDutyIdentity(signer.pubKey, membership.id, channelId)
         val pendingControlKey = "$identity:control"
         val pendingAccessKey = "$identity:access"
         val pendingEpochKey = "$identity:epoch"
         securePrefs.getString(pendingControlKey, null)?.let { raw ->
-            if (!publishConfirmed(NostrEvent.fromJson(raw), membership.relays)) {
+            if (!publishConfirmed(NostrEvent.fromJson(raw), deliveryRelays)) {
                 throw IllegalStateException("The Writers Ledger is still pending relay confirmation")
             }
             securePrefs.edit().remove(pendingControlKey).commit()
@@ -3253,16 +3291,12 @@ class ConcordCommunityRepository(
         val pending = securePrefs.getStringSet(pendingAccessKey, emptySet()).orEmpty().toList()
         if (pending.isEmpty()) return
         val expectedEpoch = securePrefs.getLong(pendingEpochKey, -1L)
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
-        require(control.readSummary.hasQuorum) {
-            "Pending writer deliveries require a verified two-thirds Control Plane quorum"
-        }
         val live = control.state.writers[channelId]?.live
         if (expectedEpoch <= 0L || live?.epoch != expectedEpoch) {
             throw IllegalStateException("Pending writer deliveries do not match the current Writers Ledger")
         }
         for (raw in pending.sorted()) {
-            if (!publishConfirmed(NostrEvent.fromJson(raw), membership.relays)) {
+            if (!publishConfirmed(NostrEvent.fromJson(raw), deliveryRelays)) {
                 throw IllegalStateException("Writer keys are still awaiting relay confirmation")
             }
         }
