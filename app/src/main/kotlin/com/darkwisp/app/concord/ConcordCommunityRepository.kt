@@ -2799,7 +2799,7 @@ class ConcordCommunityRepository(
             if (channel.definition.deleted) throw IllegalStateException("This channel has been deleted")
             val authority = control.state.authority
             if (authority.isBanned(signer.pubKey)) throw IllegalStateException("This account is banned from the community")
-            val canManage = authority.isOwner(signer.pubKey) || authority.channelPermissions(
+            val canManage = authority.isOwner(signer.pubKey) || control.state.channelPermissions(
                 signer.pubKey, channelHex, isPrivate = channel.definition.private,
             ).has(ConcordPermissions.MANAGE_CHANNELS)
             if (!canManage) throw IllegalStateException("Only the owner or a channel manager can initialize writer access")
@@ -2815,7 +2815,7 @@ class ConcordCommunityRepository(
                 throw IllegalStateException("This account no longer has valid community authority")
             }
             val refreshedCanManage = control.state.authority.isOwner(signer.pubKey) ||
-                control.state.authority.channelPermissions(
+                control.state.control.state.channelPermissions(
                     signer.pubKey,
                     channelHex,
                     isPrivate = control.state.channels[channelHex]?.definition?.private == true,
@@ -2863,13 +2863,13 @@ class ConcordCommunityRepository(
             }
 
             val recipients = memberPubkeys.filter { pubkey ->
-                val permissions = authority.channelPermissions(pubkey, channelHex, isPrivate = channel.definition.private)
+                val permissions = control.state.channelPermissions(pubkey, channelHex, isPrivate = channel.definition.private)
                 authority.isOwner(pubkey) ||
                     permissions.has(ConcordPermissions.SEND_MESSAGES) ||
                     permissions.has(ConcordPermissions.MANAGE_CHANNELS)
             }.distinct().sorted()
             val managers = recipients.filter { pubkey ->
-                authority.isOwner(pubkey) || authority.channelPermissions(
+                authority.isOwner(pubkey) || control.state.channelPermissions(
                     pubkey, channelHex, isPrivate = channel.definition.private,
                 ).has(ConcordPermissions.MANAGE_CHANNELS)
             }
