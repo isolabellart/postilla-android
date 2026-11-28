@@ -26,6 +26,8 @@ import com.vitorpamplona.quartz.concord.cord02Community.Guestbook
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookAction
 import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordLimits
+import com.vitorpamplona.quartz.concord.cord04Roles.MetadataEntity
 import com.vitorpamplona.quartz.concord.cord04Roles.ChannelEntity
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordDirectInvite
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteVend
@@ -680,6 +682,81 @@ class ConcordCommunityRepository(
     )
 
     /** Reads the complete Control Plane before exposing roles for a management operation. */
+    /**
+     * Publish a new Community Metadata edition (CORD-02 §6 / CORD-04 vsk 0).
+     * The current metadata is folded first and unknown fields are preserved, so an edit
+     * from Postilla cannot erase another client's custom fields or the CORD-08 timer.
+     */
+    suspend fun updateCommunityMetadata(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        name: String,
+        description: String?,
+        icon: ImagePointer?,
+        banner: ImagePointer?,
+        relays: List<String>,
+    ) {
+        val normalizedName = name.trim()
+        require(ConcordLimits.nameFits(normalizedName)) {
+            "Community name must be at most 64 UTF-8 bytes"
+        }
+        val normalizedDescription = description?.trim()?.takeIf { it.isNotEmpty() }
+        require(ConcordLimits.descriptionFits(normalizedDescription)) {
+            "Community description must be at most 10,000 UTF-8 bytes"
+        }
+        val normalizedRelays = relays.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        require(normalizedRelays.size <= 20) {
+            "Community metadata cannot contain more than 20 relay URLs"
+        }
+        require(normalizedRelays.all { it.startsWith("wss://") }) {
+            "Community relays must use secure wss:// URLs"
+        }
+
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!control.state.authority.isOwner(signer.pubKey) &&
+            !control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_METADATA)
+        ) {
+            throw IllegalStateException("This account cannot manage community metadata")
+        }
+
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val currentHead = heads[membership.id]
+        val standing = control.state.metadata ?: MetadataEntity()
+        val updated = standing.copy(
+            name = normalizedName,
+            description = normalizedDescription,
+            icon = icon,
+            banner = banner,
+            relays = normalizedRelays,
+        )
+        require(ConcordLimits.metadataFits(updated)) {
+            "Community metadata exceeds the Concord protocol limits"
+        }
+        val content = ConcordJson.encodePreserving(
+            MetadataEntity.serializer(),
+            updated,
+            currentHead?.known?.content,
+        )
+        publishControlEdition(
+            signer = signer,
+            membership = membership,
+            control = control,
+            entityKind = ControlEntityKind.METADATA,
+            entityId = membership.id.hexToByteArray(),
+            content = content,
+            permission = ConcordPermissions.MANAGE_METADATA,
+            previousVersion = currentHead?.version,
+            previousHash = currentHead?.hashHex,
+        )
+    }
+
     suspend fun loadCommunityRoles(
         signer: PostillaQuartzSigner,
         communityId: String,
