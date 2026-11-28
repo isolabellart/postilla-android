@@ -1280,6 +1280,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         name: String,
         description: String?,
         relays: List<String>,
+        icon: ImagePointer? = null,
+        banner: ImagePointer? = null,
         signer: NostrSigner?,
     ) {
         val active = requireCurrentWritableSigner(signer)
@@ -1289,14 +1291,15 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             communityId = communityId,
             name = name,
             description = description,
-            icon = null,
-            banner = null,
+            icon = icon,
+            banner = banner,
             relays = relays,
         )
         _communities.value = _communities.value.map {
             if (it.id == communityId) it.copy(name = name.trim(), description = description, relays = relays) else it
         }
         refreshChannels(communityId)
+        if (icon != null) refreshCommunityIcon(communityId)
     }
 
     suspend fun createPublicChannel(communityId: String, name: String, signer: NostrSigner?) {
