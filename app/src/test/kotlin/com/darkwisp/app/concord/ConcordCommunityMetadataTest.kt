@@ -22,7 +22,7 @@ class ConcordCommunityMetadataTest {
               "av_brokers": ["wss://broker.example"]
             }
         """.trimIndent()
-        val previous = ConcordJson.decodeOrNull<MetadataEntity>(originalContent)
+        val previous = ConcordJson.instance.decodeFromString(MetadataEntity.serializer(), originalContent)
         assertNotNull(previous)
 
         val updated = previous!!.copy(
@@ -48,7 +48,7 @@ class ConcordCommunityMetadataTest {
     @Test
     fun metadataEditCanClearDescriptionWithoutDroppingOtherFields() {
         val originalContent = """{"name":"Group","description":"Old","message_expiration":3600,"custom":{"theme":"dark"}}"""
-        val previous = ConcordJson.decodeOrNull<MetadataEntity>(originalContent)!!
+        val previous = ConcordJson.instance.decodeFromString(MetadataEntity.serializer(), originalContent)!!
         val encoded = ConcordJson.encodePreserving(
             MetadataEntity.serializer(),
             previous.copy(description = null),
