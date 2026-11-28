@@ -2231,6 +2231,13 @@ class ConcordCommunityRepository(
         requireAllResponders: Boolean = false,
     ): CommunityChannelSnapshot {
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireAllResponders)
+        // The private membership relays are bootstrap hints. Once the Control Plane is
+        // folded, its current metadata relay set is authoritative for chat and access reads.
+        val currentCommunityRelays = control.state.metadata?.relays
+            .orEmpty()
+            .mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
+            .distinct()
+            .ifEmpty { membership.relays.distinct() }
         val heldRootsByEpoch = buildMap<Long, String> {
             membership.heldRoots.forEach { held -> put(held.epoch, held.key) }
             put(membership.rootEpoch, membership.root)
@@ -2248,7 +2255,7 @@ class ConcordCommunityRepository(
                 )
             }
             .toMap()
-        val accessTargets = membership.relays.distinct()
+        val accessTargets = currentCommunityRelays
         if (accessPlanes.isNotEmpty()) {
             relayPool.registerConcordStreamKeys(accessPlanes.values, accessTargets)
         }
@@ -2470,8 +2477,8 @@ class ConcordCommunityRepository(
                 ?.takeIf { it.isNotBlank() && control.readSummary.hasQuorum },
             communityDescription = control.state.metadata?.description
                 ?.takeIf { control.readSummary.hasQuorum },
-            communityRelays = control.state.metadata?.relays
-                ?.takeIf { control.readSummary.hasQuorum }
+            communityRelays = currentCommunityRelays
+                .takeIf { control.readSummary.hasQuorum }
                 .orEmpty(),
         )
     }
@@ -3238,6 +3245,12 @@ class ConcordCommunityRepository(
         // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
         // immediately before publishing, so this display snapshot cannot authorize a write.
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val memberRelays = control.state.metadata?.relays
+            .orEmpty()
+            .mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
+            .distinct()
+            .ifEmpty { membership.relays.distinct() }
+        require(memberRelays.isNotEmpty()) { "This community has no usable relay for member history" }
         if (requireCompleteRead) {
             require(control.readSummary.hasQuorum) {
                 "The Control Plane did not reach the verified member-read quorum"
@@ -3265,9 +3278,9 @@ class ConcordCommunityRepository(
         }.distinctBy { it.publicKeyHex.lowercase() }
         require(guestbookKeys.isNotEmpty()) { "No current or historical Guestbook key is available" }
         val guestbookKeyByAddress = guestbookKeys.associateBy { it.publicKeyHex.lowercase() }
-        relayPool.registerConcordStreamKeys(guestbookKeys, membership.relays)
+        relayPool.registerConcordStreamKeys(guestbookKeys, memberRelays)
         val guestbookRead = fetchEventsFromRelaysDetailed(
-            relays = membership.relays,
+            relays = memberRelays,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
                 authors = guestbookKeys.map { it.publicKeyHex },
