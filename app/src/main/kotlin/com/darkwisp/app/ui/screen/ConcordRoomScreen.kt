@@ -112,6 +112,10 @@ fun ConcordRoomScreen(
     val selectedChannelAccessible = selectedChannel?.let {
         !it.isPrivate || !it.privateKeyHex.isNullOrBlank()
     } ?: (selectedChannelId.isNotBlank() && selectedChannelId == community?.generalChannelId)
+    // Fail closed until the channel catalogue and any restricted writer credential are loaded.
+    val selectedChannelCanSend = selectedChannel?.let {
+        !it.writeRestricted || it.writerCredential?.canSendMessages == true
+    } ?: false
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
@@ -509,9 +513,9 @@ fun ConcordRoomScreen(
                 modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding()
                     .background(MaterialTheme.colorScheme.background).padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                if (selectedChannel?.writeRestricted == true) {
+                if (selectedChannel?.writeRestricted == true && !selectedChannelCanSend) {
                     Text(
-                        "This channel uses a restricted writer key. Postilla can read messages here, but publishing is not yet supported.",
+                        "This channel is restricted. Postilla has not verified a current writer delivery and SEND_MESSAGES permission for this account. Refresh channel access before sending.",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(bottom = 6.dp),
@@ -542,13 +546,13 @@ fun ConcordRoomScreen(
                         value = text,
                         onValueChange = { text = it; sendError = null },
                         modifier = Modifier.weight(1f),
-                        enabled = selectedChannel?.writeRestricted != true && selectedChannelAccessible,
+                        enabled = selectedChannelCanSend && selectedChannelAccessible,
                         placeholder = { Text("Message #" + (selectedChannel?.name ?: "general")) },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannel?.writeRestricted != true) {
+                                if (text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannelCanSend) {
                                     val outgoing = text
                                     scope.launch {
                                         sending = true
@@ -577,13 +581,13 @@ fun ConcordRoomScreen(
                         ),
                     )
                     IconButton(
-                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannel?.writeRestricted != true,
+                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannelCanSend,
                         onClick = { imagePicker.launch("image/*") },
                     ) {
                         Icon(Icons.Default.Image, contentDescription = "Attach image")
                     }
                     IconButton(
-                        enabled = text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannel?.writeRestricted != true,
+                        enabled = text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannelCanSend,
                         onClick = {
                             val outgoing = text
                             scope.launch {
