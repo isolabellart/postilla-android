@@ -133,6 +133,17 @@ internal fun concordRolePermissionAllowsChannelAction(
     rolePermissionGranted: Boolean,
 ): Boolean = !rolesV2 || isOwner || rolePermissionGranted
 
+/**
+ * Concord writer streams are required as soon as @everyone cannot send, even when
+ * @everyone may still react or connect. A live ledger also keeps the channel on its
+ * established writer plane until the ledger is retired.
+ */
+internal fun concordChannelRequiresWriterPlane(
+    rolesV2: Boolean,
+    everyoneCanSend: Boolean,
+    hasLiveWriter: Boolean,
+): Boolean = hasLiveWriter || (rolesV2 && !everyoneCanSend)
+
 /** Owner and role-holders are part of the privileged roster even if they have not posted recently. */
 internal fun concordPrivilegedRosterCandidates(
     ownerPubkey: String,
@@ -2263,6 +2274,11 @@ class ConcordCommunityRepository(
                     !effectiveEveryone.has(ConcordPermissions.SEND_MESSAGES) &&
                     !effectiveEveryone.has(ConcordPermissions.ADD_REACTIONS) &&
                     !effectiveEveryone.has(ConcordPermissions.CONNECT)
+                val channelWriteRestricted = concordChannelRequiresWriterPlane(
+                    rolesV2 = rolesV2,
+                    everyoneCanSend = effectiveEveryone?.has(ConcordPermissions.SEND_MESSAGES) == true,
+                    hasLiveWriter = writerLedger?.live != null,
+                )
                 val channelContext = ConcordChatChannelContext(
                     communityIdHex = membership.id,
                     channelIdHex = channelId,
@@ -2340,7 +2356,7 @@ class ConcordCommunityRepository(
                     readPlanes = (directPlanes + writerPlanes).distinctBy {
                         "${it.stream.publicKeyHex}:${it.channelEpoch}:${it.writerContext?.window?.epoch ?: "read"}"
                     },
-                    writeRestricted = writerLedger?.live != null,
+                    writeRestricted = channelWriteRestricted,
                     isLocked = channelLocked,
                     canViewChannel = canViewChannel,
                     canSendMessages = canSendMessages,
