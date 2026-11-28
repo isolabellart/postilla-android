@@ -2185,7 +2185,10 @@ class ConcordCommunityRepository(
     private suspend fun loadControlPlaneSnapshot(
         membership: ConcordCommunityListEntry,
         requireAllResponders: Boolean = true,
+        relayTargets: List<String> = membership.relays,
     ): ControlPlaneSnapshot {
+        val targets = relayTargets.distinct()
+        require(targets.isNotEmpty()) { "No relays were supplied for the community Control Plane" }
         val keys = ControlPlaneKeys.of(
             communityRoot = membership.root.hexToByteArray(),
             communityId = membership.id.hexToByteArray(),
@@ -2201,10 +2204,10 @@ class ConcordCommunityRepository(
             else -> null
         }
         if (controlAuthKey != null) {
-            relayPool.registerConcordStreamKeys(listOf(controlAuthKey), membership.relays)
+            relayPool.registerConcordStreamKeys(listOf(controlAuthKey), targets)
         }
         val relayRead = fetchEventsFromRelaysDetailed(
-            relays = membership.relays,
+            relays = targets,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
                 authors = listOf(keys.address),
@@ -2279,8 +2282,13 @@ class ConcordCommunityRepository(
         membership: ConcordCommunityListEntry,
         signer: PostillaQuartzSigner? = null,
         requireAllResponders: Boolean = false,
+        controlRelayTargets: List<String> = membership.relays,
     ): CommunityChannelSnapshot {
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireAllResponders)
+        val control = loadControlPlaneSnapshot(
+            membership,
+            requireAllResponders = requireAllResponders,
+            relayTargets = controlRelayTargets,
+        )
         // The private membership relays are bootstrap hints. Once the Control Plane is
         // folded, its current metadata relay set is authoritative for chat and access reads.
         val currentCommunityRelays = concordEffectiveCommunityRelays(
@@ -2984,8 +2992,17 @@ class ConcordCommunityRepository(
             require(membership.relays.isNotEmpty()) { "This community has no relays for writer-key delivery" }
 
             val identity = writerDutyIdentity(signer.pubKey, membership.id, channelHex)
-            retryWriterDutyPending(signer, membership, channelHex)
-            control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+            retryWriterDutyPending(
+                signer = signer,
+                membership = membership,
+                channelId = channelHex,
+                relayTargets = writerRelayTargets,
+            )
+            control = loadControlPlaneSnapshot(
+                membership,
+                requireAllResponders = false,
+                relayTargets = writerRelayTargets,
+            )
             require(control.readSummary.hasQuorum) {
                 "Writer Duty could not re-read a verified Control Plane quorum after retry"
             }
@@ -3173,7 +3190,11 @@ class ConcordCommunityRepository(
             }
             securePrefs.edit().remove(pendingControlKey).commit()
 
-            val confirmedControl = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+            val confirmedControl = loadControlPlaneSnapshot(
+                membership,
+                requireAllResponders = false,
+                relayTargets = writerRelayTargets,
+            )
             require(confirmedControl.readSummary.hasQuorum) {
                 "The Writers Ledger cannot be verified because the Control Plane quorum was lost"
             }
@@ -3193,7 +3214,11 @@ class ConcordCommunityRepository(
             }
             securePrefs.edit().remove(pendingAccessKey).remove(pendingEpochKey).commit()
 
-            snapshot = loadCommunityChannelSnapshot(membership, signer)
+            snapshot = loadCommunityChannelSnapshot(
+                membership,
+                signer,
+                controlRelayTargets = writerRelayTargets,
+            )
             require(snapshot.controlRead.hasQuorum) {
                 "The channel Control Plane quorum was lost after writer-key delivery"
             }
@@ -3268,14 +3293,19 @@ class ConcordCommunityRepository(
         signer: PostillaQuartzSigner,
         membership: ConcordCommunityListEntry,
         channelId: String,
+        relayTargets: List<String>,
     ) {
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val control = loadControlPlaneSnapshot(
+            membership,
+            requireAllResponders = false,
+            relayTargets = relayTargets,
+        )
         require(control.readSummary.hasQuorum) {
             "Pending writer deliveries require a verified two-thirds Control Plane quorum"
         }
         val deliveryRelays = concordCommunityRelayTargets(
             control.state.metadata?.relays.orEmpty(),
-            membership.relays,
+            membership.relays + relayTargets,
             control.readSummary.hasQuorum,
         )
         val identity = writerDutyIdentity(signer.pubKey, membership.id, channelId)
