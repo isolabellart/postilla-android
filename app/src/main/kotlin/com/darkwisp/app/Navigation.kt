@@ -2166,6 +2166,37 @@ fun WispNavHost(
             arguments = listOf(navArgument("communityId") { type = NavType.StringType })
         ) { backStackEntry ->
             val communityId = backStackEntry.arguments?.getString("communityId") ?: return@composable
+            var concordZapTargetPubkey by remember(communityId) { mutableStateOf<String?>(null) }
+
+            if (concordZapTargetPubkey != null) {
+                val recipientPubkey = concordZapTargetPubkey!!
+                ZapDialog(
+                    isWalletConnected = feedViewModel.activeWalletProvider.hasConnection(),
+                    onDismiss = { concordZapTargetPubkey = null },
+                    onZap = { amountMsats, message, isAnonymous, _ ->
+                        val recipient = concordZapTargetPubkey ?: return@ZapDialog
+                        concordZapTargetPubkey = null
+                        // Concord messages are encrypted stream rumors, not public note events.
+                        // Zap the author without attaching the hidden message ID to a public receipt.
+                        feedViewModel.socialActions.sendZapToPubkey(
+                            pubkey = recipient,
+                            amountMsats = amountMsats,
+                            message = message,
+                            isAnonymous = isAnonymous,
+                            rumorId = null,
+                            isPrivate = false,
+                        )
+                    },
+                    onGoToWallet = { navController.navigate(Routes.WALLET) },
+                    zapPrefsRepo = feedViewModel.zapPrefs,
+                    canPrivateZap = false,
+                    recipientPubkey = recipientPubkey,
+                    recipientHasLud16 = zapRecipientHasLud16(feedViewModel, recipientPubkey),
+                    fetchPaymentTargets = feedViewModel::fetchPaymentTargets,
+                    profileLookup = { feedViewModel.profileRepo.get(it) },
+                )
+            }
+
             com.darkwisp.app.ui.screen.ConcordRoomScreen(
                 communityId = communityId,
                 viewModel = concordCommunityViewModel,
@@ -2174,6 +2205,7 @@ fun WispNavHost(
                 translationRepository = feedViewModel.translationRepo,
                 blossomRepository = feedViewModel.blossomRepo,
                 onBack = { navController.popBackStack() },
+                onZapAuthor = { concordZapTargetPubkey = it },
             )
         }
 
