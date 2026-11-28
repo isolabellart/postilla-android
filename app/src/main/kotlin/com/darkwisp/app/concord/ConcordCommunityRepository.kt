@@ -16,6 +16,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListFrag
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordListFragmentSet
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListDocument
 import com.vitorpamplona.quartz.concord.cord02Community.PrivateChannelKey
+import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelAccess
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeyring
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordChannelKeys
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordWritersLedger
@@ -1344,11 +1345,41 @@ class ConcordCommunityRepository(
         val readPlanes: List<ConcordChatReadPlane> = emptyList(),
         /** True when a live CORD-03 writer window restricts publishing to delivered writer keys. */
         val writeRestricted: Boolean = false,
+        /** Secret-bearing credential held only in memory for the active account. */
+        val writerCredential: ConcordChatWriterCredential? = null,
     )
 
-    /** Loads the live Control Plane channel catalogue and every held CORD-03 read plane. */
-    suspend fun loadCommunityChannels(membership: ConcordCommunityListEntry): List<CommunityChannel> {
+    /** Loads the live Control Plane catalogue, held read planes and entitled writer keys. */
+    suspend fun loadCommunityChannels(
+        membership: ConcordCommunityListEntry,
+        signer: PostillaQuartzSigner? = null,
+    ): List<CommunityChannel> {
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        val accessPlanes = if (signer == null) emptyMap() else control.state.writers
+            .filterValues { it.live != null }
+            .keys
+            .associateWith { channelId ->
+                ConcordChannelAccess.plane(
+                    membership.root.hexToByteArray(),
+                    channelId.hexToByteArray(),
+                    membership.rootEpoch,
+                )
+            }
+        val accessTargets = (membership.relays + relayPool.getReadRelayUrls()).distinct()
+        val accessEventsByAddress = if (accessPlanes.isEmpty() || accessTargets.isEmpty()) {
+            emptyMap()
+        } else {
+            fetchEventsFromRelays(
+                relays = accessTargets,
+                filter = Filter(
+                    kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                    authors = accessPlanes.values.map { it.publicKeyHex }.distinct(),
+                    limit = 5000,
+                ),
+                label = "writer-access-${membership.id.take(12)}",
+                requireAllResponders = false,
+            ).groupBy { it.pubkey.lowercase() }
+        }
         return control.state.channels.values
             .map { channel ->
                 val channelId = channel.channelIdHex
@@ -1426,11 +1457,35 @@ class ConcordCommunityRepository(
                                     ledger = ledger,
                                     window = window,
                                     authority = control.state.authority,
+                                    channelPrivate = channel.definition.private,
+                                    communityState = control.state,
                                 ),
                             )
                         }
                     }
                 }.orEmpty()
+                val liveWriterContext = writerLedger?.live?.let { live ->
+                    writerPlanes.firstOrNull { it.writerContext?.window?.epoch == live.epoch }?.writerContext
+                }
+                val writerCredential = if (
+                    signer != null &&
+                    writerLedger?.live != null &&
+                    currentReadKey != null &&
+                    liveWriterContext != null
+                ) {
+                    openWriterCredential(
+                        signer = signer,
+                        membership = membership,
+                        channelIdHex = channelId,
+                        channelPrivate = channel.definition.private,
+                        ledger = writerLedger,
+                        context = liveWriterContext,
+                        accessPlane = accessPlanes[channelId],
+                        accessEvents = accessEventsByAddress[accessPlanes[channelId]?.publicKeyHex?.lowercase()].orEmpty(),
+                    )
+                } else {
+                    null
+                }
 
                 CommunityChannel(
                     id = channelId,
@@ -1442,9 +1497,103 @@ class ConcordCommunityRepository(
                         "${it.stream.publicKeyHex}:${it.channelEpoch}:${it.writerContext?.window?.epoch ?: "read"}"
                     },
                     writeRestricted = writerLedger?.live != null,
+                    writerCredential = writerCredential,
                 )
             }
             .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
+    }
+
+    private suspend fun openWriterCredential(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        channelIdHex: String,
+        channelPrivate: Boolean,
+        ledger: ConcordWritersLedger,
+        context: ConcordChatWriterContext,
+        accessPlane: GroupKey?,
+        accessEvents: List<NostrEvent>,
+    ): ConcordChatWriterCredential? {
+        val live = ledger.live ?: return null
+        val plane = accessPlane ?: return null
+        val state = context.communityState ?: return null
+        val permissions = state.channelPermissions(
+            signer.pubKey,
+            channelIdHex,
+            isPrivate = channelPrivate,
+        )
+        if (
+            context.authority.isBanned(signer.pubKey) ||
+            !permissions.has(ConcordPermissions.VIEW_CHANNEL) ||
+            !permissions.has(ConcordPermissions.SEND_MESSAGES)
+        ) return null
+
+        val writerScopeHex = ConcordKeyDerivation.writerScope(channelIdHex.hexToByteArray()).toHexKey()
+        for (outer in accessEvents.sortedByDescending { it.created_at }) {
+            val opened = try {
+                ConcordStreamEnvelope.open(Event.fromJson(outer.toJson()), plane)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                continue
+            }
+            val delivery = ConcordChannelAccess.parse(opened) ?: continue
+            if (delivery.form != ConcordChannelAccess.FORM_ACCESS) continue
+            if (!delivery.scopeIdHex.equals(writerScopeHex, ignoreCase = true)) continue
+            if (delivery.newEpoch != live.epoch) continue
+            if (delivery.writer?.equals(live.writerPubKey, ignoreCase = true) != true) continue
+            if (!ConcordChannelAccess.holdsAccessBlobFor(delivery, signer.pubKey, writerScopeHex)) continue
+            if (!ConcordChannelAccess.deliveryTrusted(state, channelIdHex, signer.pubKey, delivery.deliverer)) continue
+
+            val secret = when (
+                val result = ConcordChannelAccess.openAccessFor(delivery, signer, writerScopeHex)
+            ) {
+                is ConcordChannelAccess.AccessOpening.Key -> result.key
+                ConcordChannelAccess.AccessOpening.Refused,
+                ConcordChannelAccess.AccessOpening.SignerUnavailable -> continue
+            }
+            if (secret.size != 32) continue
+            val writerKey = ConcordKeyDerivation.channelWriterKey(
+                secret,
+                channelIdHex.hexToByteArray(),
+                live.epoch,
+            )
+            if (!writerKey.publicKeyHex.equals(live.writerPubKey, ignoreCase = true)) continue
+
+            val certificate = delivery.certs[signer.pubKey.lowercase()]
+            val canManage = permissions.has(ConcordPermissions.MANAGE_CHANNELS)
+            val privileged = canManage || context.authority.isOwner(signer.pubKey)
+            val certificateValid = if (certificate == null) {
+                live.certifier == null || privileged
+            } else {
+                live.certifier != null && ConcordWritersLedger.verifyCertificate(
+                    membership.id.hexToByteArray(),
+                    channelIdHex.hexToByteArray(),
+                    live.epoch,
+                    signer.pubKey,
+                    live.certifier,
+                    certificate,
+                )
+            }
+            if (!certificateValid) continue
+            if (!ledger.postStands(
+                    membership.id.hexToByteArray(),
+                    live,
+                    signer.pubKey,
+                    System.currentTimeMillis(),
+                    certificate,
+                    privileged,
+                )
+            ) continue
+
+            return ConcordChatWriterCredential(
+                streamKey = writerKey,
+                context = context,
+                certificate = certificate,
+                canSendMessages = true,
+                canManageChannel = canManage,
+            )
+        }
+        return null
     }
 
     /** Creates a public CORD-03 channel after a fresh MANAGE_CHANNELS authority check. */
