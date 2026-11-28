@@ -1635,6 +1635,9 @@ class ConcordCommunityRepository(
             content = content,
             createdAt = System.currentTimeMillis() / 1000,
             authorityCitation = control.state.authority.citationFor(signer.pubKey),
+            binding = RankedRoster.bindingForWrite(
+                control.state.authority, membership.id.hexToByteArray(), ControlEntityKind.INVITE_REGISTRY,
+            ),
         )
         return NostrEvent.fromJson(
             ConcordStreamEnvelope.wrap(
@@ -2038,6 +2041,9 @@ class ConcordCommunityRepository(
                 prevHash = head?.hashHex?.hexToByteArray(),
                 createdAt = nowSecs,
                 authorityCitation = ConcordRotationAuthority.citationFor(communityId, signer.pubKey, membership.owner, newHeads),
+                binding = RankedRoster.bindingForWrite(
+                    newState.authority, communityId.hexToByteArray(), ControlEntityKind.INVITE_REGISTRY,
+                ),
             )
             listOf(
                 NostrEvent.fromJson(
@@ -4313,6 +4319,9 @@ class ConcordCommunityRepository(
             prevHash = head?.hashHex?.hexToByteArray(),
             createdAt = createdAt,
             authorityCitation = state.authority.citationFor(signer.pubKey),
+            binding = RankedRoster.bindingForWrite(
+                state.authority, membership.id.hexToByteArray(), ControlEntityKind.INVITE_REGISTRY,
+            ),
         )
         val registryEvent = NostrEvent.fromJson(
             ConcordStreamEnvelope.wrap(
