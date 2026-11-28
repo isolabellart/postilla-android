@@ -134,6 +134,12 @@ internal fun concordPrivilegedRosterCandidates(
     .filter(String::isNotBlank)
     .toCollection(LinkedHashSet())
 
+/** All held community-root epochs whose Guestbooks may contain still-relevant member motion. */
+internal fun concordGuestbookEpochs(
+    currentEpoch: Long,
+    heldEpochs: Collection<Long>,
+): List<Long> = (heldEpochs + currentEpoch).distinct().sorted()
+
 /**
  * First Concord vertical slice: create a CORD-02 community, publish its two genesis
  * Control Plane wraps, and publish the owner's self-encrypted fragmented membership list.
@@ -2697,17 +2703,34 @@ class ConcordCommunityRepository(
         // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
         // immediately before publishing, so this display snapshot cannot authorize a write.
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
-        val guestbookKey = ConcordKeyDerivation.guestbookPlaneKey(
-            communityRoot = membership.root.hexToByteArray(),
-            communityId = membership.id.hexToByteArray(),
-            epoch = membership.rootEpoch,
-        )
-        relayPool.registerConcordStreamKeys(listOf(guestbookKey), membership.relays)
+        // A Refounding changes the current Guestbook plane. Older roots remain in the
+        // member's private list so the roster can still apply historical JOIN/LEAVE/KICK
+        // motions in timestamp order instead of losing everyone who joined before rotation.
+        val rootsByEpoch = buildMap<Long, String> {
+            membership.heldRoots.forEach { held -> put(held.epoch, held.key) }
+            put(membership.rootEpoch, membership.root)
+        }
+        val guestbookKeys = concordGuestbookEpochs(
+            currentEpoch = membership.rootEpoch,
+            heldEpochs = membership.heldRoots.map { it.epoch },
+        ).mapNotNull { epoch ->
+            val root = rootsByEpoch[epoch] ?: return@mapNotNull null
+            runCatching {
+                ConcordKeyDerivation.guestbookPlaneKey(
+                    communityRoot = root.hexToByteArray(),
+                    communityId = membership.id.hexToByteArray(),
+                    epoch = epoch,
+                )
+            }.getOrNull()
+        }.distinctBy { it.publicKeyHex.lowercase() }
+        require(guestbookKeys.isNotEmpty()) { "No current or historical Guestbook key is available" }
+        val guestbookKeyByAddress = guestbookKeys.associateBy { it.publicKeyHex.lowercase() }
+        relayPool.registerConcordStreamKeys(guestbookKeys, membership.relays)
         val events = fetchEventsFromRelays(
             relays = membership.relays,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
-                authors = listOf(guestbookKey.publicKeyHex),
+                authors = guestbookKeys.map { it.publicKeyHex },
                 limit = 5000,
             ),
             label = "guestbook",
@@ -2716,6 +2739,7 @@ class ConcordCommunityRepository(
             requireAllResponders = false,
         )
         val entries = events.mapNotNull { event ->
+            val guestbookKey = guestbookKeyByAddress[event.pubkey.lowercase()] ?: return@mapNotNull null
             try {
                 val opened = ConcordStreamEnvelope.open(Event.fromJson(event.toJson()), guestbookKey)
                 Guestbook.parse(opened.rumor)
