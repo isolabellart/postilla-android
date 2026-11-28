@@ -24,6 +24,7 @@ class PostillaUpdateVersionTest {
         assertFalse(isNewerVersion("1.0.47-beta", "1.0.46"))
         assertFalse(isNewerVersion("latest", "1.0.46"))
     }
+
     @Test fun canonicalVersionedReleaseAssetIsAccepted() {
         assertTrue(isPostillaReleaseApkAsset("Postilla-v1.0.63.apk", "", "1.0.63"))
     }
@@ -39,9 +40,8 @@ class PostillaUpdateVersionTest {
         assertFalse(isPostillaReleaseApkAsset("app-release.apk", "Postilla-v1.0.62.apk", "1.0.63"))
     }
 
-}
-
     @Test fun releaseNotesAreTrimmedAndBounded() {
         assertTrue(normalizePostillaReleaseNotes("  Concord improvements  ") == "Concord improvements")
         assertTrue(normalizePostillaReleaseNotes("x".repeat(12_500)).length == 12_000)
     }
+}

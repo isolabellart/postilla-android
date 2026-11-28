@@ -264,7 +264,7 @@ jobs:
           APK="app/build/outputs/apk/release/app-release.apk"
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
-          VERSION_CODE="$(grep -m1 "versionCode" app/build.gradle.kts | sed -E 's/.*= ([0-9]+).*/\\1/')"
+          VERSION_CODE="$(grep -m1 "versionCode" app/build.gradle.kts | sed -E 's/.*= ([0-9]+).*/\1/')"
           NOTES_SOURCE="docs/releases/v${VERSION_NAME}.md"
           if [[ ! -s "$NOTES_SOURCE" ]]; then
             echo "::error::Missing version-specific release notes: $NOTES_SOURCE"
