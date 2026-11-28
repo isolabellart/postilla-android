@@ -293,6 +293,10 @@ class ConcordCommunityRepository(
         val writerAccessRead: RelayReadSummary?,
         /** Current Control Plane name, when its relay read reached the chat quorum. */
         val communityName: String? = null,
+        /** Current metadata description, populated only from a usable Control Plane read. */
+        val communityDescription: String? = null,
+        /** Current metadata relays, populated only from a usable Control Plane read. */
+        val communityRelays: List<String> = emptyList(),
     ) {
         val isControlReadComplete: Boolean get() = controlRead.isComplete
         val hasControlReadQuorum: Boolean get() = controlRead.hasQuorum
@@ -2458,6 +2462,11 @@ class ConcordCommunityRepository(
             writerAccessRead = accessRead?.summary,
             communityName = control.state.metadata?.name
                 ?.takeIf { it.isNotBlank() && control.readSummary.hasQuorum },
+            communityDescription = control.state.metadata?.description
+                ?.takeIf { control.readSummary.hasQuorum },
+            communityRelays = control.state.metadata?.relays
+                ?.takeIf { control.readSummary.hasQuorum }
+                .orEmpty(),
         )
     }
 
