@@ -177,6 +177,10 @@ fun ConcordRoomScreen(
     var renamedChannelName by rememberSaveable(communityId) { mutableStateOf("") }
     var managementError by remember { mutableStateOf<String?>(null) }
     var managementBusy by remember { mutableStateOf(false) }
+    var showEditMetadataDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var metadataDraftName by rememberSaveable(communityId) { mutableStateOf("") }
+    var metadataDraftDescription by rememberSaveable(communityId) { mutableStateOf("") }
+    var metadataDraftRelays by rememberSaveable(communityId) { mutableStateOf("") }
     val memberRoleOptions = remember(membersState.members) {
         membersState.members.flatMap { it.roleNames }.filter(String::isNotBlank).distinct().sorted()
     }
@@ -513,6 +517,18 @@ fun ConcordRoomScreen(
                             expanded = showCommunityMenu,
                             onDismissRequest = { showCommunityMenu = false },
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit group details") },
+                                enabled = signer != null,
+                                onClick = {
+                                    showCommunityMenu = false
+                                    metadataDraftName = community?.name.orEmpty()
+                                    metadataDraftDescription = community?.description.orEmpty()
+                                    metadataDraftRelays = community?.relays.orEmpty().joinToString("\n")
+                                    managementError = null
+                                    showEditMetadataDialog = true
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Manage roles") },
                                 onClick = {
@@ -1616,6 +1632,80 @@ fun ConcordRoomScreen(
             },
             dismissButton = {
                 TextButton(enabled = !managementBusy, onClick = { showMemberRolesDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showEditMetadataDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showEditMetadataDialog = false },
+            title = { Text("Group details") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = metadataDraftName,
+                        onValueChange = { metadataDraftName = it; managementError = null },
+                        label = { Text("Group name") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = metadataDraftDescription,
+                        onValueChange = { metadataDraftDescription = it; managementError = null },
+                        label = { Text("Description") },
+                        minLines = 2,
+                        maxLines = 4,
+                    )
+                    OutlinedTextField(
+                        value = metadataDraftRelays,
+                        onValueChange = { metadataDraftRelays = it; managementError = null },
+                        label = { Text("Community relays") },
+                        minLines = 2,
+                        maxLines = 5,
+                    )
+                    Text(
+                        "Enter one secure wss:// relay per line. Existing encrypted icon and banner images are preserved.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    managementError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null &&
+                        metadataDraftName.isNotBlank() &&
+                        metadataDraftRelays.lines().any { it.trim().isNotBlank() },
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            managementError = null
+                            try {
+                                val relays = metadataDraftRelays.lines()
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                viewModel.updateCommunityMetadata(
+                                    communityId = communityId,
+                                    name = metadataDraftName,
+                                    description = metadataDraftDescription,
+                                    relays = relays,
+                                    signer = signer,
+                                )
+                                showEditMetadataDialog = false
+                            } catch (error: Exception) {
+                                managementError = error.message ?: "Community details could not be saved"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Saving…" else "Save details") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !managementBusy,
+                    onClick = { showEditMetadataDialog = false },
+                ) { Text("Cancel") }
             },
         )
     }
