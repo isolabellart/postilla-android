@@ -519,6 +519,54 @@ class ConcordCommunityRepository(
     fun getLocalGeneralChannelId(communityId: String): String? =
         prefs.getString(generalChannelKey(communityId), null)
 
+    data class CommunityRole(
+        val id: String,
+        val name: String,
+        val position: Long,
+        val permissions: ConcordPermissions,
+        val canEdit: Boolean,
+    )
+
+    data class CommunityRolesSnapshot(
+        val roles: List<CommunityRole>,
+        val rolesV2: Boolean,
+        val canManageRoles: Boolean,
+    )
+
+    /** Reads the complete Control Plane before exposing roles for a management operation. */
+    suspend fun loadCommunityRoles(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+    ): CommunityRolesSnapshot {
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        val authority = control.state.authority
+        val canManage = authority.isOwner(signer.pubKey) ||
+            authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)
+        if (control.state.isRolesV2) {
+            // Quartz exposes Roles v2 folding, but this client has not yet implemented the VSK-13
+            // editor. Never present the legacy role editor for a Roles v2 community.
+            return CommunityRolesSnapshot(emptyList(), rolesV2 = true, canManageRoles = canManage)
+        }
+        val actorRank = authority.rank(signer.pubKey)
+        val roles = authority.roles().entries
+            .filter { !it.value.deleted }
+            .sortedWith(compareBy({ it.value.position }, { it.key.lowercase() }))
+            .map { (id, role) ->
+                CommunityRole(
+                    id = id,
+                    name = role.name,
+                    position = role.position,
+                    permissions = role.permissionBits(),
+                    canEdit = actorRank != null &&
+                        actorRank < role.position &&
+                        authority.canWriteRole(signer.pubKey, id, role),
+                )
+            }
+        return CommunityRolesSnapshot(roles, rolesV2 = false, canManageRoles = canManage)
+    }
+
     /**
      * A Community List synced from another device carries the community secrets, but this
      * device may not have the cached #general id. Recover it from the read-only Control Plane.
@@ -541,6 +589,34 @@ class ConcordCommunityRepository(
 
 
 
+    private fun requireLegacyRoleActions(state: ConcordCommunityState) {
+        check(!state.isRolesV2) {
+            "This community uses Roles v2. Legacy role and grant edits are not compatible; no changes were published."
+        }
+    }
+
+    private fun requireDelegableRolePermissions(
+        authority: com.vitorpamplona.quartz.concord.cord04Roles.AuthorityResolver,
+        actor: String,
+        permissions: ConcordPermissions,
+    ) {
+        val bits = listOf(
+            ConcordPermissions.MANAGE_ROLES,
+            ConcordPermissions.MANAGE_CHANNELS,
+            ConcordPermissions.MANAGE_METADATA,
+            ConcordPermissions.KICK,
+            ConcordPermissions.BAN,
+            ConcordPermissions.MANAGE_MESSAGES,
+            ConcordPermissions.CREATE_INVITE,
+            ConcordPermissions.VIEW_AUDIT_LOG,
+            ConcordPermissions.MENTION_EVERYONE,
+            ConcordPermissions.PIN_MESSAGES,
+        )
+        require(bits.all { !permissions.has(it) || authority.hasPermission(actor, it) }) {
+            "A role cannot grant permissions this account does not hold."
+        }
+    }
+
     suspend fun createRole(
         signer: PostillaQuartzSigner,
         communityId: String,
@@ -553,6 +629,7 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership)
+        requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
@@ -560,6 +637,7 @@ class ConcordCommunityRepository(
         val actorRank = authority.rank(signer.pubKey)
             ?: throw IllegalStateException("The actor has no valid role rank")
         require(actorRank < position) { "A role cannot be created at or above the actor's authority" }
+        requireDelegableRolePermissions(authority, signer.pubKey, permissions)
 
         val roleIdBytes = RandomInstance.bytes(32)
         val roleId = roleIdBytes.toHexKey()
@@ -595,6 +673,7 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership)
+        requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
@@ -665,6 +744,7 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership)
+        requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
@@ -721,6 +801,68 @@ class ConcordCommunityRepository(
         return event.id
     }
 
+    suspend fun updateRole(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        roleId: String,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+    ): String {
+        val normalizedName = name.trim()
+        require(normalizedName.isNotBlank() && normalizedName.encodeToByteArray().size <= 64) {
+            "Role name must be 1–64 UTF-8 bytes"
+        }
+        require(position >= 1L) { "Role position 0 is reserved for the owner" }
+        val roleIdBytes = roleId.hexToByteArray()
+        require(roleIdBytes.size == 32) { "Role id must be 32 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        requireLegacyRoleActions(control.state)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        val roleIdHex = roleIdBytes.toHexKey()
+        val current = authority.roles()[roleIdHex]
+            ?: throw IllegalArgumentException("Role does not exist")
+        val actorRank = authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        require(actorRank < current.position && actorRank < position) {
+            "The actor must strictly outrank the role's current and new position"
+        }
+        requireDelegableRolePermissions(authority, signer.pubKey, permissions)
+        val updated = current.copy(
+            name = normalizedName,
+            position = position,
+            permissions = permissions.toWire(),
+        )
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[roleIdHex]
+        val content = ConcordJson.encodePreserving(
+            RoleEntity.serializer(),
+            updated,
+            head?.known?.content,
+        )
+        val event = publishControlEdition(
+            signer,
+            membership,
+            control,
+            ControlEntityKind.ROLE,
+            roleIdBytes,
+            content,
+            ConcordPermissions.MANAGE_ROLES,
+            head?.version,
+            head?.hashHex,
+        )
+        return event.id
+    }
+
     suspend fun deleteRole(
         signer: PostillaQuartzSigner,
         communityId: String,
@@ -731,6 +873,7 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership)
+        requireLegacyRoleActions(control.state)
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
         }
@@ -1312,6 +1455,8 @@ class ConcordCommunityRepository(
         val inviteCreator: String? = null,
         val inviteLabel: String? = null,
         val lastSeenAt: Long = joinedAt * 1000L,
+        val roleIds: List<String> = emptyList(),
+        val roleNames: List<String> = emptyList(),
         val canKick: Boolean = false,
         val canBan: Boolean = false,
         val requiresRefounding: Boolean = false,
@@ -1926,12 +2071,16 @@ class ConcordCommunityRepository(
             val pubkey = entry.member.lowercase()
             if (authority.isBanned(pubkey)) continue
             val activity = observedAuthors[pubkey]
+            val heldRoleIds = authority.rolesOf(pubkey).sorted()
+            val heldRoleNames = heldRoleIds.mapNotNull { authority.roles()[it]?.name?.takeIf(String::isNotBlank) }
             members[pubkey] = CommunityMember(
                 pubkey = pubkey,
                 joinedAt = entry.createdAt,
                 inviteCreator = entry.inviteCreator,
                 inviteLabel = entry.inviteLabel,
                 lastSeenAt = activity?.lastSeenAtMs ?: entry.ms,
+                roleIds = heldRoleIds,
+                roleNames = heldRoleNames,
                 canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
                     (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
                 canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
@@ -1952,10 +2101,14 @@ class ConcordCommunityRepository(
                 val current = members.getValue(pubkey)
                 members[pubkey] = current.copy(lastSeenAt = maxOf(current.lastSeenAt, activity.lastSeenAtMs))
             } else {
+                val heldRoleIds = authority.rolesOf(pubkey).sorted()
+                val heldRoleNames = heldRoleIds.mapNotNull { authority.roles()[it]?.name?.takeIf(String::isNotBlank) }
                 members[pubkey] = CommunityMember(
                     pubkey = pubkey,
                     joinedAt = (activity.firstSeenAtMs / 1000L).coerceAtLeast(0L),
                     lastSeenAt = activity.lastSeenAtMs,
+                    roleIds = heldRoleIds,
+                    roleNames = heldRoleNames,
                     canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
                         (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
                     canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
