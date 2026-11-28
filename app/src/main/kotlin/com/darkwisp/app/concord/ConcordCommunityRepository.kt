@@ -281,6 +281,17 @@ class ConcordCommunityRepository(
 
     fun getCommunityListReadWarning(): String? = communityListReadWarning
 
+    data class CommunityInviteLink(
+        val token: String,
+        val url: String,
+        val label: String?,
+        val createdAt: Long,
+        val expiresAt: Long?,
+        val linkSignerPubKey: String,
+    ) {
+        fun isExpired(nowSecs: Long): Boolean = expiresAt?.let { it <= nowSecs } == true
+    }
+
     data class CreationResult(
         val communityId: String,
         val generalChannelId: String,
@@ -4004,6 +4015,145 @@ class ConcordCommunityRepository(
      * only then is the public kind-33301 bundle published. This preserves the
      * per-link token and signer secret needed to refresh or revoke the link later.
      */
+    /** Loads the current account's live public invite links for one community. */
+    suspend fun loadInviteLinks(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+    ): List<CommunityInviteLink> {
+        val document = fetchInviteList(signer)
+        val retiredTokens = document.tombstones.mapTo(HashSet()) { it.token } +
+            document.opaqueTombstones.mapNotNull { element ->
+                (element as? JsonObject)?.get("token")?.let { token ->
+                    (token as? JsonPrimitive)?.takeIf { it.isString }?.content
+                }
+            }
+        return document.entries
+            .asSequence()
+            .filter { it.communityId.equals(communityId, ignoreCase = true) }
+            .filterNot { it.token in retiredTokens }
+            .mapNotNull { entry ->
+                runCatching {
+                    CommunityInviteLink(
+                        token = entry.token,
+                        url = entry.url,
+                        label = entry.label,
+                        createdAt = entry.createdAt,
+                        expiresAt = entry.expiresAt,
+                        linkSignerPubKey = entry.signerPubKeyHex(),
+                    )
+                }.getOrNull()
+            }
+            .sortedByDescending { it.createdAt }
+            .toList()
+    }
+
+    /**
+     * Revokes a public invite end-to-end: link-coordinate tombstone, private Invite List
+     * tombstone, then the creator's Control Plane Invite Registry edition. The list write
+     * follows the bundle tombstone so a failed publication never discards the only
+     * link-signing secret needed to retry.
+     */
+    suspend fun revokeInviteLink(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        token: String,
+    ) {
+        require(token.isNotBlank()) { "Invite token is required" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available on this device")
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.CREATE_INVITE)) {
+            throw IllegalStateException("This account is not authorized to revoke community invites")
+        }
+        val controlRootHex = membership.controlRoot
+            ?: throw IllegalStateException("This account does not hold the current Control Plane write key")
+        val relays = concordEffectiveCommunityRelays(
+            metadataRelays = control.state.metadata?.relays.orEmpty(),
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = control.readSummary.hasQuorum,
+        )
+        require(relays.isNotEmpty()) { "The community has no usable relay for invite revocation" }
+
+        // Read every configured personal read relay before changing the replaceable list.
+        val existing = fetchInviteList(signer)
+        val entry = existing.entries.firstOrNull {
+            it.token == token && it.communityId.equals(communityId, ignoreCase = true)
+        }
+        val alreadyRetired = existing.tombstones.any {
+            it.token == token && it.communityId.equals(communityId, ignoreCase = true)
+        }
+        if (entry == null && !alreadyRetired) {
+            throw IllegalArgumentException("This invite link is not present in the current account's Invite List")
+        }
+
+        val nowSecs = System.currentTimeMillis() / 1000
+        if (!alreadyRetired) {
+            val linkSignerPrivateKey = entry!!.signerSk.hexToByteArray()
+            val revocation = NostrEvent.fromJson(
+                ConcordInviteBundle.buildRevocation(linkSignerPrivateKey, nowSecs).toJson(),
+            )
+            withContext(Dispatchers.IO) { journalEvents(communityId, listOf(revocation)) }
+            if (!publishConfirmed(revocation, relays)) {
+                throw IllegalStateException("The invite revocation tombstone was not confirmed by a community relay")
+            }
+
+            val retired = retireInvite(existing, token, communityId)
+            val listEvent = NostrEvent.fromJson(ConcordInviteListEvent.create(signer, retired, nowSecs).toJson())
+            withContext(Dispatchers.IO) {
+                journalEvents("invites_${signer.pubKey}", listOf(listEvent))
+            }
+            if (!publishConfirmed(listEvent, emptyList())) {
+                throw IllegalStateException("The link is revoked, but the private Invite List update was not confirmed")
+            }
+        }
+
+        // Re-fold a complete current Control Plane before changing the creator-owned registry.
+        val controlKeys = ControlPlaneKeys.of(
+            communityRoot = membership.root.hexToByteArray(),
+            communityId = membership.id.hexToByteArray(),
+            epoch = membership.rootEpoch,
+            controlPk = membership.controlPk,
+            controlRoot = controlRootHex,
+        )
+        val coordinate = ConcordInviteRegistry.coordinateHex(membership.id.hexToByteArray(), signer.pubKey)
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[coordinate]
+        val latestInviteList = fetchInviteList(signer)
+        val liveLinks = ConcordInviteRegistry.nextLinks(
+            published = control.state.inviteRegistries[signer.pubKey.lowercase()].orEmpty(),
+            list = latestInviteList,
+            communityIdHex = membership.id,
+            nowSecs = nowSecs,
+        )
+        val registryRumor = ConcordInviteRegistry.rumor(
+            creator = signer.pubKey,
+            communityId = membership.id.hexToByteArray(),
+            linkSigners = liveLinks,
+            version = (head?.version ?: 0L) + 1L,
+            prevHash = head?.hashHex?.hexToByteArray(),
+            createdAt = nowSecs,
+            authorityCitation = control.state.authority.citationFor(signer.pubKey),
+        )
+        val registryEvent = NostrEvent.fromJson(
+            ConcordStreamEnvelope.wrap(
+                rumor = registryRumor,
+                keys = controlKeys,
+                authorSigner = signer,
+                encrypted = false,
+                createdAt = nowSecs,
+            ).toJson(),
+        )
+        withContext(Dispatchers.IO) { journalEvents(communityId, listOf(registryEvent)) }
+        if (!publishConfirmed(registryEvent, relays)) {
+            throw IllegalStateException("The link is retired, but the Invite Registry update was not confirmed")
+        }
+    }
+
     suspend fun createInviteLink(
         signer: PostillaQuartzSigner,
         communityId: String,
