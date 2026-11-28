@@ -1093,8 +1093,13 @@ class ConcordCommunityRepository(
     ): NostrEvent {
         val event = buildRolesV2ControlEvent(signer, membership, control, entityKind, entityId, content, previous)
         withContext(Dispatchers.IO) { journalEvents(membership.id, listOf(event)) }
-        if (!publishConfirmed(event, membership.relays)) {
-            throw IllegalStateException("The Roles v2 Control Plane edition was not confirmed by a community relay")
+        val publishRelays = concordCommunityRelayTargets(
+            metadataRelays = control.state.metadata?.relays.orEmpty(),
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = control.readSummary.hasQuorum,
+        )
+        if (!publishConfirmed(event, publishRelays)) {
+            throw IllegalStateException("The Roles v2 Control Plane edition was not confirmed by a current or bootstrap relay")
         }
         return event
     }
@@ -1678,8 +1683,13 @@ class ConcordCommunityRepository(
             signer, membership, control, entityKind, entityId, content, permission, previousVersion, previousHash,
         )
         withContext(Dispatchers.IO) { journalEvents(membership.id, listOf(event)) }
-        if (!publishConfirmed(event, membership.relays)) {
-            throw IllegalStateException("Control Plane edition was not confirmed by a community relay")
+        val publishRelays = concordCommunityRelayTargets(
+            metadataRelays = control.state.metadata?.relays.orEmpty(),
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = control.readSummary.hasQuorum,
+        )
+        if (!publishConfirmed(event, publishRelays)) {
+            throw IllegalStateException("Control Plane edition was not confirmed by a current or bootstrap community relay")
         }
         return event
     }
@@ -1718,8 +1728,13 @@ class ConcordCommunityRepository(
                 ConcordStreamEnvelope.wrap(publicKick, publicKickKey, signer, encrypted = true).toJson(),
             )
             withContext(Dispatchers.IO) { journalEvents(communityId, listOf(publicKickEvent)) }
-            if (!publishConfirmed(publicKickEvent, membership.relays)) {
-                throw IllegalStateException("The public-community Kick was not confirmed")
+            val kickRelays = concordCommunityRelayTargets(
+                control.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                control.readSummary.hasQuorum,
+            )
+            if (!publishConfirmed(publicKickEvent, kickRelays)) {
+                throw IllegalStateException("The public-community Kick was not confirmed by a current or bootstrap relay")
             }
             return KickResult(communityId, target, false, membership.rootEpoch)
         }
@@ -2842,10 +2857,15 @@ class ConcordCommunityRepository(
         )
 
         withContext(Dispatchers.IO) { journalEvents(communityId, listOf(roleEvent, channelEvent)) }
-        if (!publishConfirmed(roleEvent, membership.relays)) {
+        val channelWriteRelays = concordCommunityRelayTargets(
+            control.state.metadata?.relays.orEmpty(),
+            membership.relays,
+            control.readSummary.hasQuorum,
+        )
+        if (!publishConfirmed(roleEvent, channelWriteRelays)) {
             throw IllegalStateException("The private-channel access role was not confirmed; the channel was not published")
         }
-        if (!publishConfirmed(channelEvent, membership.relays)) {
+        if (!publishConfirmed(channelEvent, channelWriteRelays)) {
             throw IllegalStateException(
                 "The access role was published but the private Channel edition was not confirmed. " +
                     "The channel key and role are retained; refresh the Control Plane before retrying.",
@@ -3567,7 +3587,12 @@ class ConcordCommunityRepository(
                 )
             }
         }
-        require(membership.relays.isNotEmpty()) { "This community has no bootstrap relays; a Direct Invite cannot be delivered safely" }
+        val inviteRelays = concordEffectiveCommunityRelays(
+            metadataRelays = control.state.metadata?.relays.orEmpty(),
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = control.readSummary.hasQuorum,
+        ).take(5)
+        require(inviteRelays.isNotEmpty()) { "This community has no current or bootstrap relay for a Direct Invite" }
         require(channels.size <= 256) { "This community has more channels than the Direct Invite limit (256)" }
         val invite = CommunityInvite(
             communityId = membership.id,
@@ -3577,7 +3602,7 @@ class ConcordCommunityRepository(
             rootEpoch = membership.rootEpoch,
             controlPk = membership.controlPk,
             channels = channels,
-            relays = membership.relays.distinct().take(5),
+            relays = inviteRelays,
             name = control.state.metadata?.name?.ifBlank { membership.name } ?: membership.name,
             icon = control.state.metadata?.icon,
             creatorNpub = NPub.create(signer.pubKey),
@@ -4161,7 +4186,7 @@ class ConcordCommunityRepository(
         }
         val controlRootHex = membership.controlRoot
             ?: throw IllegalStateException("This account does not hold the current Control Plane write key")
-        val relays = concordEffectiveCommunityRelays(
+        val relays = concordCommunityRelayTargets(
             metadataRelays = control.state.metadata?.relays.orEmpty(),
             fallbackRelays = membership.relays,
             controlReadHasQuorum = control.readSummary.hasQuorum,
@@ -4306,6 +4331,11 @@ class ConcordCommunityRepository(
                 ?: throw IllegalStateException("The current community metadata contains an invalid relay URL")
         }.map { it.url }.distinct().take(5)
         val relays = metadataRelays.ifEmpty { readRelays }
+        val publicationRelays = concordCommunityRelayTargets(
+            metadataRelays = metadataRelays,
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = true,
+        )
         val inviteName = preflightState.metadata?.name
             ?.takeIf { it.isNotBlank() } ?: membership.name
 
@@ -4357,7 +4387,7 @@ class ConcordCommunityRepository(
         withContext(Dispatchers.IO) {
             journalEvents(communityId, listOf(bundleEvent))
         }
-        if (!publishConfirmed(bundleEvent, relays)) {
+        if (!publishConfirmed(bundleEvent, publicationRelays)) {
             throw IllegalStateException("Invite bundle was not confirmed by a community relay; do not share the link yet")
         }
 
@@ -4427,7 +4457,7 @@ class ConcordCommunityRepository(
         withContext(Dispatchers.IO) {
             journalEvents(communityId, listOf(registryEvent))
         }
-        if (!publishConfirmed(registryEvent, relays)) {
+        if (!publishConfirmed(registryEvent, publicationRelays)) {
             throw IllegalStateException("The Invite Registry was not confirmed by the Control Plane relay; do not share the link yet")
         }
         return minted.url
