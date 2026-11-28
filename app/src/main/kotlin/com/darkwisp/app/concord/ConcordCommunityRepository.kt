@@ -203,6 +203,22 @@ internal fun concordBestRelayReadTargets(
     ).orEmpty()
 }
 
+/**
+ * Retain the exact independently verified relay cohort selected by a Control Plane read.
+ * Re-deriving this from metadata alone can switch an administrator back to an offline
+ * current-relay set after the quorum was actually obtained from the encrypted bootstrap set.
+ */
+internal fun concordVerifiedRelayReadTargets(
+    requestedRelays: Collection<String>,
+    sentRelays: Collection<String>,
+    eoseRelays: Collection<String>,
+): List<String> {
+    val requested = concordNormalizeRelayTargets(requestedRelays)
+    val sent = concordNormalizeRelayTargets(sentRelays)
+    val eose = concordNormalizeRelayTargets(eoseRelays)
+    return requested.takeIf { concordRelayReadHasQuorum(it, sent, eose) }.orEmpty()
+}
+
 /** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
 internal fun concordRolePermissionAllowsChannelAction(
     rolesV2: Boolean,
@@ -2531,7 +2547,10 @@ class ConcordCommunityRepository(
                     limit = 5000,
                 ),
                 label = "writer-access-${membership.id.take(12)}",
-                requireAllResponders = requireAllResponders,
+                // Read all cohorts concurrently, then assess completeness/quorum against
+                // the best independent cohort. Requiring all relays in the union lets one
+                // offline bootstrap/current cohort block a fully responsive second cohort.
+                requireAllResponders = false,
             )
         }
         val accessRead = accessReadRaw?.let { fetched ->
@@ -2541,6 +2560,17 @@ class ConcordCommunityRepository(
                 sentRelays = fetched.summary.sentRelays,
                 eoseRelays = fetched.summary.respondedRelays,
             )
+            if (requireAllResponders) {
+                require(
+                    concordRelayReadIsComplete(
+                        bestTargets,
+                        fetched.summary.sentRelays,
+                        fetched.summary.respondedRelays,
+                    ),
+                ) {
+                    "Writer Access Plane did not reach EOSE on every relay in the best available cohort"
+                }
+            }
             RelayFetchResult(
                 events = fetched.events,
                 summary = RelayReadSummary(
@@ -3198,11 +3228,14 @@ class ConcordCommunityRepository(
             }
             // Read quorum is measured on the currently trusted set; writes are
             // dual-published to current metadata relays plus encrypted bootstrap relays.
-            var writerReadRelays = concordEffectiveCommunityRelays(
-                control.state.metadata?.relays.orEmpty(),
-                membership.relays,
-                control.readSummary.hasQuorum,
+            var writerReadRelays = concordVerifiedRelayReadTargets(
+                requestedRelays = control.readSummary.requestedRelays,
+                sentRelays = control.readSummary.sentRelays,
+                eoseRelays = control.readSummary.respondedRelays,
             )
+            require(writerReadRelays.isNotEmpty()) {
+                "Writer Duty could not retain the relay cohort that verified the Control Plane quorum"
+            }
             var writerPublishRelays = concordCommunityRelayTargets(
                 control.state.metadata?.relays.orEmpty(),
                 membership.relays,
@@ -3236,11 +3269,14 @@ class ConcordCommunityRepository(
             require(control.readSummary.hasQuorum) {
                 "Writer Duty could not re-read a verified Control Plane quorum after retry"
             }
-            writerReadRelays = concordEffectiveCommunityRelays(
-                control.state.metadata?.relays.orEmpty(),
-                membership.relays,
-                control.readSummary.hasQuorum,
+            writerReadRelays = concordVerifiedRelayReadTargets(
+                requestedRelays = control.readSummary.requestedRelays,
+                sentRelays = control.readSummary.sentRelays,
+                eoseRelays = control.readSummary.respondedRelays,
             )
+            require(writerReadRelays.isNotEmpty()) {
+                "Writer Duty lost the verified Control Plane relay cohort during refresh"
+            }
             writerPublishRelays = concordCommunityRelayTargets(
                 control.state.metadata?.relays.orEmpty(),
                 membership.relays,
@@ -3437,11 +3473,14 @@ class ConcordCommunityRepository(
             require(confirmedControl.readSummary.hasQuorum) {
                 "The Writers Ledger cannot be verified because the Control Plane quorum was lost"
             }
-            writerReadRelays = concordEffectiveCommunityRelays(
-                confirmedControl.state.metadata?.relays.orEmpty(),
-                membership.relays,
-                confirmedControl.readSummary.hasQuorum,
+            writerReadRelays = concordVerifiedRelayReadTargets(
+                requestedRelays = confirmedControl.readSummary.requestedRelays,
+                sentRelays = confirmedControl.readSummary.sentRelays,
+                eoseRelays = confirmedControl.readSummary.respondedRelays,
             )
+            require(writerReadRelays.isNotEmpty()) {
+                "The Writers Ledger quorum was not retained on the relay cohort that confirmed it"
+            }
             writerPublishRelays = concordCommunityRelayTargets(
                 confirmedControl.state.metadata?.relays.orEmpty(),
                 membership.relays,

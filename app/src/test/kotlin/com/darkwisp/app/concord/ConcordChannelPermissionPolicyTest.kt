@@ -60,6 +60,49 @@ class ConcordChannelPermissionPolicyTest {
     }
 
     @Test
+    fun writerDutyRetainsTheBootstrapCohortWhichActuallyReachedQuorum() {
+        val bootstrap = listOf(
+            "wss://bootstrap-1.example/",
+            "wss://bootstrap-2.example/",
+            "wss://bootstrap-3.example/",
+        )
+        assertEquals(
+            bootstrap,
+            concordVerifiedRelayReadTargets(
+                requestedRelays = bootstrap,
+                sentRelays = bootstrap,
+                eoseRelays = bootstrap,
+            ),
+        )
+    }
+
+    @Test
+    fun writerDutyCannotRetainACohortWithoutARealReadQuorum() {
+        val bootstrap = listOf(
+            "wss://bootstrap-1.example/",
+            "wss://bootstrap-2.example/",
+            "wss://bootstrap-3.example/",
+        )
+        assertTrue(
+            concordVerifiedRelayReadTargets(
+                requestedRelays = bootstrap,
+                sentRelays = bootstrap,
+                eoseRelays = bootstrap.take(1),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun strictWriterAccessReadCanCompleteOnOneCohortWithoutTheOther() {
+        val current = listOf("wss://current-1.example/", "wss://current-2.example/", "wss://current-3.example/")
+        val bootstrap = listOf("wss://bootstrap-1.example/", "wss://bootstrap-2.example/", "wss://bootstrap-3.example/")
+        val best = concordBestRelayReadTargets(current, bootstrap, bootstrap, bootstrap)
+        assertEquals(bootstrap, best)
+        assertTrue(concordRelayReadIsComplete(best, bootstrap, bootstrap))
+        assertTrue(!concordRelayReadIsComplete(current + bootstrap, bootstrap, bootstrap))
+    }
+
+    @Test
     fun writerAccessReadCanUseBootstrapQuorumWhenCurrentRelaysAreSilent() {
         val current = listOf(
             "wss://current-1.example/",
