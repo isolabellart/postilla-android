@@ -2134,11 +2134,13 @@ class ConcordCommunityRepository(
         val accessPlanes = if (signer == null) emptyMap() else control.state.writers
             .mapNotNull { (channelId, ledger) ->
                 val live = ledger.live ?: return@mapNotNull null
-                val root = heldRootsByEpoch[live.root] ?: return@mapNotNull null
+                // A live writer entry without a root epoch cannot define a valid access plane.
+                val rootEpoch = live.root ?: return@mapNotNull null
+                val root = heldRootsByEpoch[rootEpoch] ?: return@mapNotNull null
                 channelId to ConcordChannelAccess.plane(
                     root.hexToByteArray(),
                     channelId.hexToByteArray(),
-                    live.root,
+                    rootEpoch,
                 )
             }
             .toMap()
