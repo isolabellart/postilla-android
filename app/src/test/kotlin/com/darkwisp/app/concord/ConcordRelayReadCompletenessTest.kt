@@ -67,7 +67,8 @@ class ConcordRelayReadCompletenessTest {
     fun aRelayMustBeBothSentAndEoseConfirmedToCountTowardQuorum() {
         val requested = (1..6).map { "wss://relay$it.example" }
         val sent = requested.take(5)
-        val eose = requested.take(4)
+        val eose = requested.take(3)
         assertFalse(concordRelayReadHasQuorum(requested, sent, eose))
+        assertFalse(concordRelayReadHasQuorum(requested, requested, eose))
     }
 }
