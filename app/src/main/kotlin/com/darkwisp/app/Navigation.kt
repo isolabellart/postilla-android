@@ -2167,6 +2167,9 @@ fun WispNavHost(
         ) { backStackEntry ->
             val communityId = backStackEntry.arguments?.getString("communityId") ?: return@composable
             var concordZapTargetPubkey by remember(communityId) { mutableStateOf<String?>(null) }
+            val concordResolvedEmojis by feedViewModel.customEmojiRepo.resolvedEmojis.collectAsState()
+            val concordUnicodeEmojis by feedViewModel.customEmojiRepo.sortedUnicodeEmojis.collectAsState()
+            var showConcordEmojiLibrary by remember(communityId) { mutableStateOf(false) }
 
             if (concordZapTargetPubkey != null) {
                 val recipientPubkey = concordZapTargetPubkey!!
@@ -2206,7 +2209,30 @@ fun WispNavHost(
                 blossomRepository = feedViewModel.blossomRepo,
                 onBack = { navController.popBackStack() },
                 onZapAuthor = { concordZapTargetPubkey = it },
+                resolvedEmojis = concordResolvedEmojis,
+                unicodeEmojis = concordUnicodeEmojis,
+                onOpenEmojiLibrary = { showConcordEmojiLibrary = true },
             )
+            if (showConcordEmojiLibrary) {
+                com.darkwisp.app.ui.component.EmojiLibrarySheet(
+                    currentEmojis = concordUnicodeEmojis,
+                    customEmojiMap = concordResolvedEmojis,
+                    onAddEmojis = { emojis ->
+                        emojis.forEach { feedViewModel.customEmojiRepo.addUnicodeEmoji(it) }
+                        if (emojis.isNotEmpty()) pendingEmojiReactCallback?.invoke(emojis.first())
+                        pendingEmojiReactCallback = null
+                    },
+                    onCustomEmojiPick = { shortcode ->
+                        pendingEmojiReactCallback?.invoke(":$shortcode:")
+                        pendingEmojiReactCallback = null
+                        showConcordEmojiLibrary = false
+                    },
+                    onDismiss = {
+                        showConcordEmojiLibrary = false
+                        pendingEmojiReactCallback = null
+                    },
+                )
+            }
         }
 
         composable(
