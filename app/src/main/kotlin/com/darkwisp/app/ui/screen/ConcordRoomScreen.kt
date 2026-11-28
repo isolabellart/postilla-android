@@ -23,6 +23,7 @@ import com.darkwisp.app.repo.BlossomRepository
 import com.darkwisp.app.repo.TranslationRepository
 import com.darkwisp.app.repo.TranslationState
 import com.darkwisp.app.repo.TranslationStatus
+import com.darkwisp.app.ui.component.EmojiReactionPopup
 import com.darkwisp.app.ui.component.ProfilePicture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -101,7 +102,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.nostr.NostrSigner
@@ -121,6 +121,9 @@ fun ConcordRoomScreen(
     blossomRepository: BlossomRepository,
     onBack: () -> Unit,
     onZapAuthor: (String) -> Unit = {},
+    resolvedEmojis: Map<String, String> = emptyMap(),
+    unicodeEmojis: List<String> = emptyList(),
+    onOpenEmojiLibrary: (() -> Unit)? = null,
 ) {
     val communities by viewModel.communities.collectAsState()
     val channelsByCommunity by viewModel.channelsByCommunity.collectAsState()
@@ -1323,7 +1326,7 @@ fun ConcordRoomScreen(
                                 val threadReplyCount = messages.count {
                                     it.kind == 1111 && (it.rootId == message.id || it.replyToId == message.id)
                                 }
-                                var reactionMenuExpanded by remember(message.id) { mutableStateOf(false) }
+                                var reactionPickerExpanded by remember(message.id) { mutableStateOf(false) }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -1345,7 +1348,7 @@ fun ConcordRoomScreen(
                                     }
                                     Box {
                                         IconButton(
-                                            onClick = { reactionMenuExpanded = true },
+                                            onClick = { reactionPickerExpanded = true },
                                             enabled = selectedChannelCanReact && signer != null,
                                             modifier = Modifier.size(30.dp),
                                         ) {
@@ -1356,34 +1359,21 @@ fun ConcordRoomScreen(
                                                 modifier = Modifier.size(17.dp),
                                             )
                                         }
-                                        DropdownMenu(
-                                            expanded = reactionMenuExpanded,
-                                            onDismissRequest = { reactionMenuExpanded = false },
-                                        ) {
-                                            listOf(
-                                                "👍" to "Like",
-                                                "❤️" to "Love",
-                                                "😂" to "Laugh",
-                                                "😮" to "Surprised",
-                                                "😢" to "Sad",
-                                                "🎉" to "Celebrate",
-                                            ).forEach { (emoji, label) ->
-                                                DropdownMenuItem(
-                                                    text = {
-                                                        Text("$emoji   $label", style = MaterialTheme.typography.bodySmall)
-                                                    },
-                                                    enabled = selectedChannelCanReact && signer != null,
-                                                    onClick = {
-                                                        reactionMenuExpanded = false
-                                                        scope.launch {
-                                                            val ok = viewModel.sendChannelReaction(
-                                                                communityId, selectedChannelId, message, emoji, signer,
-                                                            )
-                                                            if (!ok) sendError = "Reaction was not confirmed by a relay"
-                                                        }
-                                                    },
-                                                )
-                                            }
+                                        if (reactionPickerExpanded) {
+                                            EmojiReactionPopup(
+                                                onSelect = { emoji ->
+                                                    scope.launch {
+                                                        val ok = viewModel.sendChannelReaction(
+                                                            communityId, selectedChannelId, message, emoji, signer,
+                                                        )
+                                                        if (!ok) sendError = "Reaction was not confirmed by a relay"
+                                                    }
+                                                },
+                                                onDismiss = { reactionPickerExpanded = false },
+                                                resolvedEmojis = resolvedEmojis,
+                                                unicodeEmojis = unicodeEmojis,
+                                                onOpenEmojiLibrary = onOpenEmojiLibrary,
+                                            )
                                         }
                                     }
                                     if (reactions.isNotEmpty()) {
