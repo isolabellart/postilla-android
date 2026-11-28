@@ -28,6 +28,7 @@ import com.vitorpamplona.quartz.concord.cord02Community.GuestbookEntry
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEdition
 import com.vitorpamplona.quartz.concord.cord04Roles.ChannelEntity
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordDirectInvite
+import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteVend
 import com.vitorpamplona.quartz.concord.cord05Invites.CommunityInvite
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteChannel
 import com.vitorpamplona.quartz.concord.cord05Invites.OpenedDirectInvite
@@ -100,6 +101,11 @@ internal fun concordRelayReadIsComplete(
  * The local journal stores only signed event JSON. Community secrets are carried only
  * inside Quartz's NIP-44 self-encrypted kind-33302 list fragments.
  */
+internal fun concordHasDirectInviteKeyCatchUp(
+    held: ConcordCommunityListEntry?,
+    invite: CommunityInvite,
+): Boolean = ConcordInviteVend.catchUpChannelIds(held, invite).isNotEmpty()
+
 class ConcordCommunityRepository(
     context: Context,
     private val relayPool: RelayPool,
@@ -651,7 +657,7 @@ class ConcordCommunityRepository(
         require(position >= 1L) { "Role position 0 is reserved for the owner" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
@@ -690,69 +696,13 @@ class ConcordCommunityRepository(
         memberPubKey: String,
         roleId: String,
     ): String {
-        val target = memberPubKey.lowercase()
-        val targetBytes = target.hexToByteArray()
-        require(targetBytes.size == 32) { "Member public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         requireLegacyRoleActions(control.state)
-        val authority = control.state.authority
-        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
-            throw IllegalStateException("This account cannot manage community roles")
-        }
-        require(authority.canActOn(signer.pubKey, target, ConcordPermissions.MANAGE_ROLES)) {
-            "The actor cannot manage this member's roles"
-        }
-        require(!authority.isBanned(target)) { "A banned member cannot receive a role" }
-        val roleIdHex = roleId.lowercase()
-        val role = authority.roles()[roleIdHex]
-            ?: throw IllegalArgumentException("Role does not exist in the current Control Plane")
-        require(!role.deleted && role.isWellFormedAt(roleIdHex)) { "Role is not assignable" }
-        val actorRank = authority.rank(signer.pubKey)
-            ?: throw IllegalStateException("The actor has no valid role rank")
-        require(actorRank < role.position) { "The actor does not outrank the role being granted" }
-
-        val roleIds = (authority.rolesOf(target) + roleIdHex).distinct()
-        require(roleIds.size > authority.rolesOf(target).size) { "The member already holds this role" }
-        require(roleIds.all { assignedId -> authority.roles()[assignedId]?.let { actorRank < it.position } == true }) {
-            "The actor does not outrank every role in the resulting Grant"
-        }
-        val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
-            authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
-        }
-        val controlRoot = membership.controlRoot
-        val controlWrap = if (effective.hasAny(ConcordPermissions.STAFF_BITS)) {
-            val root = controlRoot ?: throw IllegalStateException("The current Control Plane write key is unavailable")
-            ControlRootWrap.build(signer, target, membership.rootEpoch, root.hexToByteArray())
-        } else {
-            null
-        }
-        val grant = GrantEntity(member = target, roleIds = roleIds, controlWrap = controlWrap)
-        val grantId = ConcordKeyDerivation.grantCoordinate(membership.id.hexToByteArray(), targetBytes)
-        val heads = ConcordCommunityState.authorizedHeads(
-            control.editions,
-            membership.id.hexToByteArray(),
-            membership.owner,
-        )
-        val head = heads[grantId.toHexKey()]
-        val content = ConcordJson.encodePreserving(
-            GrantEntity.serializer(),
-            grant,
-            head?.known?.content,
-        )
-        val event = publishControlEdition(
-            signer = signer,
-            membership = membership,
-            control = control,
-            entityKind = ControlEntityKind.GRANT,
-            entityId = grantId,
-            content = content,
-            permission = ConcordPermissions.MANAGE_ROLES,
-            previousVersion = head?.version,
-            previousHash = head?.hashHex,
-        )
-        return event.id
+        val current = control.state.authority.rolesOf(memberPubKey.lowercase())
+        require(roleId.lowercase() !in current) { "The member already holds this role" }
+        return setMemberRoles(signer, communityId, memberPubKey, current + roleId.lowercase())
     }
 
     suspend fun revokeRole(
@@ -761,67 +711,13 @@ class ConcordCommunityRepository(
         memberPubKey: String,
         roleId: String,
     ): String {
-        val target = memberPubKey.lowercase()
-        val targetBytes = target.hexToByteArray()
-        require(targetBytes.size == 32) { "Member public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         requireLegacyRoleActions(control.state)
-        val authority = control.state.authority
-        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
-            throw IllegalStateException("This account cannot manage community roles")
-        }
-        require(authority.canActOn(signer.pubKey, target, ConcordPermissions.MANAGE_ROLES)) {
-            "The actor cannot manage this member's roles"
-        }
-        val hadStaffPermissions = authority.rolesOf(target).any { assignedId ->
-            authority.roles()[assignedId]?.permissionBits()?.hasAny(ConcordPermissions.STAFF_BITS) == true
-        }
-        val roleIds = authority.rolesOf(target).filterNot { it == roleId.lowercase() }
-        require(roleIds.size < authority.rolesOf(target).size) { "The member does not hold this role" }
-        val actorRank = authority.rank(signer.pubKey)
-            ?: throw IllegalStateException("The actor has no valid role rank")
-        require(roleIds.all { assignedId -> authority.roles()[assignedId]?.let { actorRank < it.position } == true }) {
-            "The actor does not outrank every role in the resulting Grant"
-        }
-        val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
-            authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
-        }
-        val controlWrap = if (effective.hasAny(ConcordPermissions.STAFF_BITS)) {
-            val root = membership.controlRoot
-                ?: throw IllegalStateException("The current Control Plane write key is unavailable")
-            ControlRootWrap.build(signer, target, membership.rootEpoch, root.hexToByteArray())
-        } else {
-            null
-        }
-        val grant = GrantEntity(member = target, roleIds = roleIds, controlWrap = controlWrap)
-        val grantId = ConcordKeyDerivation.grantCoordinate(membership.id.hexToByteArray(), targetBytes)
-        val heads = ConcordCommunityState.authorizedHeads(
-            control.editions,
-            membership.id.hexToByteArray(),
-            membership.owner,
-        )
-        val head = heads[grantId.toHexKey()]
-        val content = ConcordJson.encodePreserving(
-            GrantEntity.serializer(),
-            grant,
-            head?.known?.content,
-        )
-        val event = if (hadStaffPermissions && !effective.hasAny(ConcordPermissions.STAFF_BITS)) {
-            val pendingEdition = buildControlEdition(
-                signer, membership, control, ControlEntityKind.GRANT, grantId, content,
-                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
-            )
-            refoundCommunity(signer, communityId, extraControlEvents = listOf(pendingEdition))
-            pendingEdition
-        } else {
-            publishControlEdition(
-                signer, membership, control, ControlEntityKind.GRANT, grantId, content,
-                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
-            )
-        }
-        return event.id
+        val current = control.state.authority.rolesOf(memberPubKey.lowercase())
+        require(roleId.lowercase() in current) { "The member does not hold this role" }
+        return setMemberRoles(signer, communityId, memberPubKey, current.filterNot { it == roleId.lowercase() })
     }
 
     suspend fun setMemberRoles(
@@ -836,7 +732,7 @@ class ConcordCommunityRepository(
         require(target != signer.pubKey.lowercase()) { "An account cannot edit its own role grant" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
@@ -858,6 +754,29 @@ class ConcordCommunityRepository(
         }
         val currentRoleIds = authority.rolesOf(target).distinct().sorted()
         if (roleIds == currentRoleIds) return ""
+        val removedPrivateAccess = currentRoleIds
+            .filterNot { it in roleIds }
+            .mapNotNull { id ->
+                val role = roles[id] ?: return@mapNotNull null
+                role.scope?.takeIf { it.kind == "channel" }?.channelId
+                    ?.takeIf { control.state.channels[it.lowercase()]?.let { channel ->
+                        channel.definition.private && !channel.definition.deleted
+                    } == true }
+            }
+            .distinct()
+        require(removedPrivateAccess.isEmpty()) {
+            "Private channel access cannot be removed until the channel key is rotated. No Grant was published."
+        }
+        val gainedPrivateAccess = roleIds
+            .filterNot { it in currentRoleIds }
+            .mapNotNull { id ->
+                val role = roles[id] ?: return@mapNotNull null
+                role.scope?.takeIf { it.kind == "channel" }?.channelId
+                    ?.takeIf { control.state.channels[it.lowercase()]?.let { channel ->
+                        channel.definition.private && !channel.definition.deleted
+                    } == true }
+            }
+            .distinct()
         val hadStaffPermissions = currentRoleIds.any { id ->
             roles[id]?.permissionBits()?.hasAny(ConcordPermissions.STAFF_BITS) == true
         }
@@ -897,6 +816,23 @@ class ConcordCommunityRepository(
                 ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
             )
         }
+        if (gainedPrivateAccess.isNotEmpty()) {
+            try {
+                val verifiedAfterGrant = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+                val notYetEntitled = gainedPrivateAccess.filterNot { channelId ->
+                    ConcordInviteVend.isEntitled(verifiedAfterGrant.state.authority, target, channelId)
+                }
+                check(notYetEntitled.isEmpty()) {
+                    "The Grant was published, but the complete Control Plane does not yet show access to every new private channel. Refresh and retry the Direct Invite."
+                }
+                sendDirectInvite(signer, communityId, target)
+            } catch (error: Exception) {
+                throw IllegalStateException(
+                    "The role Grant was published, but private channel key delivery was not confirmed. Retry the Direct Invite; the member may not yet be able to read those channels.",
+                    error,
+                )
+            }
+        }
         return event.id
     }
 
@@ -917,7 +853,7 @@ class ConcordCommunityRepository(
         require(roleIdBytes.size == 32) { "Role id must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
@@ -932,6 +868,11 @@ class ConcordCommunityRepository(
             "The actor must strictly outrank the role's current and new position"
         }
         requireDelegableRolePermissions(authority, signer.pubKey, permissions)
+        val hadStaffPermissions = current.permissionBits().hasAny(ConcordPermissions.STAFF_BITS)
+        val willHaveStaffPermissions = permissions.hasAny(ConcordPermissions.STAFF_BITS)
+        require(hadStaffPermissions == willHaveStaffPermissions) {
+            "Changing STAFF privileges on an existing role requires coordinated Grant updates and Control Root delivery; no role change was published."
+        }
         val updated = current.copy(
             name = normalizedName,
             position = position,
@@ -971,7 +912,7 @@ class ConcordCommunityRepository(
         require(roleIdBytes.size == 32) { "Role id must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         requireLegacyRoleActions(control.state)
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
@@ -979,6 +920,16 @@ class ConcordCommunityRepository(
         val roleIdHex = roleIdBytes.toHexKey()
         val current = control.state.authority.roles()[roleIdHex]
             ?: throw IllegalArgumentException("Role does not exist")
+        val scopedChannelId = current.scope?.takeIf { it.kind == "channel" }?.channelId
+        if (scopedChannelId != null &&
+            control.state.channels[scopedChannelId.lowercase()]?.let {
+                it.definition.private && !it.definition.deleted
+            } == true
+        ) {
+            throw IllegalStateException(
+                "This role grants access to a private channel. Rotate that channel key before deleting the role; no change was published.",
+            )
+        }
         val actorRank = control.state.authority.rank(signer.pubKey)
             ?: throw IllegalStateException("The actor has no valid role rank")
         require(actorRank < current.position) { "The actor does not outrank this role" }
@@ -1087,7 +1038,7 @@ class ConcordCommunityRepository(
         require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         val authority = control.state.authority
         if (!authority.canActOn(signer.pubKey, target, ConcordPermissions.KICK)) {
             throw IllegalStateException("This account cannot kick the selected member")
@@ -1158,7 +1109,7 @@ class ConcordCommunityRepository(
         require(target.hexToByteArray().size == 32) { "Target public key must be 32 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         val authority = control.state.authority
         if (!authority.canActOn(signer.pubKey, target, ConcordPermissions.BAN)) {
             throw IllegalStateException("This account cannot ban the selected member")
@@ -1249,7 +1200,7 @@ class ConcordCommunityRepository(
         if (membership.privateChannels.isNotEmpty()) {
             throw IllegalStateException("This community has private channels; their independent keys must be rekeyed before a whole-community rotation")
         }
-        val fetchedControl = loadControlPlaneSnapshot(membership)
+        val fetchedControl = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         val control = if (extraControlEvents.isEmpty()) {
             fetchedControl
         } else {
@@ -2035,7 +1986,7 @@ class ConcordCommunityRepository(
         require(ChannelEntity.isValidName(normalized)) { "Channel name must be 1–64 UTF-8 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
             throw IllegalStateException("This account cannot manage community channels")
@@ -2066,7 +2017,7 @@ class ConcordCommunityRepository(
         require(ChannelEntity.isValidName(normalized)) { "Channel name must be 1–64 UTF-8 bytes" }
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
             throw IllegalStateException("This account cannot manage community channels")
@@ -2099,7 +2050,7 @@ class ConcordCommunityRepository(
     ) {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
         if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
             throw IllegalStateException("This account cannot manage community channels")
@@ -2224,6 +2175,13 @@ class ConcordCommunityRepository(
      * Sends a CORD-05 §6 Direct Invite (kind 3313 inside a standard NIP-59 giftwrap).
      * Unlike public links this is an ungated, one-recipient key handoff and cannot be revoked.
      */
+    internal fun privateChannelKeysForInvite(
+        heldKeys: List<PrivateChannelKey>,
+        authority: com.vitorpamplona.quartz.concord.cord04Roles.AuthorityResolver,
+        recipient: String,
+    ): List<PrivateChannelKey> =
+        ConcordInviteVend.vendableChannels(heldKeys, authority, recipient)
+
     suspend fun sendDirectInvite(
         signer: PostillaQuartzSigner,
         communityId: String,
@@ -2245,11 +2203,14 @@ class ConcordCommunityRepository(
         if (authority.isBanned(signer.pubKey)) throw IllegalStateException("This account is banned from the community")
         if (authority.isBanned(recipient)) throw IllegalStateException("This recipient is banned from the community")
 
+        val vendablePrivateChannels = privateChannelKeysForInvite(
+            membership.privateChannels,
+            authority,
+            recipient,
+        ).associateBy { it.channelId.lowercase() }
         val channels = control.state.channels.values.mapNotNull { channel ->
             val privateEntry = if (channel.definition.private) {
-                membership.privateChannels.firstOrNull {
-                    it.channelId.equals(channel.channelIdHex, ignoreCase = true)
-                }
+                vendablePrivateChannels[channel.channelIdHex.lowercase()]
             } else null
             if (channel.definition.private && privateEntry == null) {
                 null
@@ -2402,17 +2363,18 @@ class ConcordCommunityRepository(
         val opened = events.mapNotNull { event ->
             ConcordDirectInvite.openOrRetry(Event.fromJson(event.toJson()), signer)
         }.distinctBy { it.wrapId }.sortedByDescending { it.sentAt }
-        val joinedIds = try {
-            loadLocalMemberships(signer).mapTo(HashSet()) { it.id }
+        val heldMemberships = try {
+            loadLocalMemberships(signer).associateBy { it.id.lowercase() }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            emptySet()
+            emptyMap()
         }
         val declinedKey = "${PREF_DECLINED_DIRECT_INVITES}_${signer.pubKey.lowercase()}"
         val declined = prefs.getStringSet(declinedKey, emptySet()).orEmpty()
-        val visible = opened.filterNot {
-            it.invite.communityId in joinedIds || it.wrapId.lowercase() in declined
+        val visible = opened.filterNot { it.wrapId.lowercase() in declined }.filter { direct ->
+            val held = heldMemberships[direct.invite.communityId.lowercase()]
+            held == null || concordHasDirectInviteKeyCatchUp(held, direct.invite)
         }
         val newest = events.maxOfOrNull { it.created_at } ?: cursor
         if (newest != null && newest > (cursor ?: 0L)) {
@@ -2439,7 +2401,103 @@ class ConcordCommunityRepository(
         if (!ConcordInviteBundle.validate(opened.invite)) {
             throw IllegalStateException("This Direct Invite failed community identity validation")
         }
-        return joinCommunityFromBundle(signer, opened.invite, inviteRef = null)
+        val existing = loadLocalMemberships(signer).firstOrNull {
+            it.id.equals(opened.invite.communityId, ignoreCase = true)
+        }
+        return if (existing == null) {
+            joinCommunityFromBundle(signer, opened.invite, inviteRef = null)
+        } else {
+            adoptDirectInviteCatchUp(signer, opened, existing)
+        }
+    }
+
+    private suspend fun adoptDirectInviteCatchUp(
+        signer: PostillaQuartzSigner,
+        opened: OpenedDirectInvite,
+        held: ConcordCommunityListEntry,
+    ): JoinResult {
+        val invite = opened.invite
+        require(invite.communityId.equals(held.id, ignoreCase = true) &&
+            invite.communityRoot.equals(held.root, ignoreCase = true) &&
+            invite.rootEpoch == held.rootEpoch &&
+            (invite.controlPk ?: "").equals(held.controlPk ?: "", ignoreCase = true)
+        ) {
+            "This Direct Invite belongs to a different community base and cannot update the existing membership"
+        }
+
+        val snapshot = fetchCommunityList(signer)
+        requireSafeCommunityListForWrite(snapshot, "Private channel key catch-up")
+        val latest = snapshot.document.entries.firstOrNull {
+            it.id.equals(held.id, ignoreCase = true)
+        } ?: throw IllegalStateException("The existing community membership is no longer in the local list")
+        require(latest.root.equals(held.root, ignoreCase = true) &&
+            latest.rootEpoch == held.rootEpoch &&
+            (latest.controlPk ?: "").equals(held.controlPk ?: "", ignoreCase = true)
+        ) {
+            "The community membership changed while the key catch-up was being accepted"
+        }
+
+        val control = loadControlPlaneSnapshot(latest, requireAllResponders = true)
+        val livePrivateChannels = control.state.channels.values
+            .filter { it.definition.private && !it.definition.deleted }
+            .mapTo(HashSet()) { it.channelIdHex.lowercase() }
+        when (
+            ConcordInviteVend.judgeCatchUp(
+                authority = control.state.authority,
+                privateChannelIds = livePrivateChannels,
+                recipient = signer.pubKey,
+                sender = opened.sender,
+                bundle = invite,
+                held = latest,
+            )
+        ) {
+            ConcordInviteVend.CatchUpVerdict.ADOPT -> Unit
+            ConcordInviteVend.CatchUpVerdict.NO_FOLD ->
+                throw IllegalStateException("The community roster is not ready yet; refresh and retry this invite")
+            ConcordInviteVend.CatchUpVerdict.NOTHING_NEW ->
+                throw IllegalStateException("This Direct Invite carries no new private channel keys")
+            ConcordInviteVend.CatchUpVerdict.BANNED ->
+                throw IllegalStateException("A banned account cannot receive private channel keys")
+            ConcordInviteVend.CatchUpVerdict.SENDER_NOT_STAFF ->
+                throw IllegalStateException("Only a current community staff member can deliver private channel keys")
+            ConcordInviteVend.CatchUpVerdict.NOT_ENTITLED ->
+                throw IllegalStateException("The Control Plane does not grant access to every delivered private channel")
+        }
+
+        val updated = ConcordInviteVend.adoptCatchUp(latest, invite)
+            ?: throw IllegalStateException("The delivered private channel keys did not advance the local keyring")
+        // ConcordCommunityList.merge intentionally does not merge private keyrings on the same
+        // epoch. Replace the exact entry so the new keys are durably persisted without changing
+        // the community base or overwriting another membership.
+        val nextEntries = snapshot.document.entries.map {
+            if (it.id.equals(latest.id, ignoreCase = true)) updated else it
+        }
+        val nextDocument = ConcordCommunityList.encodeInternal(nextEntries, snapshot.document.residue)
+        val writes = planCommunityListWrites(snapshot, nextDocument, System.currentTimeMillis() / 1000)
+        val listEvents = writes.map { write ->
+            NostrEvent.fromJson(
+                ConcordCommunityListFragmentEvent.create(
+                    signer = signer,
+                    index = write.index,
+                    plaintext = write.plaintext,
+                    createdAt = write.createdAt,
+                ).toJson(),
+            )
+        }
+        withContext(Dispatchers.IO) { journalEvents(latest.id, listEvents) }
+        var published = 0
+        val pending = mutableListOf<String>()
+        for (event in listEvents) {
+            if (publishConfirmed(event, emptyList())) published++ else pending += event.id
+        }
+        return JoinResult(
+            communityId = latest.id,
+            name = latest.name,
+            generalChannelId = getLocalGeneralChannelId(latest.id) ?: restoreGeneralChannelId(latest),
+            publishedCount = published,
+            totalCount = listEvents.size,
+            pendingEventIds = pending,
+        )
     }
 
     private suspend fun joinCommunityFromBundle(
@@ -2544,7 +2602,13 @@ class ConcordCommunityRepository(
             controlPk = invite.controlPk,
             controlRoot = memberControlRoot,
             privateChannels = invite.channels
-                .filter { it.key.isNotBlank() }
+                .filter { grant ->
+                    grant.key.isNotBlank() &&
+                        state.channels[grant.id.lowercase()]?.let {
+                            it.definition.private && !it.definition.deleted
+                        } == true &&
+                        ConcordInviteVend.isEntitled(state.authority, signer.pubKey, grant.id)
+                }
                 .map { PrivateChannelKey(it.id, it.key, it.epoch, it.name) },
             relays = savedRelays,
             name = metadata.name.ifBlank { invite.name },
