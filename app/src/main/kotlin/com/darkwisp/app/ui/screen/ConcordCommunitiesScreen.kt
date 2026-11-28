@@ -94,6 +94,7 @@ fun ConcordCommunitiesScreen(
     val join by viewModel.join.collectAsState()
     val invite by viewModel.invite.collectAsState()
     val directInvites by viewModel.directInvites.collectAsState()
+    val hubDirectory by viewModel.hubDirectory.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -102,6 +103,7 @@ fun ConcordCommunitiesScreen(
     var showJoinDialog by rememberSaveable { mutableStateOf(false) }
     var showDirectInvitesDialog by rememberSaveable { mutableStateOf(false) }
     var inviteUrl by rememberSaveable { mutableStateOf("") }
+    var hubQuery by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var iconUri by remember { mutableStateOf<Uri?>(null) }
@@ -115,6 +117,10 @@ fun ConcordCommunitiesScreen(
     LaunchedEffect(signer?.pubkeyHex) {
         viewModel.init(relayPool, signer)
         viewModel.refreshDirectInvites(signer)
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshHubDirectory()
     }
 
     LaunchedEffect(communities) {
@@ -163,7 +169,7 @@ fun ConcordCommunitiesScreen(
         topBar = {
             if (!embedded) {
                 TopAppBar(
-                    title = { Text("Communities") },
+                    title = { Text("Gruppi") },
                     navigationIcon = {
                         if (onBack != null) {
                             IconButton(onClick = onBack) {
@@ -199,7 +205,7 @@ fun ConcordCommunitiesScreen(
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text("Refresh list")
+                    Text("Aggiorna lista")
                 }
                 Row {
                     TextButton(
@@ -209,10 +215,10 @@ fun ConcordCommunitiesScreen(
                         },
                         enabled = signer != null && !directInvites.isLoading,
                     ) {
-                        Text(if (directInvites.isLoading) "Invites…" else "Invites (${directInvites.invites.size})")
+                        Text(if (directInvites.isLoading) "Inviti…" else "Inviti (${directInvites.invites.size})")
                     }
-                    TextButton(onClick = { showJoinDialog = true }) { Text("Join by link") }
-                    TextButton(onClick = { showCreateDialog = true }) { Text("Create") }
+                    TextButton(onClick = { showJoinDialog = true }) { Text("Entra con link") }
+                    TextButton(onClick = { showCreateDialog = true }) { Text("Crea") }
                 }
             }
 
@@ -221,25 +227,107 @@ fun ConcordCommunitiesScreen(
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
             ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        "Discover public Concord communities",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Browse public community listings in Vector Hub. Open a listing to get its invite link, then join it here.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://vectorapp.io/hub/"))
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Scopri gruppi pubblici",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
                             )
-                        },
-                    ) { Text("Explore Vector Community Hub") }
+                            Text(
+                                "Catalogo curato da Vector. Nome, descrizione e canali saranno letti dal bundle Concord dell'invito.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            onClick = viewModel::refreshHubDirectory,
+                            enabled = !hubDirectory.isLoading,
+                        ) {
+                            if (hubDirectory.isLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Aggiorna")
+                            }
+                        }
+                    }
+                    hubDirectory.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (hubDirectory.listings.isNotEmpty()) {
+                        OutlinedTextField(
+                            value = hubQuery,
+                            onValueChange = { hubQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Filtra per categoria o autore") },
+                        )
+                        val filteredListings = hubDirectory.listings.filter { listing ->
+                            hubQuery.isBlank() ||
+                                listing.category.contains(hubQuery, ignoreCase = true) ||
+                                listing.linkSigner.contains(hubQuery.trim(), ignoreCase = true)
+                        }
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            items(filteredListings, key = { listing -> "${listing.id}-${listing.linkSigner}" }) { listing ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        inviteUrl = listing.inviteUrl
+                                        showJoinDialog = true
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                listing.category.ifBlank { "Gruppo Concord" },
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
+                                            Text(
+                                                buildString {
+                                                    listing.memberCount?.let { append("$it membri") }
+                                                    if (listing.memberCount != null) append(" · ")
+                                                    append("link ${listing.linkSigner.take(12)}…")
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        if (listing.official) {
+                                            Text(
+                                                "Ufficiale Vector",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(end = 8.dp),
+                                            )
+                                        }
+                                        TextButton(onClick = {
+                                            inviteUrl = listing.inviteUrl
+                                            showJoinDialog = true
+                                        }) { Text("Apri") }
+                                    }
+                                }
+                            }
+                        }
+                        if (filteredListings.isEmpty()) {
+                            Text("Nessun risultato per questo filtro.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    } else if (hubDirectory.isLoading) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text("Caricamento catalogo…", modifier = Modifier.padding(start = 8.dp))
+                        }
+                    } else if (hubDirectory.error == null) {
+                        Text("Nessun gruppo pubblico nel catalogo.", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
@@ -299,10 +387,10 @@ fun ConcordCommunitiesScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text("Your communities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text("I tuoi gruppi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Create a Concord community to start a private, end-to-end encrypted space.",
+                        "Crea un gruppo Concord per avviare uno spazio privato e cifrato end-to-end.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

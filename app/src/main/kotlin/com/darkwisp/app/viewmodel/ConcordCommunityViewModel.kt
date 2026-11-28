@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordChatRepository
+import com.darkwisp.app.concord.ConcordHubRepository
+import com.darkwisp.app.concord.VectorHubListing
 import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
 import com.darkwisp.app.concord.ConcordCommunityRepository
@@ -28,6 +30,12 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
+    data class HubDirectoryState(
+        val isLoading: Boolean = false,
+        val listings: List<VectorHubListing> = emptyList(),
+        val error: String? = null,
+    )
+
     data class CreationState(
         val isCreating: Boolean = false,
         val result: ConcordCommunityRepository.CreationResult? = null,
@@ -90,13 +98,18 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     private var repository: ConcordCommunityRepository? = null
     private var chatRepository: ConcordChatRepository? = null
+    private val hubRepository = ConcordHubRepository()
     private var signerPubkey: String? = null
     private var activeSigner: NostrSigner? = null
     private var communityWarmupJob: Job? = null
+    private val pendingChannelRefresh = mutableSetOf<String>()
     private val memberships = linkedMapOf<String, ConcordCommunityListEntry>()
 
     private val _communities = MutableStateFlow<List<CommunityItem>>(emptyList())
     val communities: StateFlow<List<CommunityItem>> = _communities
+
+    private val _hubDirectory = MutableStateFlow(HubDirectoryState())
+    val hubDirectory: StateFlow<HubDirectoryState> = _hubDirectory
 
     private val _channels = MutableStateFlow<List<ConcordCommunityRepository.CommunityChannel>>(emptyList())
     val channels: StateFlow<List<ConcordCommunityRepository.CommunityChannel>> = _channels
@@ -153,6 +166,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         if (signer?.pubkeyHex == signerPubkey) return
         communityWarmupJob?.cancel()
         communityWarmupJob = null
+        synchronized(pendingChannelRefresh) { pendingChannelRefresh.clear() }
         signerPubkey = signer?.pubkeyHex
         memberships.clear()
         _channels.value = emptyList()
@@ -171,6 +185,25 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             _communities.value = emptyList()
             _communityListWarning.value = null
             _generalChannelError.value = null
+        }
+    }
+
+    fun refreshHubDirectory() {
+        val current = _hubDirectory.value
+        if (current.isLoading) return
+        _hubDirectory.value = current.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val listings = hubRepository.fetchListings()
+                _hubDirectory.value = HubDirectoryState(listings = listings)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _hubDirectory.value = _hubDirectory.value.copy(
+                    isLoading = false,
+                    error = error.message ?: "Impossibile caricare il catalogo dei gruppi pubblici",
+                )
+            }
         }
     }
 
@@ -251,38 +284,58 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                 membership.id,
                                 previousMembers.copy(communityId = membership.id, isLoading = true, error = null),
                             )
-                            try {
-                                val quartzSigner = PostillaQuartzSigner(signer)
-                                val snapshot = repo.loadCommunityChannelSnapshot(membership, quartzSigner)
-                                if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
 
-                                _channelsByCommunity.value = _channelsByCommunity.value +
-                                    (membership.id to snapshot.channels)
-                                _channels.value = snapshot.channels
-                                val access = snapshot.writerAccessRead
-                                _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
-                                    membership.id to ChannelSyncState(
-                                        isLoading = false,
-                                        controlResponded = snapshot.controlRead.respondedCount,
-                                        controlRequested = snapshot.controlRead.requestedCount,
-                                        controlComplete = snapshot.controlRead.isComplete,
-                                        writerAccessResponded = access?.respondedCount,
-                                        writerAccessRequested = access?.requestedCount,
-                                        writerAccessComplete = access?.isComplete,
-                                        lastSyncAtMs = System.currentTimeMillis(),
+                            // Channel/control failures are separated from activity/member failures.
+                            val snapshot = try {
+                                repo.loadCommunityChannelSnapshot(membership, PostillaQuartzSigner(signer))
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                if (signerPubkey?.lowercase() == requestedOwner) {
+                                    _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                        membership.id to previousChannelState.copy(
+                                            isLoading = false,
+                                            controlComplete = false,
+                                            error = error.message ?: "Could not synchronize community channels",
+                                        )
                                     )
-                                )
-                                val general = snapshot.channels.firstOrNull {
-                                    it.name.equals("general", ignoreCase = true)
+                                    setMembersState(
+                                        membership.id,
+                                        previousMembers.copy(
+                                            communityId = membership.id,
+                                            isLoading = false,
+                                            error = error.message ?: "Could not synchronize community members",
+                                        ),
+                                    )
                                 }
-                                if (general != null) {
-                                    _communities.value = _communities.value.map {
-                                        if (it.id == membership.id) it.copy(generalChannelId = general.id) else it
-                                    }
-                                }
+                                finishQueuedChannelRefresh(membership.id, requestedOwner)
+                                return@withPermit
+                            }
 
-                                // One batched, per-community-relay request across all channels.
-                                // The chat repository persists each successfully opened wrap.
+                            if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+                            _channelsByCommunity.value = _channelsByCommunity.value + (membership.id to snapshot.channels)
+                            _channels.value = snapshot.channels
+                            val access = snapshot.writerAccessRead
+                            _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                membership.id to ChannelSyncState(
+                                    isLoading = false,
+                                    controlResponded = snapshot.controlRead.respondedCount,
+                                    controlRequested = snapshot.controlRead.requestedCount,
+                                    controlComplete = snapshot.controlRead.isComplete,
+                                    writerAccessResponded = access?.respondedCount,
+                                    writerAccessRequested = access?.requestedCount,
+                                    writerAccessComplete = access?.isComplete,
+                                    lastSyncAtMs = System.currentTimeMillis(),
+                                )
+                            )
+                            val general = snapshot.channels.firstOrNull { it.name.equals("general", ignoreCase = true) }
+                            if (general != null) {
+                                _communities.value = _communities.value.map {
+                                    if (it.id == membership.id) it.copy(generalChannelId = general.id) else it
+                                }
+                            }
+
+                            try {
                                 val observed = chat.loadObservedAuthorActivity(
                                     ownerPubkey = requestedOwner,
                                     communityIdHex = membership.id,
@@ -290,7 +343,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                     communityRelays = membership.relays,
                                 )
                                 if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
-                                val loadedMembers = repo.loadMembers(quartzSigner, membership.id, observed)
+                                val loadedMembers = repo.loadMembers(PostillaQuartzSigner(signer), membership.id, observed)
                                 if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
                                 setMembersState(
                                     membership.id,
@@ -300,21 +353,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                 throw cancelled
                             } catch (error: Exception) {
                                 if (signerPubkey?.lowercase() == requestedOwner) {
-                                    val currentChannelState = _channelSyncByCommunity.value[membership.id]
-                                        ?: previousChannelState
-                                    if (currentChannelState.isLoading || currentChannelState.error == null) {
-                                        _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
-                                            membership.id to currentChannelState.copy(
-                                                isLoading = false,
-                                                error = error.message ?: "Community synchronization failed",
-                                            )
-                                        )
-                                    }
-                                    val currentMembers = _membersByCommunity.value[membership.id]
-                                        ?: previousMembers
+                                    val latestMembers = _membersByCommunity.value[membership.id] ?: previousMembers
                                     setMembersState(
                                         membership.id,
-                                        currentMembers.copy(
+                                        latestMembers.copy(
                                             communityId = membership.id,
                                             isLoading = false,
                                             error = error.message ?: "Could not synchronize community members",
@@ -322,27 +364,22 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                     )
                                 }
                             } finally {
-                                if (signerPubkey?.lowercase() == requestedOwner) {
-                                    val currentChannelState = _channelSyncByCommunity.value[membership.id]
-                                    if (currentChannelState?.isLoading == true) {
-                                        _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
-                                            membership.id to currentChannelState.copy(isLoading = false)
-                                        )
-                                    }
-                                    val currentMembers = _membersByCommunity.value[membership.id]
-                                    if (currentMembers?.isLoading == true) {
-                                        setMembersState(
-                                            membership.id,
-                                            currentMembers.copy(isLoading = false),
-                                        )
-                                    }
-                                }
+                                finishQueuedChannelRefresh(membership.id, requestedOwner)
                             }
                         }
                     }
                 }.awaitAll()
             }
         }
+    }
+
+    private fun finishQueuedChannelRefresh(communityId: String, requestedOwner: String) {
+        if (signerPubkey?.lowercase() != requestedOwner) {
+            synchronized(pendingChannelRefresh) { pendingChannelRefresh.remove(communityId) }
+            return
+        }
+        val rerun = synchronized(pendingChannelRefresh) { pendingChannelRefresh.remove(communityId) }
+        if (rerun) refreshChannels(communityId)
     }
 
     fun createCommunity(
@@ -419,7 +456,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val signer = activeSigner
         val requestedOwner = signer?.pubkeyHex?.lowercase()
         val previous = _channelSyncByCommunity.value[communityId] ?: ChannelSyncState()
-        if (previous.isLoading) return
+        if (previous.isLoading) {
+            synchronized(pendingChannelRefresh) { pendingChannelRefresh.add(communityId) }
+            return
+        }
         _channelSyncByCommunity.value = _channelSyncByCommunity.value +
             (communityId to previous.copy(isLoading = true, error = null))
 
@@ -431,7 +471,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 _channelsByCommunity.value = _channelsByCommunity.value + (communityId to snapshot.channels)
-                _channels.value = snapshot.channels // Legacy observer; Concord operations use the community-scoped index.
+                _channels.value = snapshot.channels
                 val access = snapshot.writerAccessRead
                 _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
                     communityId to ChannelSyncState(
@@ -463,6 +503,15 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         error = error.message ?: "Could not synchronize the Concord channels",
                     )
                 )
+            } finally {
+                if (signerPubkey?.lowercase() == requestedOwner) {
+                    val rerun = synchronized(pendingChannelRefresh) {
+                        pendingChannelRefresh.remove(communityId)
+                    }
+                    if (rerun) refreshChannels(communityId)
+                } else {
+                    synchronized(pendingChannelRefresh) { pendingChannelRefresh.remove(communityId) }
+                }
             }
         }
     }
