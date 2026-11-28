@@ -2815,7 +2815,7 @@ class ConcordCommunityRepository(
                 throw IllegalStateException("This account no longer has valid community authority")
             }
             val refreshedCanManage = control.state.authority.isOwner(signer.pubKey) ||
-                control.state.control.state.channelPermissions(
+                control.state.channelPermissions(
                     signer.pubKey,
                     channelHex,
                     isPrivate = control.state.channels[channelHex]?.definition?.private == true,
