@@ -103,6 +103,34 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private var signerPubkey: String? = null
     private var activeSigner: NostrSigner? = null
     private var communityWarmupJob: Job? = null
+
+    /**
+     * The encrypted local membership is the bootstrap anchor; the current Control Plane
+     * metadata is authoritative for the relay set and display name after a successful read.
+     * ConcordCommunityListEntry is intentionally not a data class, so preserve every key
+     * and extension explicitly when refreshing these hints in the in-memory session.
+     */
+    private fun membershipWithCurrentMetadata(
+        membership: ConcordCommunityListEntry,
+        name: String?,
+        relays: List<String>,
+    ): ConcordCommunityListEntry = ConcordCommunityListEntry(
+        id = membership.id,
+        owner = membership.owner,
+        ownerSalt = membership.ownerSalt,
+        root = membership.root,
+        rootEpoch = membership.rootEpoch,
+        controlPk = membership.controlPk,
+        controlRoot = membership.controlRoot,
+        heldRoots = membership.heldRoots,
+        privateChannels = membership.privateChannels,
+        relays = relays.ifEmpty { membership.relays },
+        name = name?.takeIf { it.isNotBlank() } ?: membership.name,
+        addedAt = membership.addedAt,
+        inviteRef = membership.inviteRef,
+        excludedAtEpoch = membership.excludedAtEpoch,
+        residue = membership.residue,
+    )
     private val pendingChannelRefresh = mutableSetOf<String>()
     private val memberships = linkedMapOf<String, ConcordCommunityListEntry>()
 
@@ -314,15 +342,21 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                             }
 
                             if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+                            val sessionMembership = membershipWithCurrentMetadata(
+                                membership,
+                                snapshot.communityName,
+                                snapshot.communityRelays,
+                            )
+                            memberships[membership.id] = sessionMembership
                             _channelsByCommunity.value = _channelsByCommunity.value + (membership.id to snapshot.channels)
                             _channels.value = snapshot.channels
-                            snapshot.communityName?.let { latestName ->
+                            if (snapshot.communityName != null || snapshot.communityRelays.isNotEmpty()) {
                                 _communities.value = _communities.value.map {
                                     if (it.id == membership.id) {
                                         it.copy(
-                                            name = latestName,
+                                            name = sessionMembership.name,
                                             description = snapshot.communityDescription,
-                                            relays = snapshot.communityRelays.ifEmpty { it.relays },
+                                            relays = sessionMembership.relays,
                                         )
                                     } else it
                                 }
@@ -387,7 +421,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                     ownerPubkey = requestedOwner,
                                     communityIdHex = membership.id,
                                     channels = snapshot.channels,
-                                    communityRelays = membership.relays,
+                                    communityRelays = sessionMembership.relays,
                                 )
                                 if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
                                 val loadedMembers = repo.loadMembers(PostillaQuartzSigner(signer), membership.id, observed)
@@ -553,15 +587,21 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     writerError = prepared.second
                 }
                 if (signerPubkey?.lowercase() != requestedOwner) return@launch
+                val sessionMembership = membershipWithCurrentMetadata(
+                    membership,
+                    snapshot.communityName,
+                    snapshot.communityRelays,
+                )
+                memberships[communityId] = sessionMembership
                 _channelsByCommunity.value = _channelsByCommunity.value + (communityId to snapshot.channels)
                 _channels.value = snapshot.channels
-                snapshot.communityName?.let { latestName ->
+                if (snapshot.communityName != null || snapshot.communityRelays.isNotEmpty()) {
                     _communities.value = _communities.value.map {
                         if (it.id == communityId) {
                             it.copy(
-                                name = latestName,
+                                name = sessionMembership.name,
                                 description = snapshot.communityDescription,
-                                relays = snapshot.communityRelays.ifEmpty { it.relays },
+                                relays = sessionMembership.relays,
                             )
                         } else it
                     }
