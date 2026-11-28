@@ -36,6 +36,7 @@ import com.vitorpamplona.quartz.concord.cord05Invites.InviteChannel
 import com.vitorpamplona.quartz.concord.cord05Invites.OpenedDirectInvite
 import com.vitorpamplona.quartz.nip19Bech32.Nip19Parser
 import com.vitorpamplona.quartz.nip19Bech32.entities.NPub
+import com.vitorpamplona.quartz.nip01Core.relay.normalizer.RelayUrlNormalizer
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEditionBuilder
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlEntityKind
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordJson
@@ -712,13 +713,18 @@ class ConcordCommunityRepository(
         require(ConcordLimits.descriptionFits(normalizedDescription)) {
             "Community description must be at most 10,000 UTF-8 bytes"
         }
-        val normalizedRelays = relays.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        require(normalizedRelays.isNotEmpty()) {
+        val relayInputs = relays.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        require(relayInputs.isNotEmpty()) {
             "A community must retain at least one bootstrap relay"
         }
-        require(normalizedRelays.all { it.startsWith("wss://") }) {
-            "Community relays must use secure wss:// URLs"
-        }
+        val normalizedRelays = relayInputs.map { raw ->
+            val relay = RelayUrlNormalizer.normalizeOrNull(raw)
+                ?: throw IllegalArgumentException("Invalid community relay URL: $raw")
+            require(relay.url.startsWith("wss://")) {
+                "Community relays must use secure wss:// URLs"
+            }
+            relay.url
+        }.distinct()
 
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
@@ -4014,13 +4020,12 @@ class ConcordCommunityRepository(
 
         // Invite previews and delivery must use the current folded metadata, not the
         // stale name/relay hints cached in the local membership entry.
-        val relays = preflightState.metadata?.relays
-            .orEmpty()
-            .map { it.trim() }
-            .filter { it.startsWith("wss://") }
-            .distinct()
-            .take(5)
-            .ifEmpty { readRelays }
+        val metadataRelayInputs = preflightState.metadata?.relays.orEmpty()
+        val metadataRelays = metadataRelayInputs.map { raw ->
+            RelayUrlNormalizer.normalizeOrNull(raw)
+                ?: throw IllegalStateException("The current community metadata contains an invalid relay URL")
+        }.map { it.url }.distinct().take(5)
+        val relays = metadataRelays.ifEmpty { readRelays }
         val inviteName = preflightState.metadata?.name
             ?.takeIf { it.isNotBlank() } ?: membership.name
 
