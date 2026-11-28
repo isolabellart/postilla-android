@@ -7,6 +7,38 @@ import org.junit.Test
 
 class ConcordChannelPermissionPolicyTest {
     @Test
+    fun metadataRelaysAreAdoptedOnlyAfterControlPlaneQuorum() {
+        assertEquals(
+            listOf("wss://new-relay.example"),
+            concordEffectiveCommunityRelays(
+                metadataRelays = listOf("wss://new-relay.example/"),
+                fallbackRelays = listOf("wss://bootstrap.example"),
+                controlReadHasQuorum = true,
+            ),
+        )
+        assertEquals(
+            listOf("wss://bootstrap.example"),
+            concordEffectiveCommunityRelays(
+                metadataRelays = listOf("wss://new-relay.example"),
+                fallbackRelays = listOf("wss://bootstrap.example"),
+                controlReadHasQuorum = false,
+            ),
+        )
+    }
+
+    @Test
+    fun invalidMetadataRelaysFallBackToExistingBootstrapHints() {
+        assertEquals(
+            listOf("wss://bootstrap.example"),
+            concordEffectiveCommunityRelays(
+                metadataRelays = listOf("not a relay"),
+                fallbackRelays = listOf("wss://bootstrap.example"),
+                controlReadHasQuorum = true,
+            ),
+        )
+    }
+
+    @Test
     fun writerPlaneIsRequiredWhenEveryoneCannotSendEvenIfOtherRightsRemain() {
         assertTrue(
             concordChannelRequiresWriterPlane(
