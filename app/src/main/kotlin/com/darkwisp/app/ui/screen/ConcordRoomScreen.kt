@@ -221,6 +221,10 @@ fun ConcordRoomScreen(
     var metadataDraftName by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftDescription by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftRelays by rememberSaveable(communityId) { mutableStateOf("") }
+    var metadataIconUri by remember(communityId) { mutableStateOf<Uri?>(null) }
+    var metadataBannerUri by remember(communityId) { mutableStateOf<Uri?>(null) }
+    val metadataIconPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { metadataIconUri = it }
+    val metadataBannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { metadataBannerUri = it }
     val memberRoleOptions = remember(membersState.members) {
         buildList {
             if (membersState.members.any { it.isOwner }) add("Owner")
@@ -504,6 +508,8 @@ fun ConcordRoomScreen(
                                 metadataDraftName = community?.name.orEmpty()
                                 metadataDraftDescription = community?.description.orEmpty()
                                 metadataDraftRelays = community?.relays.orEmpty().joinToString("\n")
+                                metadataIconUri = null
+                                metadataBannerUri = null
                                 managementError = null
                                 showEditMetadataDialog = true
                             },
@@ -1976,8 +1982,20 @@ fun ConcordRoomScreen(
                         minLines = 2,
                         maxLines = 5,
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { metadataIconPicker.launch("image/*") }) {
+                            Icon(Icons.Default.Image, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (metadataIconUri == null) "Replace icon" else "Icon selected")
+                        }
+                        TextButton(onClick = { metadataBannerPicker.launch("image/*") }) {
+                            Icon(Icons.Default.Photo, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (metadataBannerUri == null) "Replace banner" else "Banner selected")
+                        }
+                    }
                     Text(
-                        "Enter one secure wss:// relay per line. Existing encrypted icon and banner images are preserved.",
+                        "Images are encrypted before upload. Leave either image unchanged by not selecting a replacement.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1998,11 +2016,35 @@ fun ConcordRoomScreen(
                                     .map { it.trim() }
                                     .filter { it.isNotBlank() }
                                     .distinct()
+                                suspend fun uploadEncryptedMetadataImage(uri: Uri): ImagePointer {
+                                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                                    val bytes = withContext(Dispatchers.IO) {
+                                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                            ?: throw IllegalStateException("Could not read the selected image")
+                                    }
+                                    require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 * 1024) {
+                                        "Community image must be smaller than 8 MB"
+                                    }
+                                    val key = RandomInstance.bytes(32)
+                                    val nonce = RandomInstance.bytes(16)
+                                    val encrypted = AESGCM(key, nonce).encrypt(bytes)
+                                    val url = blossomRepository.uploadMedia(encrypted, "application/octet-stream", "bin", signer!!)
+                                    return ImagePointer(
+                                        url = url,
+                                        key = key.toHexKey(),
+                                        nonce = nonce.toHexKey(),
+                                        hash = Blossom.sha256Hex(bytes),
+                                    )
+                                }
+                                val icon = metadataIconUri?.let { uploadEncryptedMetadataImage(it) }
+                                val banner = metadataBannerUri?.let { uploadEncryptedMetadataImage(it) }
                                 viewModel.updateCommunityMetadata(
                                     communityId = communityId,
                                     name = metadataDraftName,
                                     description = metadataDraftDescription,
                                     relays = relays,
+                                    icon = icon,
+                                    banner = banner,
                                     signer = signer,
                                 )
                                 showEditMetadataDialog = false
