@@ -1650,7 +1650,9 @@ class ConcordCommunityRepository(
             val scopedCertificate = scopedTags.singleOrNull()?.let { tag ->
                 if (tag.size != 4) return@let null
                 val signature = tag.getOrNull(2)?.takeIf {
-                    it.length == 128 && it.hexToByteArrayOrNull()?.size == 64
+                    it.length == 128 && it.all { char ->
+                        char in '0'..'9' || char in 'a'..'f' || char in 'A'..'F'
+                    }
                 } ?: return@let null
                 val rightsText = tag.getOrNull(3) ?: return@let null
                 val rights = rightsText.toULongOrNull()?.takeIf { it.toString() == rightsText }
@@ -1691,7 +1693,8 @@ class ConcordCommunityRepository(
             if (!certificateValid) continue
 
             val now = System.currentTimeMillis()
-            if (now < live.fromMs || (live.toMs != null && now >= live.toMs)) continue
+            val liveWindowEndMs = live.toMs
+            if (now < live.fromMs || (liveWindowEndMs != null && now >= liveWindowEndMs)) continue
             if (scopedCertificate != null) {
                 if (ledger.isStopped(live, signer.pubKey, now)) continue
             } else if (!ledger.postStands(

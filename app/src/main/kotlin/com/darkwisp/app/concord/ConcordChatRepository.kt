@@ -452,7 +452,8 @@ class ConcordChatRepository(
             }
             val postMs = ChannelChat.orderingMs(rumor)
                 ?: throw IllegalStateException("The message has an invalid Concord ordering timestamp")
-            require(postMs >= window.fromMs && (window.toMs == null || postMs < window.toMs)) {
+            val windowEndMs = window.toMs
+            require(postMs >= window.fromMs && (windowEndMs == null || postMs < windowEndMs)) {
                 "The writer window is not active for this post"
             }
             val privileged = writer.canManageChannel || context.authority.isOwner(signer.pubKey)
@@ -1029,7 +1030,8 @@ class ConcordChatRepository(
 
         val postMs = ChannelChat.orderingMs(rumor) ?: return null
         val matchingWriterWindow = context.ledger?.windows?.firstOrNull { window ->
-            postMs >= window.fromMs && (window.toMs == null || postMs < window.toMs)
+            val windowEndMs = window.toMs
+            postMs >= window.fromMs && (windowEndMs == null || postMs < windowEndMs)
         }
         if (matchingWriterWindow != null) {
             // In restricted (not locked) channels ordinary posts belong to the writer
@@ -1054,7 +1056,8 @@ class ConcordChatRepository(
         val author = rumor.pubKey
         if (!permissionAllows(writer.communityState, channelIdHex, writer.channelPrivate, author, rumor.kind)) return null
         val postMs = ChannelChat.orderingMs(rumor) ?: return null
-        if (postMs < writer.window.fromMs || (writer.window.toMs != null && postMs >= writer.window.toMs)) return null
+        val writerWindowEndMs = writer.window.toMs
+        if (postMs < writer.window.fromMs || (writerWindowEndMs != null && postMs >= writerWindowEndMs)) return null
 
         val state = writer.communityState
         val authorPermissions = state?.takeIf { it.isRolesV2 }?.channelPermissions(
