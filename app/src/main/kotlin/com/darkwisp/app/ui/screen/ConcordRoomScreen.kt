@@ -1203,7 +1203,7 @@ fun ConcordRoomScreen(
                                             )
                                         }
                                     }
-                                    if (rolesState.canManageRoles && !rolesState.rolesV2) {
+                                    if (rolesState.canManageRoles) {
                                         Row(
                                             horizontalArrangement = Arrangement.End,
                                             modifier = Modifier.fillMaxWidth(),
@@ -1269,34 +1269,31 @@ fun ConcordRoomScreen(
                             Text("Reading the complete Control Plane…", modifier = Modifier.padding(start = 10.dp))
                         }
                         rolesState.error != null -> Text(rolesState.error!!, color = MaterialTheme.colorScheme.error)
-                        rolesState.rolesV2 -> Text(
-                            "This community uses Concord Roles v2. The legacy role editor is intentionally disabled because its events would not be authoritative here. Roles v2 management is not yet available in Postilla.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        !rolesState.canManageRoles -> Text(
-                            "This account does not have MANAGE_ROLES permission.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                         else -> {
                             Text(
-                                "Roles are ordered by authority. You can edit only roles below your rank and delegate only permissions you hold.",
+                                if (rolesState.rolesV2) {
+                                    "Concord Roles v2 · ranked authority. Changes are written as marked Control Plane editions."
+                                } else {
+                                    "Roles are ordered by authority. You can edit only roles below your rank and delegate only permissions you hold."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            TextButton(
-                                enabled = signer != null,
-                                onClick = {
-                                    editingRoleId = null
-                                    roleDraftName = ""
-                                    roleDraftPosition = ((rolesState.roles.maxOfOrNull { it.position } ?: 0L) + 1L).toString()
-                                    roleDraftPermissions = ConcordPermissions.NONE
-                                    roleDialogError = null
-                                    showRoleEditorDialog = true
-                                },
-                            ) { Text("Create role") }
+                            if (rolesState.canManageRoles) {
+                                TextButton(
+                                    enabled = signer != null,
+                                    onClick = {
+                                        editingRoleId = null
+                                        roleDraftName = ""
+                                        roleDraftPosition = ((rolesState.roles.maxOfOrNull { it.position } ?: 0L) + 1L).toString()
+                                        roleDraftPermissions = ConcordPermissions.NONE
+                                        roleDialogError = null
+                                        showRoleEditorDialog = true
+                                    },
+                                ) { Text("Create role") }
+                            }
                             if (rolesState.roles.isEmpty()) {
-                                Text("No legacy roles are defined yet.", style = MaterialTheme.typography.bodySmall)
+                                Text("No roles are defined yet.", style = MaterialTheme.typography.bodySmall)
                             }
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(rolesState.roles, key = { it.id }) { role ->
@@ -1468,7 +1465,6 @@ fun ConcordRoomScreen(
                             Text("Loading roles…", modifier = Modifier.padding(start = 10.dp))
                         }
                         rolesState.error != null -> Text(rolesState.error!!, color = MaterialTheme.colorScheme.error)
-                        rolesState.rolesV2 -> Text("Roles v2 assignment is not yet available in Postilla.")
                         else -> {
                             Text(
                                 "Select the complete set of roles this member should hold. Changes are published as one Grant edition.",
@@ -1507,7 +1503,7 @@ fun ConcordRoomScreen(
             },
             confirmButton = {
                 TextButton(
-                    enabled = !managementBusy && !rolesState.isLoading && !rolesState.rolesV2 &&
+                    enabled = !managementBusy && !rolesState.isLoading &&
                         rolesState.error == null && signer != null,
                     onClick = {
                         scope.launch {
