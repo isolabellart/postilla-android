@@ -1072,6 +1072,9 @@
 
     <string name="postilla_update_available">È disponibile Postilla %1$s</string>
     <string name="postilla_update_description">È pronta una nuova versione. Puoi aggiornare adesso oppure farlo più tardi.</string>
+    <string name="postilla_update_whats_new">Novità di questa versione</string>
+    <string name="postilla_update_show_more">Leggi tutte le note</string>
+    <string name="postilla_update_show_less">Mostra meno</string>
     <string name="postilla_update_now">Aggiorna ora</string>
     <string name="postilla_update_later">Più tardi</string>
     <string name="postilla_update_downloading">Download in corso…</string>

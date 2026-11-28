@@ -60,9 +60,10 @@ class MainActivity : FragmentActivity() {
 
             LaunchedEffect(Unit) {
                 PostillaUpdateManager.refreshVisibleUpdate(this@MainActivity)
+                PostillaUpdateManager.checkIfDue(this@MainActivity, forceCheck = true)
                 while (true) {
-                    PostillaUpdateManager.checkIfDue(this@MainActivity)
                     delay(60L * 60L * 1000L)
+                    PostillaUpdateManager.checkIfDue(this@MainActivity)
                 }
             }
 
@@ -106,6 +107,7 @@ class MainActivity : FragmentActivity() {
                         updateOffer?.let { offer ->
                             PostillaUpdateBanner(
                                 versionName = offer.versionName,
+                                releaseNotes = offer.releaseNotes,
                                 isDownloading = updateDownloading,
                                 onLater = { PostillaUpdateManager.remindLater(this@MainActivity) },
                                 onUpdateNow = {

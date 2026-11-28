@@ -263,60 +263,24 @@ jobs:
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
+          VERSION_CODE="$(grep -m1 "versionCode" app/build.gradle.kts | sed -E 's/.*= ([0-9]+).*/\\1/')"
+          NOTES_SOURCE="docs/releases/v${VERSION_NAME}.md"
+          if [[ ! -s "$NOTES_SOURCE" ]]; then
+            echo "::error::Missing version-specific release notes: $NOTES_SOURCE"
+            exit 1
+          fi
           NOTES="$RUNNER_TEMP/release-notes.md"
-          cat > "$NOTES" <<'EOF'
-          # Postilla @@VERSION_NAME@@
-
-          **An independent Android Nostr client built on the foundations of Dark Wisp.**
-
-          Postilla is an independently maintained downstream project based on the original Dark Wisp Android client. It is not an official upstream release. It brings social feeds, NIP-17 private messaging, translation, Lightning and a NIP-99 marketplace into one native Android app.
-
-          ## Highlights
-          - Drawer placement can be chosen on the left or right, with online-user and connected-relay indicators.
-          - DeepL translation integrated into the app.
-          - Improved Conversations feed and event handling, including NIP-22 and NIP-09 safeguards.
-          - Enhanced NIP-99 Marketplace experience, with seller profile/avatar, listing detail recovery and copyable naddr.
-          - The mini-wallet entry, including **Set up wallet**, is available in the drawer.
-
-          ## Separate installation and wallet safety
-          Postilla keeps the established Android application ID: `com.isolabellart.darkwispenhanced`. Existing Dark Wisp Enhanced installations can receive Postilla updates without changing package or losing local app data. Postilla remains a separate app from upstream Dark Wisp. Keep recovery material offline and never share it.
-
-          Future Enhanced updates use the same permanent APK signing certificate:
-          \`86868a3659729a6531f3e8a31d5dcfe04405e2a86866f3e0eb0abb6965cdb841\`.
-
-          Package: com.isolabellart.darkwispenhanced
-          Version: @@VERSION_NAME@@ (@@VERSION_CODE@@)
-          Signed APK: Postilla-@@RELEASE_TAG@@.apk
-          SHA-256: @@APK_SHA256@@
+          cp -- "$NOTES_SOURCE" "$NOTES"
+          cat >> "$NOTES" <<EOF
 
           ---
 
-          # Postilla @@VERSION_NAME@@ (Italiano)
-
-          **Un client Nostr Android indipendente, sviluppato sulle basi del progetto Dark Wisp.**
-
-          Postilla è un progetto downstream indipendente basato sul client Android Dark Wisp originale. Non è una release ufficiale upstream. Riunisce feed social, messaggistica privata NIP-17, traduzione, Lightning e marketplace NIP-99 in un'unica app Android nativa.
-
-          ## Novità principali
-          - Drawer spostabile a sinistra o a destra, con indicatori di utenti online e relay connessi.
-          - Traduzione DeepL integrata.
-          - Feed Conversations e gestione degli eventi migliorati, con protezioni NIP-22 e NIP-09.
-          - Marketplace NIP-99 arricchito: profilo e avatar del venditore, recupero del dettaglio e copia di naddr.
-          - Mini-wallet nel drawer, compresa la voce **Set up wallet**.
-
-          ## Installazione separata e sicurezza del wallet
-          Postilla conserva l'identificativo Android esistente: `com.isolabellart.darkwispenhanced`. Le installazioni Dark Wisp Enhanced potranno ricevere gli aggiornamenti Postilla senza cambiare package e senza perdere i dati locali. Postilla resta un'app separata da Dark Wisp upstream. Conserva offline il backup della frase di recupero e non condividerlo mai.
-
-          Le future versioni Enhanced manterranno lo stesso certificato di firma permanente.
-
           Package: com.isolabellart.darkwispenhanced
-          Versione: @@VERSION_NAME@@ (@@VERSION_CODE@@)
-          APK firmato: Postilla-@@RELEASE_TAG@@.apk
-          SHA-256: @@APK_SHA256@@
+          Version: ${VERSION_NAME} (${VERSION_CODE})
+          Signed APK: Postilla-${RELEASE_TAG}.apk
+          SHA-256: ${APK_SHA256}
           EOF
-          VERSION_NAME="$(grep -m1 "versionName" app/build.gradle.kts | cut -d '"' -f2)"
-          VERSION_CODE="$(grep -m1 "versionCode" app/build.gradle.kts | sed -E 's/.*= ([0-9]+).*/\1/')"
-          sed -i "s|@@VERSION_NAME@@|$VERSION_NAME|g; s|@@VERSION_CODE@@|$VERSION_CODE|g; s|@@RELEASE_TAG@@|$RELEASE_TAG|g; s|@@APK_SHA256@@|$APK_SHA256|g" "$NOTES"
           args=()
           [[ "$IS_PRERELEASE" == "true" ]] && args+=(--prerelease)
           # Give the uploaded GitHub asset the canonical filename, not only a display label.

@@ -26,7 +26,8 @@ data class PostillaUpdateOffer(
     val versionName: String,
     val apkUrl: String,
     val sha256: String,
-    val previewOnly: Boolean = false
+    val previewOnly: Boolean = false,
+    val releaseNotes: String = "",
 )
 
 object PostillaUpdateManager {
@@ -46,7 +47,12 @@ object PostillaUpdateManager {
     val availableUpdate: StateFlow<PostillaUpdateOffer?> = _availableUpdate
 
     fun refreshVisibleUpdate(context: Context) {
-        _availableUpdate.value = visibleOffer(context.applicationContext)
+        val appContext = context.applicationContext
+        if (BuildConfig.BUILD_TYPE == "staging" || BuildConfig.APPLICATION_ID != STABLE_PACKAGE) {
+            _availableUpdate.value = null
+            return
+        }
+        _availableUpdate.value = visibleOffer(appContext)
     }
 
     fun remindLater(context: Context) {
@@ -60,19 +66,12 @@ object PostillaUpdateManager {
         val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
 
-        // Preview builds show a local test offer, never a production APK for the
-        // separate .staging application ID.
+        // Preview builds have a different application ID and are distributed through
+        // the staging workflow, not official Releases. Never show a fabricated offer or
+        // attempt to install a stable APK over a Preview package.
         if (BuildConfig.BUILD_TYPE == "staging") {
-            // Each new Preview build gets a fresh visual update offer, even if the
-            // previous Preview was snoozed with "Later". The same build still respects
-            // its three-day snooze interval.
-            val previewVersion = "1.0.51"
-            val saved = readOffer(prefs)
-            if (saved == null || !saved.previewOnly || saved.versionName != previewVersion) {
-                prefs.edit().putLong(KEY_SNOOZE_UNTIL, 0L).apply()
-                writeOffer(prefs, PostillaUpdateOffer(previewVersion, "", "", previewOnly = true))
-            }
-            publishVisibleOffer(appContext)
+            clearOffer(prefs)
+            _availableUpdate.value = null
             return@withContext true
         }
 
@@ -144,7 +143,16 @@ object PostillaUpdateManager {
                 if (previousVersion != null && previousVersion != versionName) {
                     prefs.edit().putLong(KEY_SNOOZE_UNTIL, 0L).apply()
                 }
-                writeOffer(prefs, PostillaUpdateOffer(versionName, apkUrl, digest.lowercase()))
+                val releaseNotes = normalizePostillaReleaseNotes(release.optString("body"))
+                writeOffer(
+                    prefs,
+                    PostillaUpdateOffer(
+                        versionName = versionName,
+                        apkUrl = apkUrl,
+                        sha256 = digest.lowercase(),
+                        releaseNotes = releaseNotes,
+                    ),
+                )
             }
             prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
             checkSucceeded = true
@@ -314,7 +322,8 @@ object PostillaUpdateManager {
                 versionName = json.getString("version"),
                 apkUrl = json.optString("url"),
                 sha256 = json.optString("sha256"),
-                previewOnly = json.optBoolean("preview", false)
+                previewOnly = json.optBoolean("preview", false),
+                releaseNotes = normalizePostillaReleaseNotes(json.optString("notes")),
             )
         } catch (_: Exception) {
             null
@@ -327,6 +336,7 @@ object PostillaUpdateManager {
             .put("url", offer.apkUrl)
             .put("sha256", offer.sha256)
             .put("preview", offer.previewOnly)
+            .put("notes", normalizePostillaReleaseNotes(offer.releaseNotes))
         prefs.edit().putString(KEY_OFFER, json.toString()).apply()
     }
 
@@ -334,6 +344,8 @@ object PostillaUpdateManager {
         prefs.edit().remove(KEY_OFFER).putLong(KEY_SNOOZE_UNTIL, 0L).apply()
     }
 }
+
+internal fun normalizePostillaReleaseNotes(value: String): String = value.trim().take(12_000)
 
 internal fun isNewerVersion(candidate: String, installed: String): Boolean {
     fun parts(value: String): List<Int>? {

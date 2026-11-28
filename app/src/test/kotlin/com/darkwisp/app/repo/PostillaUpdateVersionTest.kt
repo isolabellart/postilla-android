@@ -40,3 +40,8 @@ class PostillaUpdateVersionTest {
     }
 
 }
+
+    @Test fun releaseNotesAreTrimmedAndBounded() {
+        assertTrue(normalizePostillaReleaseNotes("  Concord improvements  ") == "Concord improvements")
+        assertTrue(normalizePostillaReleaseNotes("x".repeat(12_500)).length == 12_000)
+    }

@@ -1242,6 +1242,9 @@
 
     <string name="postilla_update_available">Postilla %1$s is available</string>
     <string name="postilla_update_description">A new version is ready. You can update now or do it later.</string>
+    <string name="postilla_update_whats_new">What’s new in this version</string>
+    <string name="postilla_update_show_more">Read full notes</string>
+    <string name="postilla_update_show_less">Show less</string>
     <string name="postilla_update_now">Update now</string>
     <string name="postilla_update_later">Later</string>
     <string name="postilla_update_downloading">Downloading…</string>
