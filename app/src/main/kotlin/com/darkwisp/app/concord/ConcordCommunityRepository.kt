@@ -2018,7 +2018,7 @@ class ConcordCommunityRepository(
                     membership.rootEpoch,
                 )
             }
-        val accessTargets = (membership.relays + relayPool.getReadRelayUrls()).distinct()
+        val accessTargets = membership.relays.distinct()
         if (accessPlanes.isNotEmpty()) {
             relayPool.registerConcordStreamKeys(accessPlanes.values, accessTargets)
         }
@@ -2666,6 +2666,16 @@ class ConcordCommunityRepository(
             }
         }
         val authority = control.state.authority
+        val rankedRoster = authority.rankedRoster()
+        fun rolesForMember(pubkey: String): Pair<List<String>, List<String>> {
+            return if (rankedRoster != null) {
+                val held = rankedRoster.rolesOf(pubkey).sortedWith(compareBy({ it.position }, { it.roleId }))
+                held.map { it.roleId } to held.map { it.name }.filter(String::isNotBlank)
+            } else {
+                val held = authority.rolesOf(pubkey).sorted()
+                held to held.mapNotNull { authority.roles()[it]?.name?.takeIf(String::isNotBlank) }
+            }
+        }
         val isPublic = control.state.isPublic
         val coalesced = Guestbook.coalesce(entries, System.currentTimeMillis(), authority)
         val members = LinkedHashMap<String, CommunityMember>()
@@ -2676,8 +2686,7 @@ class ConcordCommunityRepository(
             val pubkey = entry.member.lowercase()
             if (authority.isBanned(pubkey)) continue
             val activity = observedAuthors[pubkey]
-            val heldRoleIds = authority.rolesOf(pubkey).sorted()
-            val heldRoleNames = heldRoleIds.mapNotNull { authority.roles()[it]?.name?.takeIf(String::isNotBlank) }
+            val (heldRoleIds, heldRoleNames) = rolesForMember(pubkey)
             members[pubkey] = CommunityMember(
                 pubkey = pubkey,
                 joinedAt = entry.createdAt,
@@ -2706,8 +2715,7 @@ class ConcordCommunityRepository(
                 val current = members.getValue(pubkey)
                 members[pubkey] = current.copy(lastSeenAt = maxOf(current.lastSeenAt, activity.lastSeenAtMs))
             } else {
-                val heldRoleIds = authority.rolesOf(pubkey).sorted()
-                val heldRoleNames = heldRoleIds.mapNotNull { authority.roles()[it]?.name?.takeIf(String::isNotBlank) }
+                val (heldRoleIds, heldRoleNames) = rolesForMember(pubkey)
                 members[pubkey] = CommunityMember(
                     pubkey = pubkey,
                     joinedAt = (activity.firstSeenAtMs / 1000L).coerceAtLeast(0L),
