@@ -54,6 +54,14 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
 
+    data class InviteLinksState(
+        val communityId: String? = null,
+        val isLoading: Boolean = false,
+        val links: List<ConcordCommunityRepository.CommunityInviteLink> = emptyList(),
+        val revokingToken: String? = null,
+        val error: String? = null,
+    )
+
     data class MembersState(
         val communityId: String? = null,
         val isLoading: Boolean = false,
@@ -160,6 +168,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _invite = MutableStateFlow(InviteState())
     val invite: StateFlow<InviteState> = _invite
+
+    private val _inviteLinksByCommunity =
+        MutableStateFlow<Map<String, InviteLinksState>>(emptyMap())
+    val inviteLinksByCommunity: StateFlow<Map<String, InviteLinksState>> = _inviteLinksByCommunity
 
     private val _members = MutableStateFlow(MembersState())
     val members: StateFlow<MembersState> = _members
@@ -922,6 +934,77 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearInviteResult() {
         if (!_invite.value.isCreating) _invite.value = InviteState()
+    }
+
+    fun refreshInviteLinks(communityId: String, signer: NostrSigner?) {
+        val repo = repository ?: return
+        if (signer == null) {
+            _inviteLinksByCommunity.value = _inviteLinksByCommunity.value +
+                (communityId to InviteLinksState(communityId = communityId, error = "A writable Nostr signer is required"))
+            return
+        }
+        val requestedOwner = signer.pubkeyHex.lowercase()
+        val current = _inviteLinksByCommunity.value[communityId] ?: InviteLinksState(communityId = communityId)
+        if (current.isLoading || current.revokingToken != null) return
+        _inviteLinksByCommunity.value = _inviteLinksByCommunity.value + (
+            communityId to current.copy(communityId = communityId, isLoading = true, error = null)
+        )
+        viewModelScope.launch {
+            try {
+                val links = repo.loadInviteLinks(PostillaQuartzSigner(signer), communityId)
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
+                _inviteLinksByCommunity.value = _inviteLinksByCommunity.value + (
+                    communityId to InviteLinksState(communityId = communityId, links = links)
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
+                val latest = _inviteLinksByCommunity.value[communityId] ?: current
+                _inviteLinksByCommunity.value = _inviteLinksByCommunity.value + (
+                    communityId to latest.copy(
+                        communityId = communityId,
+                        isLoading = false,
+                        error = error.message ?: "Could not load public invite links",
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun revokeInviteLink(
+        communityId: String,
+        token: String,
+        signer: NostrSigner?,
+    ) {
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        val active = signer ?: throw IllegalStateException("A writable Nostr signer is required")
+        val requestedOwner = active.pubkeyHex.lowercase()
+        val current = _inviteLinksByCommunity.value[communityId] ?: InviteLinksState(communityId = communityId)
+        if (current.revokingToken != null) return
+        _inviteLinksByCommunity.value = _inviteLinksByCommunity.value + (
+            communityId to current.copy(revokingToken = token, error = null)
+        )
+        try {
+            repo.revokeInviteLink(PostillaQuartzSigner(active), communityId, token)
+            val links = repo.loadInviteLinks(PostillaQuartzSigner(active), communityId)
+            if (signerPubkey?.lowercase() != requestedOwner) return
+            _inviteLinksByCommunity.value = _inviteLinksByCommunity.value + (
+                communityId to InviteLinksState(communityId = communityId, links = links)
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (signerPubkey?.lowercase() != requestedOwner) return
+            val latest = _inviteLinksByCommunity.value[communityId] ?: current
+            _inviteLinksByCommunity.value = _inviteLinksByCommunity.value + (
+                communityId to latest.copy(
+                    communityId = communityId,
+                    revokingToken = null,
+                    error = error.message ?: "Could not revoke public invite link",
+                )
+            )
+        }
     }
 
     fun refreshDirectInvites(signer: NostrSigner?) {
