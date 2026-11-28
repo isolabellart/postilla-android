@@ -112,6 +112,8 @@ fun ConcordRoomScreen(
     val rolesByCommunity by viewModel.rolesByCommunity.collectAsState()
     val rolesState = rolesByCommunity[communityId] ?: ConcordCommunityViewModel.RolesState()
     val inviteState by viewModel.invite.collectAsState()
+    val inviteLinksByCommunity by viewModel.inviteLinksByCommunity.collectAsState()
+    val inviteLinksState = inviteLinksByCommunity[communityId] ?: ConcordCommunityViewModel.InviteLinksState(communityId = communityId)
     val communityIcons by viewModel.communityIcons.collectAsState()
     val communityIcon = communityIcons[communityId]
     val community = communities.firstOrNull { it.id == communityId }
@@ -178,6 +180,8 @@ fun ConcordRoomScreen(
     var managementError by remember { mutableStateOf<String?>(null) }
     var managementBusy by remember { mutableStateOf(false) }
     var showEditMetadataDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showInviteLinksDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var pendingInviteRevocationToken by rememberSaveable(communityId) { mutableStateOf<String?>(null) }
     var metadataDraftName by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftDescription by rememberSaveable(communityId) { mutableStateOf("") }
     var metadataDraftRelays by rememberSaveable(communityId) { mutableStateOf("") }
@@ -559,6 +563,15 @@ fun ConcordRoomScreen(
                                 onClick = {
                                     showCommunityMenu = false
                                     viewModel.createInviteLink(communityId, signer)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Manage public invite links") },
+                                enabled = signer != null,
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showInviteLinksDialog = true
+                                    viewModel.refreshInviteLinks(communityId, signer)
                                 },
                             )
                             HorizontalDivider()
@@ -1705,6 +1718,123 @@ fun ConcordRoomScreen(
                 TextButton(
                     enabled = !managementBusy,
                     onClick = { showEditMetadataDialog = false },
+                ) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showInviteLinksDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (inviteLinksState.revokingToken == null) showInviteLinksDialog = false
+            },
+            title = { Text("Public invite links") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "These links were created by this account. Revoking one publishes its Concord tombstone and removes it from the creator registry.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (inviteLinksState.isLoading) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                        }
+                    }
+                    inviteLinksState.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                    if (!inviteLinksState.isLoading && inviteLinksState.links.isEmpty()) {
+                        Text("No public invite links were found for this account.")
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(inviteLinksState.links, key = { it.token }) { link ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text(
+                                    link.label?.takeIf { it.isNotBlank() } ?: "Public invite",
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    link.url,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                val expired = link.isExpired(System.currentTimeMillis() / 1000)
+                                Text(
+                                    if (expired) "Expired" else "Active",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                                as? android.content.ClipboardManager
+                                            clipboard?.setPrimaryClip(
+                                                android.content.ClipData.newPlainText("Concord invite link", link.url),
+                                            )
+                                            android.widget.Toast.makeText(context, "Invite link copied", android.widget.Toast.LENGTH_SHORT).show()
+                                        },
+                                    ) { Text("Copy") }
+                                    TextButton(
+                                        enabled = signer != null && inviteLinksState.revokingToken == null,
+                                        onClick = { pendingInviteRevocationToken = link.token },
+                                    ) {
+                                        Text(if (inviteLinksState.revokingToken == link.token) "Revoking…" else "Revoke")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = inviteLinksState.revokingToken == null,
+                    onClick = {
+                        showInviteLinksDialog = false
+                        viewModel.refreshInviteLinks(communityId, signer)
+                    },
+                ) { Text("Close") }
+            },
+        )
+    }
+
+    pendingInviteRevocationToken?.let { token ->
+        AlertDialog(
+            onDismissRequest = { if (inviteLinksState.revokingToken == null) pendingInviteRevocationToken = null },
+            title = { Text("Revoke invite link?") },
+            text = {
+                Text("Anyone who has this link will no longer be able to use it after the revocation reaches the community relays.")
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = signer != null && inviteLinksState.revokingToken == null,
+                    onClick = {
+                        scope.launch {
+                            viewModel.revokeInviteLink(communityId, token, signer)
+                            pendingInviteRevocationToken = null
+                            showInviteLinksDialog = true
+                        }
+                    },
+                ) { Text(if (inviteLinksState.revokingToken == token) "Revoking…" else "Revoke link") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = inviteLinksState.revokingToken == null,
+                    onClick = { pendingInviteRevocationToken = null },
                 ) { Text("Cancel") }
             },
         )
