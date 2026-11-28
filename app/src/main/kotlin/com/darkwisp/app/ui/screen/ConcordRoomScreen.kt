@@ -237,7 +237,7 @@ fun ConcordRoomScreen(
                     replyToMessage = null
                     inlineReplyMode = false
                 }
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 sendError = error.message ?: "Message could not be sent. Your draft has been kept."
@@ -692,7 +692,7 @@ fun ConcordRoomScreen(
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(24.dp),
-                        border = androidx.compose.foundation.BorderStroke(
+                        border = BorderStroke(
                             1.dp,
                             MaterialTheme.colorScheme.outlineVariant,
                         ),
@@ -772,7 +772,7 @@ fun ConcordRoomScreen(
                                         .padding(horizontal = 14.dp, vertical = 12.dp),
                                     contentAlignment = Alignment.CenterStart,
                                 ) {
-                                    androidx.compose.foundation.text.BasicTextField(
+                                    BasicTextField(
                                         value = text,
                                         onValueChange = { text = it; sendError = null },
                                         modifier = Modifier.fillMaxWidth(),
