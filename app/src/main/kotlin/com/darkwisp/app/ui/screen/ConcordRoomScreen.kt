@@ -10,7 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import coil3.compose.AsyncImage
+import com.darkwisp.app.R
 import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
 import com.darkwisp.app.nostr.Blossom
 import com.vitorpamplona.crypto.aes.AESGCM
@@ -48,6 +50,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.automirrored.outlined.Reply
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.FormatQuote
+import androidx.compose.material.icons.outlined.ModeComment
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
@@ -86,9 +101,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.nostr.NostrSigner
+import com.darkwisp.app.ui.theme.WispThemeColors
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -103,6 +120,7 @@ fun ConcordRoomScreen(
     translationRepository: TranslationRepository,
     blossomRepository: BlossomRepository,
     onBack: () -> Unit,
+    onZapAuthor: (String) -> Unit = {},
 ) {
     val communities by viewModel.communities.collectAsState()
     val channelsByCommunity by viewModel.channelsByCommunity.collectAsState()
@@ -137,6 +155,15 @@ fun ConcordRoomScreen(
             (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
     } ?: false
     val selectedChannelCanAttach = selectedChannelCanSend && selectedChannel?.canAttachFiles == true
+    val selectedChannelCanReact = selectedChannel?.let {
+        !channelSync.isLoading &&
+            channelSync.controlReady &&
+            channelSync.controlComplete &&
+            it.canViewChannel &&
+            it.canAddReactions &&
+            (!it.isPrivate || !it.privateKeyHex.isNullOrBlank()) &&
+            (!it.isLocked || it.writerCredential?.canAddReactions == true)
+    } ?: false
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
@@ -586,6 +613,7 @@ fun ConcordRoomScreen(
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Edit group details") },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                 enabled = signer != null,
                                 onClick = {
                                     showCommunityMenu = false
@@ -598,6 +626,7 @@ fun ConcordRoomScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text("Manage roles") },
+                                leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
                                 onClick = {
                                     showCommunityMenu = false
                                     showRolesDialog = true
@@ -607,6 +636,7 @@ fun ConcordRoomScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text("Members") },
+                                leadingIcon = { Icon(Icons.Default.Group, contentDescription = null) },
                                 onClick = {
                                     showCommunityMenu = false
                                     showMembersDialog = true
@@ -615,6 +645,7 @@ fun ConcordRoomScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text("Invite by npub") },
+                                leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
                                 onClick = {
                                     showCommunityMenu = false
                                     showDirectInviteDialog = true
@@ -622,6 +653,7 @@ fun ConcordRoomScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(if (inviteState.isCreating) "Preparing invite link…" else "Share public invite link") },
+                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
                                 enabled = signer != null && !inviteState.isCreating,
                                 onClick = {
                                     showCommunityMenu = false
@@ -630,6 +662,7 @@ fun ConcordRoomScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text("Manage public invite links") },
+                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
                                 enabled = signer != null,
                                 onClick = {
                                     showCommunityMenu = false
@@ -640,6 +673,7 @@ fun ConcordRoomScreen(
                             HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Create public channel") },
+                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
                                 enabled = signer != null,
                                 onClick = {
                                     showCommunityMenu = false
@@ -648,6 +682,7 @@ fun ConcordRoomScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text("Refresh channels") },
+                                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                                 onClick = {
                                     showCommunityMenu = false
                                     viewModel.refreshChannels(communityId)
@@ -1044,6 +1079,7 @@ fun ConcordRoomScreen(
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("Rename channel") },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                     enabled = signer != null,
                                     onClick = {
                                         showChannelMenu = false
@@ -1054,6 +1090,7 @@ fun ConcordRoomScreen(
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Delete channel") },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
                                     enabled = signer != null && !selectedChannel.name.equals("general", ignoreCase = true),
                                     onClick = {
                                         showChannelMenu = false
@@ -1175,24 +1212,70 @@ fun ConcordRoomScreen(
                             modifier = Modifier.fillMaxWidth(0.88f),
                         ) {
                             Column(Modifier.padding(horizontal = 13.dp, vertical = 9.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val visibleText = message.imageAttachments.fold(message.content) { content, attachment ->
+                                    content.replace(attachment.url, "").trim()
+                                }
+                                val isTranslating = translation.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
+                                    translation.status == TranslationStatus.DOWNLOADING_MODEL ||
+                                    translation.status == TranslationStatus.TRANSLATING
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
                                     ProfilePicture(url = profile?.picture, size = 28)
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             profile?.displayString ?: message.authorPubkey.take(12),
-                                            style = MaterialTheme.typography.labelMedium,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary,
                                             fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
                                         )
                                         Text(
                                             message.authorPubkey.take(12) + "…",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
                                         )
                                     }
-                                }
-                                val visibleText = message.imageAttachments.fold(message.content) { content, attachment ->
-                                    content.replace(attachment.url, "").trim()
+                                    if (visibleText.isNotBlank()) {
+                                        IconButton(
+                                            enabled = !isTranslating && translation.status != TranslationStatus.SAME_LANGUAGE,
+                                            modifier = Modifier.size(28.dp),
+                                            onClick = {
+                                                if (translation.status == TranslationStatus.DONE) {
+                                                    showTranslated = !showTranslated
+                                                } else {
+                                                    translationRepository.translateWithDeepL(message.id, visibleText)
+                                                }
+                                            },
+                                        ) {
+                                            if (isTranslating) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(15.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                )
+                                            } else {
+                                                Icon(
+                                                    Icons.Outlined.Translate,
+                                                    contentDescription = when {
+                                                        translation.status == TranslationStatus.ERROR -> "Retry DeepL translation"
+                                                        translation.status == TranslationStatus.DONE && showTranslated -> "Show original message"
+                                                        translation.status == TranslationStatus.DONE -> "Show translated message"
+                                                        translation.status == TranslationStatus.SAME_LANGUAGE -> "Message already in this language"
+                                                        else -> "Translate with DeepL"
+                                                    },
+                                                    tint = when {
+                                                        translation.status == TranslationStatus.ERROR -> MaterialTheme.colorScheme.error
+                                                        showTranslated -> MaterialTheme.colorScheme.primary
+                                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                    },
+                                                    modifier = Modifier.size(17.dp),
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                                 if (visibleText.isNotBlank()) {
                                     Text(
@@ -1221,34 +1304,6 @@ fun ConcordRoomScreen(
                                         }
                                     }
                                 }
-                                if (visibleText.isNotBlank()) {
-                                    TextButton(
-                                        enabled = translation.status != TranslationStatus.IDENTIFYING_LANGUAGE &&
-                                            translation.status != TranslationStatus.DOWNLOADING_MODEL &&
-                                            translation.status != TranslationStatus.TRANSLATING &&
-                                            translation.status != TranslationStatus.SAME_LANGUAGE,
-                                        onClick = {
-                                            if (translation.status == TranslationStatus.DONE) {
-                                                showTranslated = !showTranslated
-                                            } else {
-                                                translationRepository.translateWithDeepL(message.id, visibleText)
-                                            }
-                                        },
-                                    ) {
-                                        Text(
-                                            when {
-                                                translation.status == TranslationStatus.IDENTIFYING_LANGUAGE ||
-                                                    translation.status == TranslationStatus.DOWNLOADING_MODEL ||
-                                                    translation.status == TranslationStatus.TRANSLATING -> "Translating…"
-                                                translation.status == TranslationStatus.ERROR -> "Retry translation"
-                                                translation.status == TranslationStatus.SAME_LANGUAGE -> "Already in this language"
-                                                showTranslated -> "Show original"
-                                                translation.status == TranslationStatus.DONE -> "Show translation"
-                                                else -> "Translate with DeepL"
-                                            }
-                                        )
-                                    }
-                                }
                                 if (translation.status == TranslationStatus.ERROR) {
                                     Text(
                                         translation.errorMessage,
@@ -1265,54 +1320,126 @@ fun ConcordRoomScreen(
                                 }
                                 val reactions = messages.filter { it.kind == 7 && it.replyToId == message.id }
                                     .groupingBy { it.content }.eachCount()
+                                val threadReplyCount = messages.count {
+                                    it.kind == 1111 && (it.rootId == message.id || it.replyToId == message.id)
+                                }
+                                var reactionMenuExpanded by remember(message.id) { mutableStateOf(false) }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(1.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    val threadReplyCount = messages.count {
-                                        it.kind == 1111 && (it.rootId == message.id || it.replyToId == message.id)
-                                    }
-                                    TextButton(
+                                    IconButton(
                                         onClick = {
                                             replyToMessage = message
                                             inlineReplyMode = false
                                         },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    ) { Text("Reply") }
-                                    TextButton(
+                                        modifier = Modifier.size(30.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.AutoMirrored.Outlined.Reply,
+                                            contentDescription = "Reply",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(17.dp),
+                                        )
+                                    }
+                                    Box {
+                                        IconButton(
+                                            onClick = { reactionMenuExpanded = true },
+                                            enabled = selectedChannelCanReact && signer != null,
+                                            modifier = Modifier.size(30.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.FavoriteBorder,
+                                                contentDescription = "Choose reaction",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(17.dp),
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = reactionMenuExpanded,
+                                            onDismissRequest = { reactionMenuExpanded = false },
+                                        ) {
+                                            listOf(
+                                                "👍" to "Like",
+                                                "❤️" to "Love",
+                                                "😂" to "Laugh",
+                                                "😮" to "Surprised",
+                                                "😢" to "Sad",
+                                                "🎉" to "Celebrate",
+                                            ).forEach { (emoji, label) ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text("$emoji   $label", style = MaterialTheme.typography.bodySmall)
+                                                    },
+                                                    enabled = selectedChannelCanReact && signer != null,
+                                                    onClick = {
+                                                        reactionMenuExpanded = false
+                                                        scope.launch {
+                                                            val ok = viewModel.sendChannelReaction(
+                                                                communityId, selectedChannelId, message, emoji, signer,
+                                                            )
+                                                            if (!ok) sendError = "Reaction was not confirmed by a relay"
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (reactions.isNotEmpty()) {
+                                        Text(
+                                            reactions.values.sum().toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    IconButton(
                                         onClick = {
                                             selectedThreadRoot = message
                                             showThreadDialog = true
                                         },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    ) { Text(if (threadReplyCount > 0) "Thread ($threadReplyCount)" else "Thread") }
-                                    TextButton(
+                                        modifier = Modifier.size(30.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.ModeComment,
+                                            contentDescription = "Open comments and thread",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(17.dp),
+                                        )
+                                    }
+                                    if (threadReplyCount > 0) {
+                                        Text(
+                                            threadReplyCount.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    IconButton(
                                         onClick = {
                                             replyToMessage = message
                                             inlineReplyMode = true
                                         },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    ) { Text("Quote") }
-                                    listOf("👍", "❤️", "😂").forEach { emoji ->
-                                        TextButton(
-                                            enabled = signer != null && selectedChannel?.writeRestricted != true,
-                                            onClick = {
-                                                scope.launch {
-                                                    val ok = viewModel.sendChannelReaction(
-                                                        communityId, selectedChannelId, message, emoji, signer,
-                                                    )
-                                                    if (!ok) sendError = "Reaction was not confirmed by a relay"
-                                                }
-                                            },
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                        ) { Text(emoji + (reactions[emoji]?.let { " $it" } ?: "")) }
+                                        modifier = Modifier.size(30.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.FormatQuote,
+                                            contentDescription = "Quote",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp),
+                                        )
                                     }
-                                    if (reactions.keys.any { it !in listOf("👍", "❤️", "😂") }) {
-                                        Text(
-                                            reactions.filterKeys { it !in listOf("👍", "❤️", "😂") }
-                                                .entries.joinToString(" ") { "${it.key} ${it.value}" },
-                                            style = MaterialTheme.typography.labelSmall,
+                                    Box(modifier = Modifier.weight(1f))
+                                    IconButton(
+                                        onClick = { onZapAuthor(message.authorPubkey) },
+                                        enabled = signer != null && !ownMessage,
+                                        modifier = Modifier.size(30.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_bolt),
+                                            contentDescription = "Zap author without exposing this group message",
+                                            tint = if (!ownMessage && signer != null) WispThemeColors.zapColor
+                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(17.dp),
                                         )
                                     }
                                 }
