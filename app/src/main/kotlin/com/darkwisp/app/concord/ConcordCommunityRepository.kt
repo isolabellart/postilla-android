@@ -1345,6 +1345,15 @@ class ConcordCommunityRepository(
         val readPlanes: List<ConcordChatReadPlane> = emptyList(),
         /** True when a live CORD-03 writer window restricts publishing to delivered writer keys. */
         val writeRestricted: Boolean = false,
+        /** True when @everyone lacks SEND_MESSAGES, ADD_REACTIONS and CONNECT in Roles v2. */
+        val isLocked: Boolean = false,
+        val canViewChannel: Boolean = true,
+        val canSendMessages: Boolean = true,
+        val canAttachFiles: Boolean = true,
+        val canAddReactions: Boolean = true,
+        val canConnect: Boolean = true,
+        val canManageChannel: Boolean = false,
+        val canManageMessages: Boolean = false,
         /** Secret-bearing credential held only in memory for the active account. */
         val writerCredential: ConcordChatWriterCredential? = null,
     )
@@ -1436,11 +1445,57 @@ class ConcordCommunityRepository(
                     addAll(historicalReadKeys)
                 }.distinctBy { (channelEpoch, key) -> "${channelEpoch}:${key.publicKeyHex}" }
 
+                val writerLedger = control.state.writers[channelId]
+                val rolesV2 = control.state.isRolesV2
+                val signerPermissions = signer?.let {
+                    control.state.channelPermissions(
+                        it.pubKey,
+                        channelId,
+                        isPrivate = channel.definition.private,
+                    )
+                }
+                val canViewChannel = !rolesV2 || signerPermissions?.has(ConcordPermissions.VIEW_CHANNEL) == true
+                val canSendMessages = !rolesV2 || signerPermissions?.has(ConcordPermissions.SEND_MESSAGES) == true
+                val canAttachFiles = !rolesV2 || signerPermissions?.has(ConcordPermissions.ATTACH_FILES) == true
+                val canAddReactions = !rolesV2 || signerPermissions?.has(ConcordPermissions.ADD_REACTIONS) == true
+                val canConnect = !rolesV2 || signerPermissions?.has(ConcordPermissions.CONNECT) == true
+                val canManageChannel = signer != null && (
+                    control.state.authority.isOwner(signer.pubKey) ||
+                        signerPermissions?.has(ConcordPermissions.MANAGE_CHANNELS) == true
+                    )
+                val canManageMessages = signer != null && (
+                    control.state.authority.isOwner(signer.pubKey) ||
+                        signerPermissions?.has(ConcordPermissions.MANAGE_MESSAGES) == true
+                    )
+                val everyonePermissions = control.state.authority.everyonePermissions()
+                val everyoneScope = control.state.syncs[channelId] ?: channelId
+                val everyoneOverwrite = control.state.overwritesIn(everyoneScope)
+                    .firstOrNull { it.targetKind == "everyone" }
+                val effectiveEveryone = if (everyonePermissions != null && everyoneOverwrite != null) {
+                    (everyonePermissions minus everyoneOverwrite.deny) union everyoneOverwrite.allow
+                } else {
+                    everyonePermissions
+                }
+                val channelLocked = rolesV2 && effectiveEveryone != null &&
+                    !effectiveEveryone.has(ConcordPermissions.SEND_MESSAGES) &&
+                    !effectiveEveryone.has(ConcordPermissions.ADD_REACTIONS) &&
+                    !effectiveEveryone.has(ConcordPermissions.CONNECT)
+                val channelContext = ConcordChatChannelContext(
+                    communityIdHex = membership.id,
+                    channelIdHex = channelId,
+                    communityState = control.state,
+                    channelPrivate = channel.definition.private,
+                    locked = channelLocked,
+                    ledger = writerLedger,
+                )
                 val directPlanes = readKeys.map { (channelEpoch, key) ->
-                    ConcordChatReadPlane(key, channelEpoch)
+                    ConcordChatReadPlane(
+                        stream = key,
+                        channelEpoch = channelEpoch,
+                        channelContext = channelContext,
+                    )
                 }.distinctBy { "${it.stream.publicKeyHex}:${it.channelEpoch}" }
 
-                val writerLedger = control.state.writers[channelId]
                 val writerPlanes = writerLedger?.let { ledger ->
                     ledger.windows.flatMap { window ->
                         directPlanes.map { readPlane ->
@@ -1459,7 +1514,9 @@ class ConcordCommunityRepository(
                                     authority = control.state.authority,
                                     channelPrivate = channel.definition.private,
                                     communityState = control.state,
+                                    locked = channelLocked,
                                 ),
+                                channelContext = channelContext,
                             )
                         }
                     }
@@ -1497,6 +1554,14 @@ class ConcordCommunityRepository(
                         "${it.stream.publicKeyHex}:${it.channelEpoch}:${it.writerContext?.window?.epoch ?: "read"}"
                     },
                     writeRestricted = writerLedger?.live != null,
+                    isLocked = channelLocked,
+                    canViewChannel = canViewChannel,
+                    canSendMessages = canSendMessages,
+                    canAttachFiles = canAttachFiles,
+                    canAddReactions = canAddReactions,
+                    canConnect = canConnect,
+                    canManageChannel = canManageChannel,
+                    canManageMessages = canManageMessages,
                     writerCredential = writerCredential,
                 )
             }
@@ -1516,16 +1581,31 @@ class ConcordCommunityRepository(
         val live = ledger.live ?: return null
         val plane = accessPlane ?: return null
         val state = context.communityState ?: return null
+        if (context.authority.isBanned(signer.pubKey)) return null
+
+        val rolesV2 = state.isRolesV2
         val permissions = state.channelPermissions(
             signer.pubKey,
             channelIdHex,
             isPrivate = channelPrivate,
         )
-        if (
-            context.authority.isBanned(signer.pubKey) ||
-            !permissions.has(ConcordPermissions.VIEW_CHANNEL) ||
-            !permissions.has(ConcordPermissions.SEND_MESSAGES)
-        ) return null
+        val canView = !rolesV2 || permissions.has(ConcordPermissions.VIEW_CHANNEL)
+        val canSend = !rolesV2 || permissions.has(ConcordPermissions.SEND_MESSAGES)
+        val canAddReactions = !rolesV2 || permissions.has(ConcordPermissions.ADD_REACTIONS)
+        val canConnect = !rolesV2 || permissions.has(ConcordPermissions.CONNECT)
+        val canManage = context.authority.isOwner(signer.pubKey) ||
+            permissions.has(ConcordPermissions.MANAGE_CHANNELS)
+        val canManageMessages = context.authority.isOwner(signer.pubKey) ||
+            permissions.has(ConcordPermissions.MANAGE_MESSAGES)
+        if (!canView) return null
+
+        val scopedRights =
+            (if (canAddReactions) (1uL shl ConcordPermissions.ADD_REACTIONS) else 0uL) or
+                (if (canConnect) (1uL shl ConcordPermissions.CONNECT) else 0uL)
+        val needsFullCredential = canSend || canManage
+        val needsScopedCredential = !needsFullCredential &&
+            (canConnect || (context.locked && (canAddReactions || canManageMessages)))
+        if (!needsFullCredential && !needsScopedCredential) return null
 
         val writerScopeHex = ConcordKeyDerivation.writerScope(channelIdHex.hexToByteArray()).toHexKey()
         for (outer in accessEvents.sortedByDescending { it.created_at }) {
@@ -1559,14 +1639,30 @@ class ConcordCommunityRepository(
             )
             if (!writerKey.publicKeyHex.equals(live.writerPubKey, ignoreCase = true)) continue
 
+            // Quartz parses full wcert entries. Scoped rcert entries are read explicitly
+            // because the current Quartz parser does not expose them yet.
             val certificate = delivery.certs[signer.pubKey.lowercase()]
-            val canManage = permissions.has(ConcordPermissions.MANAGE_CHANNELS)
-            val privileged = canManage || context.authority.isOwner(signer.pubKey)
+            val scopedTags = opened.rumor.tags.filter {
+                it.getOrNull(0) == "rcert" &&
+                    it.getOrNull(1)?.equals(signer.pubKey, ignoreCase = true) == true
+            }
+            if (scopedTags.size > 1 || (certificate != null && scopedTags.isNotEmpty())) continue
+            val scopedCertificate = scopedTags.singleOrNull()?.let { tag ->
+                if (tag.size != 4) return@let null
+                val signature = tag.getOrNull(2)?.takeIf {
+                    it.length == 128 && it.hexToByteArrayOrNull()?.size == 64
+                } ?: return@let null
+                val rightsText = tag.getOrNull(3) ?: return@let null
+                val rights = rightsText.toULongOrNull()?.takeIf { it.toString() == rightsText }
+                    ?: return@let null
+                signature to rights
+            }
+            if (scopedTags.isNotEmpty() && scopedCertificate == null) continue
+
             val certifier = live.certifier
-            val certificateValid = if (certificate == null) {
-                certifier == null || privileged
-            } else {
-                certifier != null && ConcordWritersLedger.verifyCertificate(
+            val privileged = canManage
+            val certificateValid = when {
+                certificate != null -> certifier != null && ConcordWritersLedger.verifyCertificate(
                     membership.id.hexToByteArray(),
                     channelIdHex.hexToByteArray(),
                     live.epoch,
@@ -1574,24 +1670,54 @@ class ConcordCommunityRepository(
                     certifier,
                     certificate,
                 )
+                scopedCertificate != null -> {
+                    val (signature, rights) = scopedCertificate
+                    val scopedMask =
+                        (1uL shl ConcordPermissions.ADD_REACTIONS) or
+                            (1uL shl ConcordPermissions.CONNECT)
+                    rights == scopedRights && (rights and scopedMask.inv()) == 0uL &&
+                        certifier != null && verifyConcordScopedWriterCertificate(
+                            membership.id.hexToByteArray(),
+                            channelIdHex.hexToByteArray(),
+                            live.epoch,
+                            live.writerPubKey,
+                            certifier,
+                            signature,
+                            rights,
+                        )
+                }
+                else -> certifier == null || privileged
             }
             if (!certificateValid) continue
-            if (!ledger.postStands(
+
+            val now = System.currentTimeMillis()
+            if (now < live.fromMs || (live.toMs != null && now >= live.toMs)) continue
+            if (scopedCertificate != null) {
+                if (ledger.isStopped(live, signer.pubKey, now)) continue
+            } else if (!ledger.postStands(
                     membership.id.hexToByteArray(),
                     live,
                     signer.pubKey,
-                    System.currentTimeMillis(),
+                    now,
                     certificate,
                     privileged,
                 )
-            ) continue
+            ) {
+                continue
+            }
 
             return ConcordChatWriterCredential(
                 streamKey = writerKey,
                 context = context,
                 certificate = certificate,
-                canSendMessages = true,
+                canSendMessages = canSend,
                 canManageChannel = canManage,
+                scopedCertificate = scopedCertificate?.first,
+                scopedRights = scopedCertificate?.second,
+                canAddReactions = canAddReactions,
+                canConnect = canConnect,
+                canManageMessages = canManageMessages,
+                locked = context.locked,
             )
         }
         return null
