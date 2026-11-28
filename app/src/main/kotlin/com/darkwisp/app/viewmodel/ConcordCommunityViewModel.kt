@@ -63,6 +63,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private var repository: ConcordCommunityRepository? = null
     private var chatRepository: ConcordChatRepository? = null
     private var signerPubkey: String? = null
+    private var activeSigner: NostrSigner? = null
     private val memberships = linkedMapOf<String, ConcordCommunityListEntry>()
 
     private val _communities = MutableStateFlow<List<CommunityItem>>(emptyList())
@@ -110,6 +111,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     val generalChannelError: StateFlow<String?> = _generalChannelError
 
     fun init(relayPool: RelayPool, signer: NostrSigner?) {
+        activeSigner = signer
         if (repository == null) {
             repository = ConcordCommunityRepository(getApplication(), relayPool)
             chatRepository = ConcordChatRepository(relayPool, getApplication())
@@ -136,12 +138,14 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshLocalCommunities(signer: NostrSigner) {
         val repo = repository ?: return
+        val requestedOwner = signer.pubkeyHex.lowercase()
         _isLoading.value = true
         viewModelScope.launch {
             try {
                 val quartzSigner = PostillaQuartzSigner(signer)
                 val entries = repo.loadLocalMemberships(quartzSigner)
                 val warning = repo.getCommunityListReadWarning()
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 // An incomplete/empty remote snapshot is not proof that existing memberships
                 // were removed. Keep the last known list visible until a usable snapshot arrives.
                 if (entries.isEmpty() && memberships.isNotEmpty() && warning != null) {
@@ -163,11 +167,12 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 _communityListWarning.value =
                     error.message ?: "Could not load the Concord Community List"
                 // Keep the last known list visible; a failed refresh must not erase it.
             } finally {
-                _isLoading.value = false
+                if (signerPubkey?.lowercase() == requestedOwner) _isLoading.value = false
             }
         }
     }
@@ -243,9 +248,12 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshChannels(communityId: String) {
         val repo = repository ?: return
         val membership = memberships[communityId] ?: return
+        val signer = activeSigner
+        val requestedOwner = signer?.pubkeyHex?.lowercase()
         viewModelScope.launch {
-            runCatching { repo.loadCommunityChannels(membership) }
+            runCatching { repo.loadCommunityChannels(membership, signer?.let(::PostillaQuartzSigner)) }
                 .onSuccess { loaded ->
+                    if (signerPubkey?.lowercase() != requestedOwner) return@onSuccess
                     _channelsByCommunity.value = _channelsByCommunity.value + (communityId to loaded)
                     _channels.value = loaded // Legacy observer; Concord operations use the community-scoped index.
                     val general = loaded.firstOrNull { it.name.equals("general", ignoreCase = true) }
@@ -336,9 +344,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val entry = memberships[communityId] ?: return null
         val channelInfo = findChannel(communityId, channelId)
         if (channelInfo?.isPrivate == true && channelInfo.privateKeyHex.isNullOrBlank()) return null
-        if (channelInfo?.writeRestricted == true) {
+        if (channelInfo?.writeRestricted == true && channelInfo.writerCredential?.canSendMessages != true) {
             throw IllegalStateException(
-                "This channel uses a restricted writer key. Postilla can read its messages, but cannot publish to it yet.",
+                "This channel requires a current CORD-03 writer key and SEND_MESSAGES permission. Refresh channel access before sending.",
             )
         }
         val chat = chatRepository ?: return null
@@ -353,6 +361,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             privateChannelKeyHex = channelInfo?.privateKeyHex,
             privateChannelEpoch = channelInfo?.privateChannelEpoch,
             communityRelays = entry.relays,
+            writerCredential = channelInfo?.writerCredential,
             extraTags = extraTags,
             imetas = imetas,
             replyTo = replyTo,
@@ -388,7 +397,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val entry = memberships[communityId] ?: return false
         val channel = findChannel(communityId, channelId)
         if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return false
-        if (channel?.writeRestricted == true) return false
+        if (channel?.writeRestricted == true && channel.writerCredential?.canSendMessages != true) return false
         signer ?: return false
         return chatRepository?.sendReaction(
             signer = PostillaQuartzSigner(signer),
@@ -401,6 +410,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             privateChannelKeyHex = channel?.privateKeyHex,
             privateChannelEpoch = channel?.privateChannelEpoch,
             communityRelays = entry.relays,
+            writerCredential = channel?.writerCredential,
         ) ?: false
     }
 
@@ -498,20 +508,25 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             _directInvites.value = DirectInvitesState()
             return
         }
+        val requestedOwner = signer.pubkeyHex.lowercase()
         if (_directInvites.value.isLoading) return
         _directInvites.value = _directInvites.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
             try {
                 val invites = repo.fetchDirectInvites(PostillaQuartzSigner(signer))
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 _directInvites.value = DirectInvitesState(invites = invites)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 _directInvites.value = _directInvites.value.copy(
                     error = error.message ?: "Could not load Direct Invites",
                 )
             } finally {
-                _directInvites.value = _directInvites.value.copy(isLoading = false)
+                if (signerPubkey?.lowercase() == requestedOwner) {
+                    _directInvites.value = _directInvites.value.copy(isLoading = false)
+                }
             }
         }
     }
@@ -593,7 +608,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val entry = memberships[communityId]
                     ?: throw IllegalArgumentException("Community membership is not available")
-                val channels = repo.loadCommunityChannels(entry)
+                val channels = repo.loadCommunityChannels(entry, PostillaQuartzSigner(signer))
                 val observed = chatRepository?.loadObservedAuthorActivity(
                     ownerPubkey = signer.pubkeyHex,
                     communityIdHex = entry.id,
