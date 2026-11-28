@@ -2796,10 +2796,10 @@ class ConcordCommunityRepository(
                 "Writer Duty requires a verified two-thirds Control Plane read quorum"
             }
             if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
-            val channel = control.state.channels[channelHex]
+            var channel = control.state.channels[channelHex]
                 ?: throw IllegalArgumentException("The channel is not present in the complete Concord Control Plane")
             if (channel.definition.deleted) throw IllegalStateException("This channel has been deleted")
-            val authority = control.state.authority
+            var authority = control.state.authority
             if (authority.isBanned(signer.pubKey)) throw IllegalStateException("This account is banned from the community")
             val canManage = authority.isOwner(signer.pubKey) || control.state.channelPermissions(
                 signer.pubKey, channelHex, isPrivate = channel.definition.private,
@@ -2816,11 +2816,17 @@ class ConcordCommunityRepository(
             if (control.state.dissolved || control.state.authority.isBanned(signer.pubKey)) {
                 throw IllegalStateException("This account no longer has valid community authority")
             }
-            val refreshedCanManage = control.state.authority.isOwner(signer.pubKey) ||
+            // All following recipient, permission and signing decisions must use the
+            // same refreshed Control Plane snapshot, not the pre-retry authority object.
+            authority = control.state.authority
+            channel = control.state.channels[channelHex]
+                ?: throw IllegalStateException("The channel disappeared from the refreshed Control Plane")
+            if (channel.definition.deleted) throw IllegalStateException("This channel was deleted during writer synchronization")
+            val refreshedCanManage = authority.isOwner(signer.pubKey) ||
                 control.state.channelPermissions(
                     signer.pubKey,
                     channelHex,
-                    isPrivate = control.state.channels[channelHex]?.definition?.private == true,
+                    isPrivate = channel.definition.private,
                 ).has(ConcordPermissions.MANAGE_CHANNELS)
             if (!refreshedCanManage) throw IllegalStateException("Writer Duty authority changed during synchronization")
 
