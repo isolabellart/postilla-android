@@ -376,11 +376,11 @@ class ConcordCommunityRepository(
         val channels: List<CommunityChannel>,
         val controlRead: RelayReadSummary,
         val writerAccessRead: RelayReadSummary?,
-        /** Current Control Plane name, when its relay read reached the chat quorum. */
+        /** Current name from an authenticated, folded canonical Control Plane snapshot. */
         val communityName: String? = null,
-        /** Current metadata description, populated only from a usable Control Plane read. */
+        /** Current description from an authenticated, folded Control Plane snapshot. */
         val communityDescription: String? = null,
-        /** Current metadata relays, populated only from a usable Control Plane read. */
+        /** Current relay hints from an authenticated, folded Control Plane snapshot. */
         val communityRelays: List<String> = emptyList(),
     ) {
         val isControlReadComplete: Boolean get() = controlRead.isComplete

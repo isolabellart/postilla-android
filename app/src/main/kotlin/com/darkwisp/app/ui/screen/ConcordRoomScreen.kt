@@ -320,6 +320,20 @@ fun ConcordRoomScreen(
         showThreadDialog = false
     }
 
+    // Keep the roster converged with the Guestbook and observed channel activity
+    // while the management panel is open. The effect is cancelled on close, room
+    // change or account switch; the ViewModel prevents overlapping reads.
+    LaunchedEffect(showMembersDialog, communityId, signer?.pubkeyHex) {
+        val activeSigner = signer
+        if (showMembersDialog && activeSigner != null) {
+            viewModel.loadMembers(communityId, activeSigner)
+            while (true) {
+                kotlinx.coroutines.delay(60_000L)
+                viewModel.loadMembers(communityId, activeSigner)
+            }
+        }
+    }
+
     LaunchedEffect(timelineMessages.size) {
         if (timelineMessages.isNotEmpty() && !suppressAutoScroll) {
             listState.animateScrollToItem((timelineMessages.size - 1).coerceAtLeast(0))
@@ -1246,7 +1260,19 @@ fun ConcordRoomScreen(
     if (showMembersDialog) {
         AlertDialog(
             onDismissRequest = { if (!membersState.isLoading) showMembersDialog = false },
-            title = { Text("Community members") },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Community members", modifier = Modifier.weight(1f))
+                    TextButton(
+                        enabled = signer != null && !membersState.isLoading,
+                        onClick = { viewModel.loadMembers(communityId, signer) },
+                    ) { Text(if (membersState.isLoading) "Refreshing…" else "Refresh") }
+                }
+            },
             text = {
                 Column(modifier = Modifier.heightIn(max = 520.dp)) {
                     Text(
@@ -1286,12 +1312,25 @@ fun ConcordRoomScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (membersState.isLoading && membersState.members.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp))
+                            Text("Refreshing members…", modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                    if (membersState.error != null && membersState.members.isNotEmpty()) {
+                        Text(
+                            "Refresh failed: ${membersState.error}",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     when {
-                        membersState.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        membersState.isLoading && membersState.members.isEmpty() -> Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp))
                             Text("Loading members…", modifier = Modifier.padding(start = 10.dp))
                         }
-                        membersState.error != null -> Text(
+                        membersState.error != null && membersState.members.isEmpty() -> Text(
                             membersState.error!!,
                             color = MaterialTheme.colorScheme.error,
                         )
