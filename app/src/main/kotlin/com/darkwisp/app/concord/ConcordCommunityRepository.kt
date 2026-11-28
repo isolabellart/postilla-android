@@ -2974,7 +2974,14 @@ class ConcordCommunityRepository(
             require(control.readSummary.hasQuorum) {
                 "Writer Duty requires a verified two-thirds Control Plane read quorum"
             }
-            var writerRelayTargets = concordCommunityRelayTargets(
+            // Read quorum is measured on the currently trusted set; writes are
+            // dual-published to current metadata relays plus encrypted bootstrap relays.
+            var writerReadRelays = concordEffectiveCommunityRelays(
+                control.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                control.readSummary.hasQuorum,
+            )
+            var writerPublishRelays = concordCommunityRelayTargets(
                 control.state.metadata?.relays.orEmpty(),
                 membership.relays,
                 control.readSummary.hasQuorum,
@@ -2996,17 +3003,23 @@ class ConcordCommunityRepository(
                 signer = signer,
                 membership = membership,
                 channelId = channelHex,
-                relayTargets = writerRelayTargets,
+                readRelayTargets = writerReadRelays,
+                publishRelayTargets = writerPublishRelays,
             )
             control = loadControlPlaneSnapshot(
                 membership,
                 requireAllResponders = false,
-                relayTargets = writerRelayTargets,
+                relayTargets = writerReadRelays,
             )
             require(control.readSummary.hasQuorum) {
                 "Writer Duty could not re-read a verified Control Plane quorum after retry"
             }
-            writerRelayTargets = concordCommunityRelayTargets(
+            writerReadRelays = concordEffectiveCommunityRelays(
+                control.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                control.readSummary.hasQuorum,
+            )
+            writerPublishRelays = concordCommunityRelayTargets(
                 control.state.metadata?.relays.orEmpty(),
                 membership.relays,
                 control.readSummary.hasQuorum,
@@ -3028,7 +3041,11 @@ class ConcordCommunityRepository(
                 ).has(ConcordPermissions.MANAGE_CHANNELS)
             if (!refreshedCanManage) throw IllegalStateException("Writer Duty authority changed during synchronization")
 
-            var snapshot = loadCommunityChannelSnapshot(membership, signer)
+            var snapshot = loadCommunityChannelSnapshot(
+                membership,
+                signer,
+                controlRelayTargets = writerReadRelays,
+            )
             require(snapshot.controlRead.hasQuorum) {
                 "Writer Duty requires a verified Control Plane read quorum"
             }
@@ -3156,7 +3173,7 @@ class ConcordCommunityRepository(
             val accessPlane = ConcordChannelAccess.plane(
                 membership.root.hexToByteArray(), channelBytes, membership.rootEpoch,
             )
-            relayPool.registerConcordStreamKeys(listOf(accessPlane), writerRelayTargets)
+            relayPool.registerConcordStreamKeys(listOf(accessPlane), writerPublishRelays)
             val certs = recipients.associate { recipient ->
                 recipient to ConcordWritersLedger.signCertificate(
                     communityBytes, channelBytes, epoch, writerPub, certifierSecret, certifierPub,
@@ -3185,7 +3202,7 @@ class ConcordCommunityRepository(
                 .commit()
             journalEvents(membership.id, listOf(ledgerEvent) + accessEvents)
 
-            if (!publishConfirmed(ledgerEvent, writerRelayTargets)) {
+            if (!publishConfirmed(ledgerEvent, writerPublishRelays)) {
                 throw IllegalStateException("The Writers Ledger has not been confirmed by a relay; writer deliveries remain safely queued")
             }
             securePrefs.edit().remove(pendingControlKey).commit()
@@ -3193,12 +3210,17 @@ class ConcordCommunityRepository(
             val confirmedControl = loadControlPlaneSnapshot(
                 membership,
                 requireAllResponders = false,
-                relayTargets = writerRelayTargets,
+                relayTargets = writerReadRelays,
             )
             require(confirmedControl.readSummary.hasQuorum) {
                 "The Writers Ledger cannot be verified because the Control Plane quorum was lost"
             }
-            writerRelayTargets = concordCommunityRelayTargets(
+            writerReadRelays = concordEffectiveCommunityRelays(
+                confirmedControl.state.metadata?.relays.orEmpty(),
+                membership.relays,
+                confirmedControl.readSummary.hasQuorum,
+            )
+            writerPublishRelays = concordCommunityRelayTargets(
                 confirmedControl.state.metadata?.relays.orEmpty(),
                 membership.relays,
                 confirmedControl.readSummary.hasQuorum,
@@ -3208,7 +3230,7 @@ class ConcordCommunityRepository(
                 throw IllegalStateException("The Writers Ledger is not yet visible in the complete Control Plane; writer deliveries remain queued")
             }
             for (event in accessEvents) {
-                if (!publishConfirmed(event, writerRelayTargets)) {
+                if (!publishConfirmed(event, writerPublishRelays)) {
                     throw IllegalStateException("Writer keys are not yet confirmed on the Access Plane; refresh to retry the same signed deliveries")
                 }
             }
@@ -3217,7 +3239,7 @@ class ConcordCommunityRepository(
             snapshot = loadCommunityChannelSnapshot(
                 membership,
                 signer,
-                controlRelayTargets = writerRelayTargets,
+                controlRelayTargets = writerReadRelays,
             )
             require(snapshot.controlRead.hasQuorum) {
                 "The channel Control Plane quorum was lost after writer-key delivery"
@@ -3293,19 +3315,20 @@ class ConcordCommunityRepository(
         signer: PostillaQuartzSigner,
         membership: ConcordCommunityListEntry,
         channelId: String,
-        relayTargets: List<String>,
+        readRelayTargets: List<String>,
+        publishRelayTargets: List<String>,
     ) {
         val control = loadControlPlaneSnapshot(
             membership,
             requireAllResponders = false,
-            relayTargets = relayTargets,
+            relayTargets = readRelayTargets,
         )
         require(control.readSummary.hasQuorum) {
             "Pending writer deliveries require a verified two-thirds Control Plane quorum"
         }
         val deliveryRelays = concordCommunityRelayTargets(
             control.state.metadata?.relays.orEmpty(),
-            membership.relays + relayTargets,
+            membership.relays + publishRelayTargets,
             control.readSummary.hasQuorum,
         )
         val identity = writerDutyIdentity(signer.pubKey, membership.id, channelId)
