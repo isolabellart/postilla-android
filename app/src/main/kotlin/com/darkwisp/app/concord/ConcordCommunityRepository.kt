@@ -2789,7 +2789,10 @@ class ConcordCommunityRepository(
             val channelHex = channelId.lowercase()
             val channelBytes = channelHex.hexToByteArray()
             val communityBytes = membership.id.hexToByteArray()
-            val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+            var control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+            require(control.readSummary.hasQuorum) {
+                "Writer Duty requires a verified two-thirds Control Plane read quorum"
+            }
             if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
             val channel = control.state.channels[channelHex]
                 ?: throw IllegalArgumentException("The channel is not present in the complete Concord Control Plane")
@@ -2804,8 +2807,30 @@ class ConcordCommunityRepository(
 
             val identity = writerDutyIdentity(signer.pubKey, membership.id, channelHex)
             retryWriterDutyPending(signer, membership, channelHex)
+            control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+            require(control.readSummary.hasQuorum) {
+                "Writer Duty could not re-read a verified Control Plane quorum after retry"
+            }
+            if (control.state.dissolved || control.state.authority.isBanned(signer.pubKey)) {
+                throw IllegalStateException("This account no longer has valid community authority")
+            }
+            val refreshedCanManage = control.state.authority.isOwner(signer.pubKey) ||
+                control.state.authority.channelPermissions(
+                    signer.pubKey,
+                    channelHex,
+                    isPrivate = control.state.channels[channelHex]?.definition?.private == true,
+                ).has(ConcordPermissions.MANAGE_CHANNELS)
+            if (!refreshedCanManage) throw IllegalStateException("Writer Duty authority changed during synchronization")
 
-            var snapshot = loadCommunityChannelSnapshot(membership, signer, requireAllResponders = true)
+            var snapshot = loadCommunityChannelSnapshot(membership, signer)
+            require(snapshot.controlRead.hasQuorum) {
+                "Writer Duty requires a verified Control Plane read quorum"
+            }
+            snapshot.writerAccessRead?.let { accessRead ->
+                require(accessRead.hasQuorum) {
+                    "Writer Duty requires a verified two-thirds Writer Access Plane read quorum"
+                }
+            }
             var currentChannel = snapshot.channels.firstOrNull { it.id.equals(channelHex, ignoreCase = true) }
                 ?: throw IllegalStateException("The channel catalogue is not available")
             if (currentChannel.writerCredential != null) return@withLock snapshot
@@ -2959,7 +2984,10 @@ class ConcordCommunityRepository(
             }
             securePrefs.edit().remove(pendingControlKey).commit()
 
-            val confirmedControl = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+            val confirmedControl = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+            require(confirmedControl.readSummary.hasQuorum) {
+                "The Writers Ledger cannot be verified because the Control Plane quorum was lost"
+            }
             val confirmedLive = confirmedControl.state.writers[channelHex]?.live
             if (confirmedLive?.epoch != epoch || !confirmedLive.writerPubKey.equals(writerPub, ignoreCase = true)) {
                 throw IllegalStateException("The Writers Ledger is not yet visible in the complete Control Plane; writer deliveries remain queued")
@@ -2971,7 +2999,15 @@ class ConcordCommunityRepository(
             }
             securePrefs.edit().remove(pendingAccessKey).remove(pendingEpochKey).commit()
 
-            snapshot = loadCommunityChannelSnapshot(membership, signer, requireAllResponders = true)
+            snapshot = loadCommunityChannelSnapshot(membership, signer)
+            require(snapshot.controlRead.hasQuorum) {
+                "The channel Control Plane quorum was lost after writer-key delivery"
+            }
+            snapshot.writerAccessRead?.let { accessRead ->
+                require(accessRead.hasQuorum) {
+                    "The Writer Access Plane quorum was lost after key delivery"
+                }
+            }
             currentChannel = snapshot.channels.firstOrNull { it.id.equals(channelHex, ignoreCase = true) }
                 ?: throw IllegalStateException("The channel disappeared after writer-key delivery")
             if (currentChannel.writerCredential?.canSendMessages != true &&
@@ -3052,7 +3088,10 @@ class ConcordCommunityRepository(
         val pending = securePrefs.getStringSet(pendingAccessKey, emptySet()).orEmpty().toList()
         if (pending.isEmpty()) return
         val expectedEpoch = securePrefs.getLong(pendingEpochKey, -1L)
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        require(control.readSummary.hasQuorum) {
+            "Pending writer deliveries require a verified two-thirds Control Plane quorum"
+        }
         val live = control.state.writers[channelId]?.live
         if (expectedEpoch <= 0L || live?.epoch != expectedEpoch) {
             throw IllegalStateException("Pending writer deliveries do not match the current Writers Ledger")
@@ -3076,7 +3115,12 @@ class ConcordCommunityRepository(
         // Member visibility is read-only and can use a partial snapshot when relays are
         // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
         // immediately before publishing, so this display snapshot cannot authorize a write.
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireCompleteRead)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        if (requireCompleteRead) {
+            require(control.readSummary.hasQuorum) {
+                "The Control Plane did not reach the verified member-read quorum"
+            }
+        }
         // A Refounding changes the current Guestbook plane. Older roots remain in the
         // member's private list so the roster can still apply historical JOIN/LEAVE/KICK
         // motions in timestamp order instead of losing everyone who joined before rotation.
@@ -3100,7 +3144,7 @@ class ConcordCommunityRepository(
         require(guestbookKeys.isNotEmpty()) { "No current or historical Guestbook key is available" }
         val guestbookKeyByAddress = guestbookKeys.associateBy { it.publicKeyHex.lowercase() }
         relayPool.registerConcordStreamKeys(guestbookKeys, membership.relays)
-        val events = fetchEventsFromRelays(
+        val guestbookRead = fetchEventsFromRelaysDetailed(
             relays = membership.relays,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
@@ -3108,10 +3152,14 @@ class ConcordCommunityRepository(
                 limit = 5000,
             ),
             label = "guestbook",
-            // Membership visibility must degrade gracefully when a relay is silent.
-            // A partial Guestbook is useful for display; it must never authorize destructive actions.
-            requireAllResponders = requireCompleteRead,
+            requireAllResponders = false,
         )
+        if (requireCompleteRead) {
+            require(guestbookRead.summary.hasQuorum) {
+                "The Guestbook did not reach the verified two-thirds member-read quorum"
+            }
+        }
+        val events = guestbookRead.events
         val entries = events.mapNotNull { event ->
             val guestbookKey = guestbookKeyByAddress[event.pubkey.lowercase()] ?: return@mapNotNull null
             try {
