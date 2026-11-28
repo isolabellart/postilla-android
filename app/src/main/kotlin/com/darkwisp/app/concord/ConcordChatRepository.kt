@@ -9,6 +9,7 @@ import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
+import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityState
 import com.vitorpamplona.quartz.concord.cord03Channels.ConcordWritersLedger
 import com.vitorpamplona.quartz.concord.cord03Channels.WriterWindow
 import com.vitorpamplona.quartz.concord.cord04Roles.AuthorityResolver
@@ -96,6 +97,17 @@ data class ConcordChatWriterContext(
     val ledger: ConcordWritersLedger,
     val window: WriterWindow,
     val authority: AuthorityResolver,
+    val channelPrivate: Boolean = false,
+    val communityState: ConcordCommunityState? = null,
+)
+
+/** In-memory restricted-stream credential. The secret never enters persistent storage. */
+data class ConcordChatWriterCredential(
+    val streamKey: GroupKey,
+    val context: ConcordChatWriterContext,
+    val certificate: String?,
+    val canSendMessages: Boolean,
+    val canManageChannel: Boolean,
 )
 
 /** A CORD-03 plane: a direct/historical read address or a writer address with its read key. */
@@ -149,11 +161,14 @@ class ConcordChatRepository(
         imetas: List<IMetaTag> = emptyList(),
         replyTo: ConcordChatMessage? = null,
         inlineReply: Boolean = false,
+        writerCredential: ConcordChatWriterCredential? = null,
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): ConcordChatMessage? {
         val message = text.trim()
         require(message.isNotEmpty() || imetas.isNotEmpty()) { "Message cannot be empty" }
         val channelEpoch = privateChannelEpoch ?: epoch
+        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
+        val messageTags = writerExtraTags(extraTags, writerCredential)
         val parent = replyTo?.rawRumorJson?.takeIf { it.isNotBlank() }?.let(Event::fromJson)
 
         val rumor = when {
@@ -166,7 +181,7 @@ class ConcordChatRepository(
                     imetas = imetas,
                     parent = parent,
                     createdAt = createdAt,
-                    extraTags = extraTags,
+                    extraTags = messageTags,
                 )
             parent != null && inlineReply ->
                 ChannelChat.inlineReply(
@@ -177,7 +192,7 @@ class ConcordChatRepository(
                     parentId = parent.id,
                     parentAuthor = parent.pubKey,
                     createdAt = createdAt,
-                    extraTags = extraTags,
+                    extraTags = messageTags,
                 )
             parent != null ->
                 ChannelChat.reply(
@@ -187,7 +202,7 @@ class ConcordChatRepository(
                     text = message,
                     parent = parent,
                     createdAt = createdAt,
-                    extraTags = extraTags,
+                    extraTags = messageTags,
                 )
             imetas.isNotEmpty() ->
                 ChannelChat.imageMessage(
@@ -197,7 +212,7 @@ class ConcordChatRepository(
                     text = message,
                     imetas = imetas,
                     createdAt = createdAt,
-                    extraTags = extraTags,
+                    extraTags = messageTags,
                 )
             else ->
                 ChannelChat.message(
@@ -206,25 +221,26 @@ class ConcordChatRepository(
                     epoch = channelEpoch,
                     text = message,
                     createdAt = createdAt,
-                    extraTags = extraTags,
+                    extraTags = messageTags,
                 )
         }
 
-        val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
-        val wrap = ConcordStreamEnvelope.wrap(
+        val (event, outboundPlane) = encodeOutboundRumor(
             rumor = rumor,
-            stream = channelKey,
-            authorSigner = signer,
-            encrypted = true,
+            signer = signer,
+            communityIdHex = communityIdHex,
+            channelIdHex = channelIdHex,
+            channelEpoch = channelEpoch,
+            channelKey = channelKey,
+            writerCredential = writerCredential,
             createdAt = createdAt,
         )
-        val event = NostrEvent.fromJson(wrap.toJson())
         val outcome = publish(event, communityRelays)
         if (!outcome) return null
 
         // Store only the encrypted outer event, so an ACKed message survives screen/app restarts.
         persistEncryptedWrap(signer.pubKey, communityIdHex, channelIdHex, event)
-        return decode(event, listOf(ConcordChatReadPlane(channelKey, channelEpoch)), channelIdHex)
+        return decode(event, listOf(outboundPlane), channelIdHex)
     }
 
     suspend fun sendReaction(
@@ -238,10 +254,13 @@ class ConcordChatRepository(
         privateChannelKeyHex: String? = null,
         privateChannelEpoch: Long? = null,
         communityRelays: List<String> = emptyList(),
+        writerCredential: ConcordChatWriterCredential? = null,
         createdAt: Long = System.currentTimeMillis() / 1000,
     ): Boolean {
         require(reaction.isNotBlank()) { "Reaction cannot be empty" }
         val channelEpoch = privateChannelEpoch ?: epoch
+        val key = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
+        val reactionTags = writerExtraTags(emptyArray(), writerCredential)
         val rumor = ChannelChat.reaction(
             authorPubKey = signer.pubKey,
             channelId = channelIdHex,
@@ -251,20 +270,83 @@ class ConcordChatRepository(
             targetKind = target.kind,
             content = reaction,
             createdAt = createdAt,
+            extraTags = reactionTags,
         )
-        val key = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
-        val event = NostrEvent.fromJson(
-            ConcordStreamEnvelope.wrap(
-                rumor = rumor,
-                stream = key,
-                authorSigner = signer,
-                encrypted = true,
-                createdAt = createdAt,
-            ).toJson(),
+        val (event, _) = encodeOutboundRumor(
+            rumor = rumor,
+            signer = signer,
+            communityIdHex = communityIdHex,
+            channelIdHex = channelIdHex,
+            channelEpoch = channelEpoch,
+            channelKey = key,
+            writerCredential = writerCredential,
+            createdAt = createdAt,
         )
         if (!publish(event, communityRelays)) return false
         persistEncryptedWrap(signer.pubKey, communityIdHex, channelIdHex, event)
         return true
+    }
+
+    private fun writerExtraTags(
+        existing: Array<Array<String>>,
+        credential: ConcordChatWriterCredential?,
+    ): Array<Array<String>> {
+        require(existing.none { it.firstOrNull() == ConcordWritersLedger.WEPOCH || it.firstOrNull() == ConcordWritersLedger.WCERT }) {
+            "Writer binding tags are reserved for the authorized writer credential"
+        }
+        if (credential == null) return existing
+        require(credential.canSendMessages) { "This account does not have SEND_MESSAGES in this channel" }
+        val base = existing + arrayOf(arrayOf(ConcordWritersLedger.WEPOCH, credential.context.window.epoch.toString()))
+        return credential.certificate?.let { base + arrayOf(arrayOf(ConcordWritersLedger.WCERT, it)) } ?: base
+    }
+
+    private suspend fun encodeOutboundRumor(
+        rumor: Event,
+        signer: PostillaQuartzSigner,
+        communityIdHex: String,
+        channelIdHex: String,
+        channelEpoch: Long,
+        channelKey: GroupKey,
+        writerCredential: ConcordChatWriterCredential?,
+        createdAt: Long,
+    ): Pair<NostrEvent, ConcordChatReadPlane> {
+        val stream = if (writerCredential == null) {
+            channelKey
+        } else {
+            val context = writerCredential.context
+            val window = context.window
+            val live = context.ledger.live
+            require(writerCredential.canSendMessages) { "This account does not have SEND_MESSAGES in this channel" }
+            require(!context.authority.isBanned(signer.pubKey)) { "This account is banned from the community" }
+            require(live?.epoch == window.epoch && live.writerPubKey.equals(window.writerPubKey, ignoreCase = true)) {
+                "The writer authorization changed; refresh the channel before sending"
+            }
+            require(writerCredential.streamKey.publicKeyHex.equals(window.writerPubKey, ignoreCase = true)) {
+                "The delivered writer key does not match the live writer address"
+            }
+            val postMs = ChannelChat.orderingMs(rumor)
+                ?: throw IllegalStateException("The message has an invalid Concord ordering timestamp")
+            val stands = context.ledger.postStands(
+                context.communityIdHex.hexToByteArray(),
+                window,
+                signer.pubKey,
+                postMs,
+                writerCredential.certificate,
+                writerCredential.canManageChannel || context.authority.isOwner(signer.pubKey),
+            )
+            require(stands) { "The writer certificate or active writer window does not authorize this post" }
+            GroupKey(writerCredential.streamKey.secretKey, writerCredential.streamKey.publicKey, channelKey.conversationKey)
+        }
+
+        val seal = ConcordStreamEnvelope.seal(rumor, stream, signer, encrypted = true)
+        val wrap = ConcordStreamEnvelope.wrapSeal(
+            seal = seal,
+            signerKey = stream,
+            readConversationKey = channelKey.conversationKey,
+            createdAt = createdAt,
+        )
+        val event = NostrEvent.fromJson(wrap.toJson())
+        return event to ConcordChatReadPlane(stream, channelEpoch, writerCredential?.context)
     }
 
     private suspend fun publish(event: NostrEvent, communityRelays: List<String>): Boolean {
@@ -735,14 +817,21 @@ class ConcordChatRepository(
         if (foldedWindow.epoch != writer.window.epoch) return null
 
         val author = rumor.pubKey
+        val permissions = writer.communityState?.channelPermissions(
+            author,
+            channelIdHex,
+            isPrivate = writer.channelPrivate,
+        )
         val privileged = writer.authority.isOwner(author) ||
             (!writer.authority.isBanned(author) &&
-                writer.authority.hasPermission(author, ConcordPermissions.MANAGE_CHANNELS))
+                (permissions?.has(ConcordPermissions.MANAGE_CHANNELS)
+                    ?: writer.authority.hasPermission(author, ConcordPermissions.MANAGE_CHANNELS)))
         val postMs = ChannelChat.orderingMs(rumor) ?: return null
         val certifier = writer.window.certifier
 
+        val certificate = ConcordWritersLedger.wcertOf(rumor)
         if (!privileged && certifier != null) {
-            val certificate = ConcordWritersLedger.wcertOf(rumor) ?: return null
+            if (certificate == null) return null
             val certificateValid = ConcordWritersLedger.verifyCertificate(
                 writer.communityIdHex.hexToByteArray(),
                 channelIdHex.hexToByteArray(),
@@ -754,12 +843,12 @@ class ConcordChatRepository(
             if (!certificateValid) return null
         }
 
-        val stands = writer.ledger.postStands(
+        val stands = !writer.authority.isBanned(author) && writer.ledger.postStands(
             writer.communityIdHex.hexToByteArray(),
-            writer.window.copy(certifier = null),
+            writer.window,
             author,
             postMs,
-            null,
+            certificate,
             privileged,
         )
         return rumor.takeIf { stands }
