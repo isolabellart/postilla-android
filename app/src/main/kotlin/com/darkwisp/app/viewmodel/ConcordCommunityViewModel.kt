@@ -875,6 +875,14 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         refreshChannels(communityId)
     }
 
+    suspend fun createPrivateChannel(communityId: String, name: String, signer: NostrSigner?) {
+        val active = requireCurrentWritableSigner(signer)
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.createPrivateChannel(PostillaQuartzSigner(active), communityId, name)
+        refreshChannels(communityId)
+        refreshRoles(communityId, active)
+    }
+
     suspend fun renameChannel(communityId: String, channelId: String, name: String, signer: NostrSigner?) {
         require(signer != null) { "A writable Nostr signer is required" }
         val repo = repository ?: throw IllegalStateException("Community service is not initialized")

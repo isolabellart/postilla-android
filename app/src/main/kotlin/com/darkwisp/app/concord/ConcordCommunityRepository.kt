@@ -1976,6 +1976,153 @@ class ConcordCommunityRepository(
         return null
     }
 
+    /**
+     * Persists a private channel key in the owner's encrypted Community List and requires every
+     * fragment write to be acknowledged before any Control Plane edition can make the channel live.
+     */
+    private suspend fun persistPrivateChannelKey(
+        signer: PostillaQuartzSigner,
+        expectedMembership: ConcordCommunityListEntry,
+        privateKey: PrivateChannelKey,
+    ): ConcordCommunityListEntry {
+        val snapshot = fetchCommunityList(signer)
+        requireSafeCommunityListForWrite(snapshot, "Private channel key storage")
+        val current = snapshot.document.entries.firstOrNull {
+            it.id.equals(expectedMembership.id, ignoreCase = true)
+        } ?: throw IllegalStateException("The community membership disappeared before the private key could be stored")
+        require(
+            current.root.equals(expectedMembership.root, ignoreCase = true) &&
+                current.rootEpoch == expectedMembership.rootEpoch &&
+                (current.controlPk ?: "").equals(expectedMembership.controlPk ?: "", ignoreCase = true),
+        ) {
+            "The community membership changed before the private channel key could be stored"
+        }
+        val updated = ConcordChannelKeyring.withChannelKey(current, privateKey)
+            ?: throw IllegalStateException("Quartz refused the new private channel key or its epoch")
+        val nextEntries = snapshot.document.entries.map {
+            if (it.id.equals(current.id, ignoreCase = true)) updated else it
+        }
+        val nextDocument = ConcordCommunityList.encodeInternal(nextEntries, snapshot.document.residue)
+        val writes = planCommunityListWrites(snapshot, nextDocument, System.currentTimeMillis() / 1000)
+        require(writes.isNotEmpty()) { "Quartz produced no Community List fragments for the private channel key" }
+        val events = writes.map { write ->
+            NostrEvent.fromJson(
+                ConcordCommunityListFragmentEvent.create(
+                    signer = signer,
+                    index = write.index,
+                    plaintext = write.plaintext,
+                    createdAt = write.createdAt,
+                ).toJson(),
+            )
+        }
+        withContext(Dispatchers.IO) { journalEvents(current.id, events) }
+        for (event in events) {
+            if (!publishConfirmed(event, emptyList())) {
+                throw IllegalStateException(
+                    "The private channel key was saved locally, but its Community List fragment was not confirmed. " +
+                        "The channel was not published; retry synchronization before creating another one.",
+                )
+            }
+        }
+        return updated
+    }
+
+    /**
+     * Creates a CORD-03 private channel. The independent epoch-0 key is stored and confirmed in the
+     * encrypted Community List first; its channel-scoped access role is published next; the private
+     * Channel edition is last. A failed later step leaves only an inert orphan key/role, never an
+     * unkeyed live channel or a channel readable by the whole community.
+     */
+    suspend fun createPrivateChannel(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        name: String,
+    ): String {
+        val normalized = name.trim()
+        require(ChannelEntity.isValidName(normalized)) { "Channel name must be 1–64 UTF-8 bytes" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.dissolved) throw IllegalStateException("This community has been dissolved")
+        requireLegacyRoleActions(control.state)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_CHANNELS)) {
+            throw IllegalStateException("This account cannot manage community channels")
+        }
+        if (!authority.isOwner(signer.pubKey) &&
+            !authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)
+        ) {
+            throw IllegalStateException("Creating a private channel also requires MANAGE_ROLES to mint its access role")
+        }
+        require(control.state.channels.values.none {
+            !it.definition.deleted && it.definition.name.equals(normalized, ignoreCase = true)
+        }) { "A channel with this name already exists" }
+
+        val ceiling = if (authority.isOwner(signer.pubKey)) {
+            1L
+        } else {
+            (authority.rank(signer.pubKey) ?: throw IllegalStateException("The actor has no valid role rank")) + 1L
+        }
+        val lowest = authority.roles().values.filterNot { it.deleted }.maxOfOrNull { it.position } ?: 0L
+        val accessRolePosition = maxOf(ceiling, lowest + 1L)
+        require(accessRolePosition >= 1L) { "A private-channel access role cannot occupy the owner's rank" }
+
+        val channelId = RandomInstance.bytes(32)
+        val channelIdHex = channelId.toHexKey()
+        val roleId = RandomInstance.bytes(32)
+        val roleIdHex = roleId.toHexKey()
+        val channelKey = PrivateChannelKey(
+            channelId = channelIdHex,
+            key = RandomInstance.bytes(32).toHexKey(),
+            epoch = 0L,
+            name = normalized,
+        )
+        val storedMembership = persistPrivateChannelKey(signer, membership, channelKey)
+
+        val accessRole = RoleEntity(
+            roleId = roleIdHex,
+            name = normalized,
+            position = accessRolePosition,
+            permissions = "0",
+            scope = RoleScope(kind = "channel", channelId = channelIdHex),
+        )
+        val roleContent = ConcordJson.instance.encodeToString(RoleEntity.serializer(), accessRole)
+        val roleEvent = buildControlEdition(
+            signer = signer,
+            membership = storedMembership,
+            control = control,
+            entityKind = ControlEntityKind.ROLE,
+            entityId = roleId,
+            content = roleContent,
+            permission = ConcordPermissions.MANAGE_ROLES,
+        )
+        val channelContent = ConcordJson.instance.encodeToString(
+            ChannelEntity.serializer(),
+            ChannelEntity(name = normalized, private = true),
+        )
+        val channelEvent = buildControlEdition(
+            signer = signer,
+            membership = storedMembership,
+            control = control,
+            entityKind = ControlEntityKind.CHANNEL,
+            entityId = channelId,
+            content = channelContent,
+            permission = ConcordPermissions.MANAGE_CHANNELS,
+        )
+
+        withContext(Dispatchers.IO) { journalEvents(communityId, listOf(roleEvent, channelEvent)) }
+        if (!publishConfirmed(roleEvent, membership.relays)) {
+            throw IllegalStateException("The private-channel access role was not confirmed; the channel was not published")
+        }
+        if (!publishConfirmed(channelEvent, membership.relays)) {
+            throw IllegalStateException(
+                "The access role was published but the private Channel edition was not confirmed. " +
+                    "The channel key and role are retained; refresh the Control Plane before retrying.",
+            )
+        }
+        return channelIdHex
+    }
+
     /** Creates a public CORD-03 channel after a fresh MANAGE_CHANNELS authority check. */
     suspend fun createPublicChannel(
         signer: PostillaQuartzSigner,

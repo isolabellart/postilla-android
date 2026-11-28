@@ -171,6 +171,7 @@ fun ConcordRoomScreen(
     var showDeleteChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var directInviteRecipient by rememberSaveable(communityId) { mutableStateOf("") }
     var newChannelName by rememberSaveable(communityId) { mutableStateOf("") }
+    var newChannelPrivate by rememberSaveable(communityId) { mutableStateOf(false) }
     var renamedChannelName by rememberSaveable(communityId) { mutableStateOf("") }
     var managementError by remember { mutableStateOf<String?>(null) }
     var managementBusy by remember { mutableStateOf(false) }
@@ -410,11 +411,16 @@ fun ConcordRoomScreen(
                     }
                     item {
                         NavigationDrawerItem(
-                            label = { Text("Create public channel") },
+                            label = { Text("Create channel") },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                if (signer != null) showCreateChannelDialog = true
+                                if (signer != null) {
+                                    newChannelPrivate = false
+                                    newChannelName = ""
+                                    managementError = null
+                                    showCreateChannelDialog = true
+                                }
                                 else android.widget.Toast.makeText(context, "A writable Nostr signer is required", android.widget.Toast.LENGTH_LONG).show()
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
@@ -1576,7 +1582,7 @@ fun ConcordRoomScreen(
     if (showCreateChannelDialog) {
         AlertDialog(
             onDismissRequest = { if (!managementBusy) showCreateChannelDialog = false },
-            title = { Text("Create public channel") },
+            title = { Text(if (newChannelPrivate) "Create private channel" else "Create public channel") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -1585,8 +1591,29 @@ fun ConcordRoomScreen(
                         label = { Text("Channel name") },
                         singleLine = true,
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = newChannelPrivate,
+                            onCheckedChange = { newChannelPrivate = it; managementError = null },
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Private channel", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Only members holding its access role receive the channel key. Creating one also requires role-management authority.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     Text(
-                        "This creates a public CORD-03 channel. Private-channel creation needs a separate key-distribution flow and is not exposed until it can be handled safely.",
+                        if (newChannelPrivate) {
+                            "Postilla stores and confirms a separate private key before publishing the private channel and its access role."
+                        } else {
+                            "This creates a public CORD-03 channel visible to community members."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1601,8 +1628,13 @@ fun ConcordRoomScreen(
                             managementBusy = true
                             managementError = null
                             try {
-                                viewModel.createPublicChannel(communityId, newChannelName, signer)
+                                if (newChannelPrivate) {
+                                    viewModel.createPrivateChannel(communityId, newChannelName, signer)
+                                } else {
+                                    viewModel.createPublicChannel(communityId, newChannelName, signer)
+                                }
                                 newChannelName = ""
+                                newChannelPrivate = false
                                 showCreateChannelDialog = false
                             } catch (error: Exception) {
                                 managementError = error.message ?: "Channel creation failed"
