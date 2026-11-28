@@ -56,9 +56,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FormatQuote
@@ -463,9 +465,12 @@ fun ConcordRoomScreen(
                     items(visibleChannels, key = { "drawer-${it.id}" }) { channel ->
                         NavigationDrawerItem(
                             label = {
-                                Text(
-                                    (if (channel.isPrivate) "🔒 " else "# ") + channel.name,
-                                    maxLines = 1,
+                                Text(channel.name, maxLines = 1)
+                            },
+                            icon = {
+                                Icon(
+                                    if (channel.isPrivate) Icons.Default.Lock else Icons.Default.Tag,
+                                    contentDescription = if (channel.isPrivate) "Private channel" else "Public channel",
                                 )
                             },
                             selected = selectedChannelId == channel.id,
@@ -492,6 +497,7 @@ fun ConcordRoomScreen(
                     item {
                         NavigationDrawerItem(
                             label = { Text("Members") },
+                            icon = { Icon(Icons.Default.Group, contentDescription = null) },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -504,6 +510,7 @@ fun ConcordRoomScreen(
                     item {
                         NavigationDrawerItem(
                             label = { Text("Invite by npub") },
+                            icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -515,6 +522,7 @@ fun ConcordRoomScreen(
                     item {
                         NavigationDrawerItem(
                             label = { Text(if (inviteState.isCreating) "Preparing invite link…" else "Share public invite link") },
+                            icon = { Icon(Icons.Default.Link, contentDescription = null) },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -530,6 +538,7 @@ fun ConcordRoomScreen(
                     item {
                         NavigationDrawerItem(
                             label = { Text("Create channel") },
+                            icon = { Icon(Icons.Default.Add, contentDescription = null) },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -547,6 +556,7 @@ fun ConcordRoomScreen(
                     item {
                         NavigationDrawerItem(
                             label = { Text("Manage selected channel") },
+                            icon = { Icon(Icons.Default.Edit, contentDescription = null) },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
@@ -566,6 +576,7 @@ fun ConcordRoomScreen(
                     item {
                         NavigationDrawerItem(
                             label = { Text("Refresh channels") },
+                            icon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                             selected = false,
                             onClick = {
                                 scope.launch { drawerState.close() }
