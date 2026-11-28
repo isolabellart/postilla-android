@@ -3974,8 +3974,8 @@ class ConcordCommunityRepository(
     ): String {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available on this device")
-        val relays = membership.relays.distinct().take(5)
-        require(relays.isNotEmpty()) { "Community has no relay configured for invite discovery" }
+        val readRelays = membership.relays.distinct().take(5)
+        require(readRelays.isNotEmpty()) { "Community has no relay configured for invite discovery" }
 
         val controlRootHex = membership.controlRoot
             ?: throw IllegalStateException("This account does not hold the current Control Plane write key")
@@ -3987,7 +3987,7 @@ class ConcordCommunityRepository(
             controlRoot = controlRootHex,
         )
         val preflightWraps = fetchEventsFromRelays(
-            relays = relays,
+            relays = readRelays,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
                 authors = listOf(preflightKeys.address),
@@ -4012,6 +4012,18 @@ class ConcordCommunityRepository(
             throw IllegalStateException("This account is not authorized to create community invites")
         }
 
+        // Invite previews and delivery must use the current folded metadata, not the
+        // stale name/relay hints cached in the local membership entry.
+        val relays = preflightState.metadata?.relays
+            .orEmpty()
+            .map { it.trim() }
+            .filter { it.startsWith("wss://") }
+            .distinct()
+            .take(5)
+            .ifEmpty { readRelays }
+        val inviteName = preflightState.metadata?.name
+            ?.takeIf { it.isNotBlank() } ?: membership.name
+
         val createdAt = System.currentTimeMillis() / 1000
         val invite = CommunityInvite(
             communityId = membership.id,
@@ -4022,7 +4034,7 @@ class ConcordCommunityRepository(
             controlPk = membership.controlPk,
             channels = emptyList(),
             relays = relays,
-            name = membership.name,
+            name = inviteName,
             expiresAt = expiresAt,
         )
         val minted = ConcordInviteBundle.mintLink(
