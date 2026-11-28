@@ -15,11 +15,17 @@ import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntr
 import com.vitorpamplona.quartz.concord.cord05Invites.OpenedDirectInvite
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     data class CreationState(
@@ -86,6 +92,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private var chatRepository: ConcordChatRepository? = null
     private var signerPubkey: String? = null
     private var activeSigner: NostrSigner? = null
+    private var communityWarmupJob: Job? = null
     private val memberships = linkedMapOf<String, ConcordCommunityListEntry>()
 
     private val _communities = MutableStateFlow<List<CommunityItem>>(emptyList())
@@ -144,6 +151,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             chatRepository = ConcordChatRepository(relayPool, getApplication())
         }
         if (signer?.pubkeyHex == signerPubkey) return
+        communityWarmupJob?.cancel()
+        communityWarmupJob = null
         signerPubkey = signer?.pubkeyHex
         memberships.clear()
         _channels.value = emptyList()
@@ -193,6 +202,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 _communityListWarning.value = warning
+                startCommunityWarmup(signer, entries)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -202,6 +212,135 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 // Keep the last known list visible; a failed refresh must not erase it.
             } finally {
                 if (signerPubkey?.lowercase() == requestedOwner) _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Armada-style first paint: fetch the Control Plane/channel catalogue for every
+     * membership, then batch the newest activity across all channels so recent messages
+     * and member presence are ready before the user opens a room.
+     *
+     * Work is account-scoped and bounded to two communities at once. The channel and
+     * member snapshots stay local-first: a partial/failed refresh never clears a prior
+     * successful snapshot.
+     */
+    private fun startCommunityWarmup(
+        signer: NostrSigner,
+        entries: List<ConcordCommunityListEntry>,
+    ) {
+        val repo = repository ?: return
+        val chat = chatRepository ?: return
+        val requestedOwner = signer.pubkeyHex.lowercase()
+        communityWarmupJob?.cancel()
+        communityWarmupJob = viewModelScope.launch {
+            val permits = Semaphore(permits = 2)
+            coroutineScope {
+                entries.map { membership ->
+                    async {
+                        permits.withPermit {
+                            if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+                            val previousChannelState = _channelSyncByCommunity.value[membership.id]
+                                ?: ChannelSyncState()
+                            val previousMembers = _membersByCommunity.value[membership.id]
+                                ?: MembersState(communityId = membership.id)
+                            _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                membership.id to previousChannelState.copy(isLoading = true, error = null)
+                            )
+                            setMembersState(
+                                membership.id,
+                                previousMembers.copy(communityId = membership.id, isLoading = true, error = null),
+                            )
+                            try {
+                                val quartzSigner = PostillaQuartzSigner(signer)
+                                val snapshot = repo.loadCommunityChannelSnapshot(membership, quartzSigner)
+                                if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+
+                                _channelsByCommunity.value = _channelsByCommunity.value +
+                                    (membership.id to snapshot.channels)
+                                _channels.value = snapshot.channels
+                                val access = snapshot.writerAccessRead
+                                _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                    membership.id to ChannelSyncState(
+                                        isLoading = false,
+                                        controlResponded = snapshot.controlRead.respondedCount,
+                                        controlRequested = snapshot.controlRead.requestedCount,
+                                        controlComplete = snapshot.controlRead.isComplete,
+                                        writerAccessResponded = access?.respondedCount,
+                                        writerAccessRequested = access?.requestedCount,
+                                        writerAccessComplete = access?.isComplete,
+                                        lastSyncAtMs = System.currentTimeMillis(),
+                                    )
+                                )
+                                val general = snapshot.channels.firstOrNull {
+                                    it.name.equals("general", ignoreCase = true)
+                                }
+                                if (general != null) {
+                                    _communities.value = _communities.value.map {
+                                        if (it.id == membership.id) it.copy(generalChannelId = general.id) else it
+                                    }
+                                }
+
+                                // One batched, per-community-relay request across all channels.
+                                // The chat repository persists each successfully opened wrap.
+                                val observed = chat.loadObservedAuthorActivity(
+                                    ownerPubkey = requestedOwner,
+                                    communityIdHex = membership.id,
+                                    channels = snapshot.channels,
+                                    communityRelays = membership.relays,
+                                )
+                                if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+                                val loadedMembers = repo.loadMembers(quartzSigner, membership.id, observed)
+                                if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+                                setMembersState(
+                                    membership.id,
+                                    MembersState(communityId = membership.id, members = loadedMembers),
+                                )
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                if (signerPubkey?.lowercase() == requestedOwner) {
+                                    val currentChannelState = _channelSyncByCommunity.value[membership.id]
+                                        ?: previousChannelState
+                                    if (currentChannelState.isLoading || currentChannelState.error == null) {
+                                        _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                            membership.id to currentChannelState.copy(
+                                                isLoading = false,
+                                                error = error.message ?: "Community synchronization failed",
+                                            )
+                                        )
+                                    }
+                                    val currentMembers = _membersByCommunity.value[membership.id]
+                                        ?: previousMembers
+                                    setMembersState(
+                                        membership.id,
+                                        currentMembers.copy(
+                                            communityId = membership.id,
+                                            isLoading = false,
+                                            error = error.message ?: "Could not synchronize community members",
+                                        ),
+                                    )
+                                }
+                            } finally {
+                                if (signerPubkey?.lowercase() == requestedOwner) {
+                                    val currentChannelState = _channelSyncByCommunity.value[membership.id]
+                                    if (currentChannelState?.isLoading == true) {
+                                        _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                            membership.id to currentChannelState.copy(isLoading = false)
+                                        )
+                                    }
+                                    val currentMembers = _membersByCommunity.value[membership.id]
+                                    if (currentMembers?.isLoading == true) {
+                                        setMembersState(
+                                            membership.id,
+                                            currentMembers.copy(isLoading = false),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.awaitAll()
             }
         }
     }
