@@ -1541,5 +1541,5 @@
     <string name="broadcast_invalid_signature">The original event signature is invalid.</string>
     <string name="broadcast_unavailable">Broadcast is not available right now.</string>
     <string name="broadcast_failed">Broadcast failed. Please try again.</string>
-    <string name="tab_concord_communities">Concord</string>
+    <string name="tab_concord_communities">Groups</string>
 </resources>
