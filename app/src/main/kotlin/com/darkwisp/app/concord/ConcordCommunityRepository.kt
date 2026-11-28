@@ -169,10 +169,20 @@ internal fun concordCommunityRelayTargets(
     metadataRelays: Collection<String>,
     fallbackRelays: Collection<String>,
     controlReadHasQuorum: Boolean,
-): List<String> = (
-    concordEffectiveCommunityRelays(metadataRelays, fallbackRelays, controlReadHasQuorum) +
-        fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
-    ).distinct()
+): List<String> {
+    // Metadata routing is usable for reads from any authenticated partial fold, but
+    // sensitive publications keep the stricter quorum policy and always include the
+    // encrypted bootstrap relays as a recovery path.
+    val verifiedMetadataRelays = if (controlReadHasQuorum) {
+        metadataRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
+    } else {
+        emptyList()
+    }
+    return (
+        verifiedMetadataRelays +
+            fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
+        ).distinct()
+}
 
 /**
  * Concord writer streams are required as soon as @everyone cannot send, even when
