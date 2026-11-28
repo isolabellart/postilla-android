@@ -7,6 +7,30 @@ import org.junit.Test
 
 class ConcordChannelPermissionPolicyTest {
     @Test
+    fun writerPublicationsReachBothCurrentAndBootstrapRelays() {
+        assertEquals(
+            listOf("wss://current.example", "wss://bootstrap.example"),
+            concordCommunityRelayTargets(
+                metadataRelays = listOf("wss://current.example/"),
+                fallbackRelays = listOf("wss://bootstrap.example"),
+                controlReadHasQuorum = true,
+            ),
+        )
+    }
+
+    @Test
+    fun writerPublicationsDoNotAdoptUnverifiedMetadataRelays() {
+        assertEquals(
+            listOf("wss://bootstrap.example"),
+            concordCommunityRelayTargets(
+                metadataRelays = listOf("wss://unverified.example"),
+                fallbackRelays = listOf("wss://bootstrap.example"),
+                controlReadHasQuorum = false,
+            ),
+        )
+    }
+
+    @Test
     fun metadataRelaysAreAdoptedOnlyAfterControlPlaneQuorum() {
         assertEquals(
             listOf("wss://new-relay.example"),
