@@ -1607,19 +1607,55 @@ fun ConcordRoomScreen(
                             }
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(rolesState.roles, key = { it.id }) { role ->
+                                    val permissionSummary = listOf(
+                                        ConcordPermissions.MANAGE_ROLES,
+                                        ConcordPermissions.MANAGE_CHANNELS,
+                                        ConcordPermissions.MANAGE_METADATA,
+                                        ConcordPermissions.KICK,
+                                        ConcordPermissions.BAN,
+                                        ConcordPermissions.MANAGE_MESSAGES,
+                                        ConcordPermissions.CREATE_INVITE,
+                                        ConcordPermissions.VIEW_AUDIT_LOG,
+                                        ConcordPermissions.MENTION_EVERYONE,
+                                        ConcordPermissions.PIN_MESSAGES,
+                                    ).filter { role.permissions.has(it) }
+                                        .map(::concordRolePermissionLabel)
                                     Surface(
                                         color = MaterialTheme.colorScheme.surfaceVariant,
                                         shape = RoundedCornerShape(10.dp),
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         Column(
-                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
                                         ) {
-                                            Text(role.name.ifBlank { role.id.take(10) }, fontWeight = FontWeight.SemiBold)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Text(
+                                                    role.name.ifBlank { role.id.take(10) },
+                                                    modifier = Modifier.weight(1f),
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                                Text(
+                                                    if (rolesState.rolesV2) "Roles v2" else "Legacy",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.secondary,
+                                                )
+                                            }
                                             Text(
-                                                "Position ${role.position} · ${role.id.take(12)}",
+                                                "Authority position ${role.position}",
                                                 style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Text(
+                                                if (permissionSummary.isEmpty()) {
+                                                    "No explicit permissions"
+                                                } else {
+                                                    permissionSummary.joinToString(" · ")
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
@@ -1800,6 +1836,25 @@ fun ConcordRoomScreen(
                                             Text(
                                                 "Position ${role.position}",
                                                 style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            val permissionSummary = listOf(
+                                                ConcordPermissions.MANAGE_ROLES,
+                                                ConcordPermissions.MANAGE_CHANNELS,
+                                                ConcordPermissions.MANAGE_METADATA,
+                                                ConcordPermissions.KICK,
+                                                ConcordPermissions.BAN,
+                                                ConcordPermissions.MANAGE_MESSAGES,
+                                                ConcordPermissions.CREATE_INVITE,
+                                                ConcordPermissions.VIEW_AUDIT_LOG,
+                                                ConcordPermissions.MENTION_EVERYONE,
+                                                ConcordPermissions.PIN_MESSAGES,
+                                            ).filter { role.permissions.has(it) }
+                                                .map(::concordRolePermissionLabel)
+                                            Text(
+                                                if (permissionSummary.isEmpty()) "No explicit permissions"
+                                                else permissionSummary.joinToString(" · "),
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
