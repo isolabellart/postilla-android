@@ -7,6 +7,39 @@ import org.junit.Test
 
 class ConcordChannelPermissionPolicyTest {
     @Test
+    fun writerPlaneIsRequiredWhenEveryoneCannotSendEvenIfOtherRightsRemain() {
+        assertTrue(
+            concordChannelRequiresWriterPlane(
+                rolesV2 = true,
+                everyoneCanSend = false,
+                hasLiveWriter = false,
+            ),
+        )
+    }
+
+    @Test
+    fun openChannelsDoNotRequireAWriterPlaneWithoutALiveLedger() {
+        assertFalse(
+            concordChannelRequiresWriterPlane(
+                rolesV2 = true,
+                everyoneCanSend = true,
+                hasLiveWriter = false,
+            ),
+        )
+    }
+
+    @Test
+    fun existingLiveWriterLedgerKeepsItsWriterPlane() {
+        assertTrue(
+            concordChannelRequiresWriterPlane(
+                rolesV2 = false,
+                everyoneCanSend = true,
+                hasLiveWriter = true,
+            ),
+        )
+    }
+
+    @Test
     fun communityOwnerRetainsOrdinaryChannelPermissions() {
         assertTrue(concordRolePermissionAllowsChannelAction(rolesV2 = true, isOwner = true, rolePermissionGranted = false))
     }
