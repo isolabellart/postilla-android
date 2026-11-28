@@ -424,9 +424,10 @@ class ConcordChatRepository(
                     privileged,
                 )
                 writer.scopedCertificate != null -> {
-                    val rights = writer.scopedRights ?: return null
-                    val requiredBit = if (rumor.kind == 7) ConcordPermissions.ADD_REACTIONS else return null
-                    val covers = (rights and (1uL shl requiredBit)) != 0uL
+                    val rights = writer.scopedRights
+                        ?: throw IllegalStateException("Scoped writer certificate has no rights")
+                    require(rumor.kind == 7) { "This scoped writer certificate does not authorize this message kind" }
+                    val covers = (rights and (1uL shl ConcordPermissions.ADD_REACTIONS)) != 0uL
                     val certifier = window.certifier
                     covers && certifier != null &&
                         verifyConcordScopedWriterCertificate(
