@@ -101,6 +101,7 @@ fun ConcordRoomScreen(
     val communities by viewModel.communities.collectAsState()
     val channelsByCommunity by viewModel.channelsByCommunity.collectAsState()
     val channels = channelsByCommunity[communityId].orEmpty()
+    val visibleChannels = channels.filter { it.canViewChannel }
     val membersByCommunity by viewModel.membersByCommunity.collectAsState()
     val membersState = membersByCommunity[communityId] ?: ConcordCommunityViewModel.MembersState(communityId = communityId)
     val inviteState by viewModel.invite.collectAsState()
@@ -108,14 +109,17 @@ fun ConcordRoomScreen(
     val communityIcon = communityIcons[communityId]
     val community = communities.firstOrNull { it.id == communityId }
     var selectedChannelId by rememberSaveable(communityId) { mutableStateOf("") }
-    val selectedChannel = channels.firstOrNull { it.id == selectedChannelId }
+    val selectedChannel = visibleChannels.firstOrNull { it.id == selectedChannelId }
     val selectedChannelAccessible = selectedChannel?.let {
-        !it.isPrivate || !it.privateKeyHex.isNullOrBlank()
-    } ?: (selectedChannelId.isNotBlank() && selectedChannelId == community?.generalChannelId)
-    // Fail closed until the channel catalogue and any restricted writer credential are loaded.
-    val selectedChannelCanSend = selectedChannel?.let {
-        !it.writeRestricted || it.writerCredential?.canSendMessages == true
+        it.canViewChannel && (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
     } ?: false
+    // Fail closed until the channel catalogue and all required per-account permissions are loaded.
+    val selectedChannelCanSend = selectedChannel?.let {
+        it.canSendMessages &&
+            (!it.writeRestricted || it.writerCredential?.canSendMessages == true) &&
+            (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
+    } ?: false
+    val selectedChannelCanAttach = selectedChannelCanSend && selectedChannel?.canAttachFiles == true
     val restoringCommunityId by viewModel.restoringGeneralChannel.collectAsState()
     val generalChannelError by viewModel.generalChannelError.collectAsState()
     val messages = remember(communityId) { mutableStateListOf<ConcordChatMessage>() }
@@ -155,7 +159,10 @@ fun ConcordRoomScreen(
     var moderationAction by rememberSaveable(communityId) { mutableStateOf("") }
     var moderationRequiresRefounding by rememberSaveable(communityId) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null && !sending && signer != null) {
+        if (
+            uri != null && !sending && signer != null &&
+            selectedChannelAccessible && selectedChannelCanAttach
+        ) {
             scope.launch {
                 sending = true
                 sendError = null
@@ -211,10 +218,10 @@ fun ConcordRoomScreen(
         }
     }
 
-    LaunchedEffect(communityId, channels, community?.generalChannelId) {
-        if (selectedChannelId.isBlank() || channels.none { it.id == selectedChannelId }) {
-            selectedChannelId = channels.firstOrNull { it.name.equals("general", ignoreCase = true) }?.id
-                ?: community?.generalChannelId.orEmpty()
+    LaunchedEffect(communityId, visibleChannels, community?.generalChannelId) {
+        if (selectedChannelId.isBlank() || visibleChannels.none { it.id == selectedChannelId }) {
+            selectedChannelId = visibleChannels.firstOrNull { it.name.equals("general", ignoreCase = true) }?.id
+                ?: visibleChannels.firstOrNull()?.id.orEmpty()
         }
     }
 
@@ -289,7 +296,7 @@ fun ConcordRoomScreen(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                "${channels.size} channels · encrypted community",
+                                "${visibleChannels.size} channels · encrypted community",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -304,7 +311,7 @@ fun ConcordRoomScreen(
                             modifier = Modifier.padding(start = 22.dp, top = 10.dp, bottom = 4.dp),
                         )
                     }
-                    if (channels.isEmpty()) {
+                    if (visibleChannels.isEmpty()) {
                         item {
                             Text(
                                 "No channels loaded yet",
@@ -314,7 +321,7 @@ fun ConcordRoomScreen(
                             )
                         }
                     }
-                    items(channels, key = { "drawer-${it.id}" }) { channel ->
+                    items(visibleChannels, key = { "drawer-${it.id}" }) { channel ->
                         NavigationDrawerItem(
                             label = {
                                 Text(
@@ -513,9 +520,17 @@ fun ConcordRoomScreen(
                 modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding()
                     .background(MaterialTheme.colorScheme.background).padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                if (selectedChannel?.writeRestricted == true && !selectedChannelCanSend) {
+                if (selectedChannel != null && !selectedChannelCanSend) {
                     Text(
-                        "This channel is restricted. Postilla has not verified a current writer delivery and SEND_MESSAGES permission for this account. Refresh channel access before sending.",
+                        when {
+                            !selectedChannel.canSendMessages ->
+                                "This account does not have SEND_MESSAGES permission in this channel."
+                            selectedChannel.writeRestricted ->
+                                "This channel requires a current CORD-03 writer delivery. Refresh channel access before sending."
+                            selectedChannel.isPrivate && selectedChannel.privateKeyHex.isNullOrBlank() ->
+                                "The private channel key is not available on this account."
+                            else -> "Channel access is not ready for this account."
+                        },
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(bottom = 6.dp),
@@ -581,7 +596,8 @@ fun ConcordRoomScreen(
                         ),
                     )
                     IconButton(
-                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannelCanSend,
+                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() &&
+                            selectedChannelAccessible && selectedChannelCanAttach,
                         onClick = { imagePicker.launch("image/*") },
                     ) {
                         Icon(Icons.Default.Image, contentDescription = "Attach image")
@@ -667,10 +683,11 @@ fun ConcordRoomScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        channels.forEach { channel ->
+                        visibleChannels.forEach { channel ->
                             FilterChip(
                                 selected = selectedChannelId == channel.id,
-                                enabled = !channel.isPrivate || !channel.privateKeyHex.isNullOrBlank(),
+                                enabled = channel.canViewChannel &&
+                                    (!channel.isPrivate || !channel.privateKeyHex.isNullOrBlank()),
                                 onClick = { selectedChannelId = channel.id },
                                 label = {
                                     Text(

@@ -80,6 +80,30 @@ internal fun concordChatHistoryStreamSignature(planes: List<ConcordChatReadPlane
     }
 }
 
+/**
+ * Restricted channels route normal messages to the writer stream while reactions and
+ * deletions remain on the read stream. Locked channels route every channel event to writers.
+ */
+internal fun concordEventUsesWriterPlane(kind: Int, locked: Boolean): Boolean =
+    locked || (kind != 7 && kind != 5)
+
+/**
+ * The rcert wire scope is narrower than a role permission. SEND_MESSAGES cannot be
+ * granted by rcert; MANAGE_MESSAGES is checked independently by the caller.
+ */
+internal fun concordScopedWriterRightsCoverKind(kind: Int, rights: ULong): Boolean {
+    val allowedMask =
+        (1uL shl ConcordPermissions.ADD_REACTIONS) or
+            (1uL shl ConcordPermissions.CONNECT)
+    if ((rights and allowedMask.inv()) != 0uL) return false
+    return when (kind) {
+        7 -> (rights and (1uL shl ConcordPermissions.ADD_REACTIONS)) != 0uL
+        5 -> true // MANAGE_MESSAGES is enforced separately; an rcert may legitimately carry rights=0.
+        ChannelChat.KIND_TYPING -> (rights and (1uL shl ConcordPermissions.CONNECT)) != 0uL
+        else -> false
+    }
+}
+
 data class ConcordChatMessage(
     val id: String,
     val authorPubkey: String,
@@ -357,12 +381,21 @@ class ConcordChatRepository(
                 it.firstOrNull() == ConcordWritersLedger.WCERT ||
                 it.firstOrNull() == "rcert"
         }) { "Writer binding tags are reserved for the authorized writer credential" }
-        val useWriter = credential != null && (kind != 7 || credential.locked)
+        val useWriter = credential != null && concordEventUsesWriterPlane(kind, credential.locked)
         if (!useWriter) return existing
-        val allowed = if (kind == 7) credential!!.canAddReactions else credential!!.canSendMessages
+        val allowed = when (kind) {
+            7 -> credential!!.canAddReactions
+            5 -> credential!!.canManageMessages
+            ChannelChat.KIND_TYPING -> credential!!.canConnect
+            else -> credential!!.canSendMessages
+        }
         require(allowed) {
-            if (kind == 7) "This account does not have ADD_REACTIONS in this channel"
-            else "This account does not have SEND_MESSAGES in this channel"
+            when (kind) {
+                7 -> "This account does not have ADD_REACTIONS in this channel"
+                5 -> "This account does not have MANAGE_MESSAGES in this channel"
+                ChannelChat.KIND_TYPING -> "This account does not have CONNECT in this channel"
+                else -> "This account does not have SEND_MESSAGES in this channel"
+            }
         }
         val base = existing + arrayOf(arrayOf(ConcordWritersLedger.WEPOCH, credential!!.context.window.epoch.toString()))
         credential.certificate?.let { return base + arrayOf(arrayOf(ConcordWritersLedger.WCERT, it)) }
@@ -389,17 +422,26 @@ class ConcordChatRepository(
         // Restricted channels route normal posts to the writer address. A reaction stays
         // on the read address unless the Channel is locked, in which case every kind rides
         // the writer plane and an ADD_REACTIONS-scoped certificate may be used.
-        val writer = writerCredential?.takeIf { rumor.kind != 7 || it.locked }
+        val writer = writerCredential?.takeIf { concordEventUsesWriterPlane(rumor.kind, it.locked) }
         val stream = if (writer == null) {
             channelKey
         } else {
             val context = writer.context
             val window = context.window
             val live = context.ledger.live
-            val allowed = if (rumor.kind == 7) writer.canAddReactions else writer.canSendMessages
+            val allowed = when (rumor.kind) {
+                7 -> writer.canAddReactions
+                5 -> writer.canManageMessages
+                ChannelChat.KIND_TYPING -> writer.canConnect
+                else -> writer.canSendMessages
+            }
             require(allowed) {
-                if (rumor.kind == 7) "This account does not have ADD_REACTIONS in this channel"
-                else "This account does not have SEND_MESSAGES in this channel"
+                when (rumor.kind) {
+                    7 -> "This account does not have ADD_REACTIONS in this channel"
+                    5 -> "This account does not have MANAGE_MESSAGES in this channel"
+                    ChannelChat.KIND_TYPING -> "This account does not have CONNECT in this channel"
+                    else -> "This account does not have SEND_MESSAGES in this channel"
+                }
             }
             require(!context.authority.isBanned(signer.pubKey)) { "This account is banned from the community" }
             require(live?.epoch == window.epoch && live.writerPubKey.equals(window.writerPubKey, ignoreCase = true)) {
@@ -426,8 +468,10 @@ class ConcordChatRepository(
                 writer.scopedCertificate != null -> {
                     val rights = writer.scopedRights
                         ?: throw IllegalStateException("Scoped writer certificate has no rights")
-                    require(rumor.kind == 7) { "This scoped writer certificate does not authorize this message kind" }
-                    val covers = (rights and (1uL shl ConcordPermissions.ADD_REACTIONS)) != 0uL
+                    require(concordScopedWriterRightsCoverKind(rumor.kind, rights)) {
+                        "This scoped writer certificate does not authorize this event kind"
+                    }
+                    val covers = true
                     val certifier = window.certifier
                     covers && certifier != null &&
                         verifyConcordScopedWriterCertificate(
@@ -963,6 +1007,7 @@ class ConcordChatRepository(
         return when (kind) {
             7 -> permissions.has(ConcordPermissions.ADD_REACTIONS)
             5 -> permissions.has(ConcordPermissions.MANAGE_MESSAGES)
+            ChannelChat.KIND_TYPING -> permissions.has(ConcordPermissions.CONNECT)
             else -> permissions.has(ConcordPermissions.SEND_MESSAGES)
         }
     }
@@ -990,8 +1035,7 @@ class ConcordChatRepository(
             // In restricted (not locked) channels ordinary posts belong to the writer
             // stream, while reactions and deletes remain on the read stream. A locked
             // channel moves every kind to the writer address.
-            val shouldRideWriter = context.locked || (rumor.kind != 7 && rumor.kind != 5)
-            if (shouldRideWriter) return null
+            if (concordEventUsesWriterPlane(rumor.kind, context.locked)) return null
         }
         return rumor
     }
@@ -1005,7 +1049,7 @@ class ConcordChatRepository(
         if (!writer.window.writerPubKey.equals(plane.stream.publicKeyHex, ignoreCase = true)) return null
         val foldedWindow = writer.ledger.windowAt(plane.stream.publicKeyHex) ?: return null
         if (foldedWindow.epoch != writer.window.epoch) return null
-        if (!writer.locked && (rumor.kind == 7 || rumor.kind == 5)) return null
+        if (!concordEventUsesWriterPlane(rumor.kind, writer.locked)) return null
 
         val author = rumor.pubKey
         if (!permissionAllows(writer.communityState, channelIdHex, writer.channelPrivate, author, rumor.kind)) return null
@@ -1054,13 +1098,7 @@ class ConcordChatRepository(
                     (1uL shl ConcordPermissions.ADD_REACTIONS) or
                         (1uL shl ConcordPermissions.CONNECT)
                 if ((rights and scopedMask.inv()) != 0uL) return null
-                val requiredBit = when (rumor.kind) {
-                    7 -> ConcordPermissions.ADD_REACTIONS
-                    ChannelChat.KIND_TYPING -> ConcordPermissions.CONNECT
-                    else -> return null
-                }
-                val covers = (rights and (1uL shl requiredBit)) != 0uL
-                covers && certifier != null &&
+                concordScopedWriterRightsCoverKind(rumor.kind, rights) && certifier != null &&
                     verifyConcordScopedWriterCertificate(
                         writer.communityIdHex.hexToByteArray(),
                         channelIdHex.hexToByteArray(),

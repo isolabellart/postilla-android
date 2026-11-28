@@ -341,27 +341,43 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         replyTo: ConcordChatMessage? = null,
         inlineReply: Boolean = false,
     ): ConcordChatMessage? {
+        val activeSigner = signer ?: return null
+        val requestedOwner = activeSigner.pubkeyHex.lowercase()
+        if (signerPubkey?.lowercase() != requestedOwner) {
+            throw IllegalStateException("The active Nostr account changed. Refresh the community before sending.")
+        }
         val entry = memberships[communityId] ?: return null
         val channelInfo = findChannel(communityId, channelId)
-        if (channelInfo?.isPrivate == true && channelInfo.privateKeyHex.isNullOrBlank()) return null
-        if (channelInfo?.writeRestricted == true && channelInfo.writerCredential?.canSendMessages != true) {
+            ?: throw IllegalStateException("Channel access is not loaded yet. Refresh the channel list before sending.")
+        if (!channelInfo.canViewChannel) {
+            throw IllegalStateException("This account does not have VIEW_CHANNEL permission.")
+        }
+        if (!channelInfo.canSendMessages) {
+            throw IllegalStateException("This account does not have SEND_MESSAGES permission in this channel.")
+        }
+        if (imetas.isNotEmpty() && !channelInfo.canAttachFiles) {
+            throw IllegalStateException("This account does not have ATTACH_FILES permission in this channel.")
+        }
+        if (channelInfo.isPrivate && channelInfo.privateKeyHex.isNullOrBlank()) {
+            throw IllegalStateException("The private channel key is not available on this account.")
+        }
+        if (channelInfo.writeRestricted && channelInfo.writerCredential?.canSendMessages != true) {
             throw IllegalStateException(
                 "This channel requires a current CORD-03 writer key and SEND_MESSAGES permission. Refresh channel access before sending.",
             )
         }
         val chat = chatRepository ?: return null
-        signer ?: return null
         return chat.sendMessage(
-            signer = PostillaQuartzSigner(signer),
+            signer = PostillaQuartzSigner(activeSigner),
             communityIdHex = entry.id,
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
             text = text,
-            privateChannelKeyHex = channelInfo?.privateKeyHex,
-            privateChannelEpoch = channelInfo?.privateChannelEpoch,
+            privateChannelKeyHex = channelInfo.privateKeyHex,
+            privateChannelEpoch = channelInfo.privateChannelEpoch,
             communityRelays = entry.relays,
-            writerCredential = channelInfo?.writerCredential,
+            writerCredential = channelInfo.writerCredential,
             extraTags = extraTags,
             imetas = imetas,
             replyTo = replyTo,
@@ -394,23 +410,27 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         reaction: String,
         signer: NostrSigner?,
     ): Boolean {
+        val activeSigner = signer ?: return false
+        if (signerPubkey?.lowercase() != activeSigner.pubkeyHex.lowercase()) return false
         val entry = memberships[communityId] ?: return false
-        val channel = findChannel(communityId, channelId)
-        if (channel?.isPrivate == true && channel.privateKeyHex.isNullOrBlank()) return false
-        if (channel?.writeRestricted == true && channel.writerCredential?.canSendMessages != true) return false
-        signer ?: return false
+        val channel = findChannel(communityId, channelId) ?: return false
+        if (!channel.canViewChannel || !channel.canAddReactions) return false
+        if (channel.isPrivate && channel.privateKeyHex.isNullOrBlank()) return false
+        // Restricted-but-not-locked channels keep reactions on the shared read plane.
+        // Locked channels require the delivered writer key and ADD_REACTIONS scope.
+        if (channel.isLocked && channel.writerCredential?.canAddReactions != true) return false
         return chatRepository?.sendReaction(
-            signer = PostillaQuartzSigner(signer),
+            signer = PostillaQuartzSigner(activeSigner),
             communityIdHex = entry.id,
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
             target = target,
             reaction = reaction,
-            privateChannelKeyHex = channel?.privateKeyHex,
-            privateChannelEpoch = channel?.privateChannelEpoch,
+            privateChannelKeyHex = channel.privateKeyHex,
+            privateChannelEpoch = channel.privateChannelEpoch,
             communityRelays = entry.relays,
-            writerCredential = channel?.writerCredential,
+            writerCredential = channel.writerCredential,
         ) ?: false
     }
 

@@ -1680,7 +1680,7 @@ class ConcordCommunityRepository(
                             membership.id.hexToByteArray(),
                             channelIdHex.hexToByteArray(),
                             live.epoch,
-                            live.writerPubKey,
+                            signer.pubKey,
                             certifier,
                             signature,
                             rights,

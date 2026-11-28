@@ -2,8 +2,11 @@ package com.darkwisp.app.concord
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import com.vitorpamplona.quartz.concord.crypto.GroupKey
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 
 class ConcordChatCacheKeyTest {
     @Test
@@ -68,6 +71,47 @@ class ConcordChatCacheKeyTest {
         assertNotEquals(
             concordChatHistoryStreamSignature(listOf(epochZero)),
             concordChatHistoryStreamSignature(listOf(epochOne)),
+        )
+    }
+
+    @Test
+    fun restrictedAndLockedChannelsRouteEventsToTheCorrectPlanes() {
+        assertTrue(concordEventUsesWriterPlane(kind = 9, locked = false))
+        assertTrue(concordEventUsesWriterPlane(kind = 1111, locked = false))
+        assertFalse(concordEventUsesWriterPlane(kind = 7, locked = false))
+        assertFalse(concordEventUsesWriterPlane(kind = 5, locked = false))
+
+        assertTrue(concordEventUsesWriterPlane(kind = 9, locked = true))
+        assertTrue(concordEventUsesWriterPlane(kind = 7, locked = true))
+        assertTrue(concordEventUsesWriterPlane(kind = 5, locked = true))
+    }
+
+    @Test
+    fun scopedWriterCertificatesCoverOnlyTheirDeclaredProtocolRights() {
+        val reactions = 1uL shl ConcordPermissions.ADD_REACTIONS
+        val connect = 1uL shl ConcordPermissions.CONNECT
+
+        assertTrue(concordScopedWriterRightsCoverKind(7, reactions))
+        assertTrue(concordScopedWriterRightsCoverKind(ChannelChat.KIND_TYPING, connect))
+        assertTrue(concordScopedWriterRightsCoverKind(5, 0uL))
+        assertFalse(concordScopedWriterRightsCoverKind(9, reactions))
+        assertFalse(concordScopedWriterRightsCoverKind(7, connect))
+        assertFalse(concordScopedWriterRightsCoverKind(7, reactions or (1uL shl 63)))
+    }
+
+    @Test
+    fun scopedWriterCertificateDigestMatchesVectorPublishedTestVector() {
+        val digest = concordScopedWriterCertificateDigest(
+            communityId = ByteArray(32) { 0x01 },
+            channelId = ByteArray(32) { 0x02 },
+            epoch = 3,
+            writerPubkey = ByteArray(32) { 0x04 },
+            rights = 1uL shl ConcordPermissions.ADD_REACTIONS,
+        )
+        val hex = digest.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+        assertEquals(
+            "14129a75435ce645cd6c76d170f4ad61e88f54c0168a2deed48c9213b5eba10c",
+            hex,
         )
     }
 
