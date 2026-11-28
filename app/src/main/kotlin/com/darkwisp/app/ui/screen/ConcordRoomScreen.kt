@@ -154,6 +154,8 @@ fun ConcordRoomScreen(
     var showCommunityMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showChannelMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var memberSearchQuery by rememberSaveable(communityId) { mutableStateOf("") }
+    var memberRoleFilter by rememberSaveable(communityId) { mutableStateOf("") }
     var showRolesDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showRoleEditorDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMemberRolesDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -175,6 +177,21 @@ fun ConcordRoomScreen(
     var renamedChannelName by rememberSaveable(communityId) { mutableStateOf("") }
     var managementError by remember { mutableStateOf<String?>(null) }
     var managementBusy by remember { mutableStateOf(false) }
+    val memberRoleOptions = remember(membersState.members) {
+        membersState.members.flatMap { it.roleNames }.filter(String::isNotBlank).distinct().sorted()
+    }
+    val filteredMembers = remember(membersState.members, memberSearchQuery, memberRoleFilter) {
+        membersState.members.filter { member ->
+            val query = memberSearchQuery.trim()
+            val profileName = eventRepository.getProfileData(member.pubkey)?.displayString.orEmpty()
+            val matchesQuery = query.isBlank() ||
+                member.pubkey.contains(query, ignoreCase = true) ||
+                profileName.contains(query, ignoreCase = true)
+            val matchesRole = memberRoleFilter.isBlank() ||
+                member.roleNames.any { it.equals(memberRoleFilter, ignoreCase = true) }
+            matchesQuery && matchesRole
+        }
+    }
     var showModerationDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var moderationTargetPubkey by rememberSaveable(communityId) { mutableStateOf<String?>(null) }
     var moderationAction by rememberSaveable(communityId) { mutableStateOf("") }
@@ -744,6 +761,49 @@ fun ConcordRoomScreen(
                         }
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            memberSearchQuery = ""
+                            memberRoleFilter = ""
+                            showMembersDialog = true
+                            viewModel.loadMembers(communityId, signer)
+                        },
+                        label = { Text("Members") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            showRolesDialog = true
+                            roleDialogError = null
+                            viewModel.refreshRoles(communityId, signer)
+                        },
+                        label = { Text("Roles") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = { showDirectInviteDialog = true },
+                        label = { Text("Invite") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        enabled = signer != null,
+                        onClick = {
+                            newChannelPrivate = false
+                            newChannelName = ""
+                            managementError = null
+                            showCreateChannelDialog = true
+                        },
+                        label = { Text("Create channel") },
+                    )
+                }
                 if (channels.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
@@ -1150,9 +1210,41 @@ fun ConcordRoomScreen(
             onDismissRequest = { if (!membersState.isLoading) showMembersDialog = false },
             title = { Text("Community members") },
             text = {
-                Column(modifier = Modifier.heightIn(max = 440.dp)) {
+                Column(modifier = Modifier.heightIn(max = 520.dp)) {
                     Text(
-                        "Roster from Concord Guestbook and verified channel activity. Kick and Ban are rechecked against the full Control Plane before any write.",
+                        "${membersState.members.size} members · Concord Guestbook and verified channel activity",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    OutlinedTextField(
+                        value = memberSearchQuery,
+                        onValueChange = { memberSearchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search members") },
+                        placeholder = { Text("Name or npub / public key") },
+                    )
+                    if (memberRoleOptions.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            FilterChip(
+                                selected = memberRoleFilter.isBlank(),
+                                onClick = { memberRoleFilter = "" },
+                                label = { Text("All roles") },
+                            )
+                            memberRoleOptions.forEach { roleName ->
+                                FilterChip(
+                                    selected = memberRoleFilter == roleName,
+                                    onClick = { memberRoleFilter = if (memberRoleFilter == roleName) "" else roleName },
+                                    label = { Text(roleName) },
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "Kick and Ban are rechecked against the full Control Plane before any write.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1166,8 +1258,9 @@ fun ConcordRoomScreen(
                             color = MaterialTheme.colorScheme.error,
                         )
                         membersState.members.isEmpty() -> Text("No Guestbook members were returned by the responding relays.")
+                        filteredMembers.isEmpty() -> Text("No members match this search or role filter.")
                         else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(membersState.members, key = { it.pubkey }) { member ->
+                            items(filteredMembers, key = { it.pubkey }) { member ->
                                 var profile by remember(member.pubkey) {
                                     mutableStateOf(eventRepository.getProfileData(member.pubkey))
                                 }
