@@ -94,6 +94,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val generalChannelId: String?,
         val rootEpoch: Long,
         val relays: List<String>,
+        val description: String? = null,
     )
 
     private var repository: ConcordCommunityRepository? = null
@@ -317,7 +318,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                             _channels.value = snapshot.channels
                             snapshot.communityName?.let { latestName ->
                                 _communities.value = _communities.value.map {
-                                    if (it.id == membership.id) it.copy(name = latestName) else it
+                                    if (it.id == membership.id) {
+                                        it.copy(
+                                            name = latestName,
+                                            description = snapshot.communityDescription,
+                                            relays = snapshot.communityRelays.ifEmpty { it.relays },
+                                        )
+                                    } else it
                                 }
                             }
                             val access = snapshot.writerAccessRead
@@ -550,7 +557,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 _channels.value = snapshot.channels
                 snapshot.communityName?.let { latestName ->
                     _communities.value = _communities.value.map {
-                        if (it.id == communityId) it.copy(name = latestName) else it
+                        if (it.id == communityId) {
+                            it.copy(
+                                name = latestName,
+                                description = snapshot.communityDescription,
+                                relays = snapshot.communityRelays.ifEmpty { it.relays },
+                            )
+                        } else it
                     }
                 }
                 val access = snapshot.writerAccessRead
@@ -1136,6 +1149,30 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         repo.banAndRotate(PostillaQuartzSigner(signer), communityId, targetPubkey)
         refreshLocalCommunities(signer)
         loadMembers(communityId, signer)
+    }
+
+    suspend fun updateCommunityMetadata(
+        communityId: String,
+        name: String,
+        description: String?,
+        relays: List<String>,
+        signer: NostrSigner?,
+    ) {
+        val active = requireCurrentWritableSigner(signer)
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        repo.updateCommunityMetadata(
+            signer = PostillaQuartzSigner(active),
+            communityId = communityId,
+            name = name,
+            description = description,
+            icon = null,
+            banner = null,
+            relays = relays,
+        )
+        _communities.value = _communities.value.map {
+            if (it.id == communityId) it.copy(name = name.trim(), description = description, relays = relays) else it
+        }
+        refreshChannels(communityId)
     }
 
     suspend fun createPublicChannel(communityId: String, name: String, signer: NostrSigner?) {
