@@ -73,6 +73,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val isLoading: Boolean = false,
         val controlResponded: Int = 0,
         val controlRequested: Int = 0,
+        /** A valid authenticated Control Plane snapshot was opened and folded. */
+        val controlReady: Boolean = false,
+        /** Relay EOSE completeness/quorum, retained for diagnostics and sensitive admin writes. */
         val controlComplete: Boolean = false,
         val writerAccessResponded: Int? = null,
         val writerAccessRequested: Int? = null,
@@ -380,6 +383,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                     isLoading = false,
                                     controlResponded = snapshot.controlRead.respondedCount,
                                     controlRequested = snapshot.controlRead.requestedCount,
+                                    controlReady = true,
                                     controlComplete = snapshot.controlRead.hasQuorum,
                                     writerAccessResponded = access?.respondedCount,
                                     writerAccessRequested = access?.requestedCount,
@@ -408,7 +412,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                     membership.id to latestSync.copy(
                                         controlResponded = snapshot.controlRead.respondedCount,
                                         controlRequested = snapshot.controlRead.requestedCount,
-                                        controlComplete = snapshot.controlRead.hasQuorum,
+                                        controlReady = true,
+                                    controlComplete = snapshot.controlRead.hasQuorum,
                                         writerAccessResponded = writerRead?.respondedCount,
                                         writerAccessRequested = writerRead?.requestedCount,
                                         writerAccessComplete = writerRead?.hasQuorum,
@@ -634,7 +639,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         isLoading = false,
                         controlResponded = snapshot.controlRead.respondedCount,
                         controlRequested = snapshot.controlRead.requestedCount,
-                        controlComplete = snapshot.controlRead.hasQuorum,
+                        controlReady = true,
+                                    controlComplete = snapshot.controlRead.hasQuorum,
                         writerAccessResponded = access?.respondedCount,
                         writerAccessRequested = access?.requestedCount,
                         writerAccessComplete = access?.hasQuorum,
@@ -754,22 +760,14 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
         val entry = memberships[communityId] ?: return null
         val channelSync = _channelSyncByCommunity.value[communityId]
-        if (channelSync?.controlComplete != true) {
+        if (channelSync?.controlReady != true) {
             val detail = channelSync?.let { "${it.controlResponded}/${it.controlRequested}" } ?: "not verified"
             throw IllegalStateException(
-                "The Concord Control Plane read quorum is not ready ($detail relays). Refresh channels before sending.",
+                "A valid Concord Control Plane snapshot is not available yet ($detail relays responded). Refresh channels before sending.",
             )
         }
         val channelInfo = findChannel(communityId, channelId)
             ?: throw IllegalStateException("Channel access is not loaded yet. Refresh the channel list before sending.")
-        if (channelInfo.writeRestricted && channelSync.writerAccessComplete != true) {
-            val detail = channelSync.writerAccessResponded?.let { responded ->
-                "$responded/${channelSync.writerAccessRequested ?: 0}"
-            } ?: "not verified"
-            throw IllegalStateException(
-                "Writer-access streams are incomplete ($detail relays). Refresh channel access before sending.",
-            )
-        }
         if (!channelInfo.canViewChannel) {
             throw IllegalStateException("This account does not have VIEW_CHANNEL permission.")
         }
@@ -835,9 +833,8 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         if (signerPubkey?.lowercase() != activeSigner.pubkeyHex.lowercase()) return false
         val entry = memberships[communityId] ?: return false
         val channelSync = _channelSyncByCommunity.value[communityId] ?: return false
-        if (channelSync.controlComplete != true) return false
+        if (!channelSync.controlReady) return false
         val channel = findChannel(communityId, channelId) ?: return false
-        if (channel.isLocked && channelSync.writerAccessComplete != true) return false
         if (!channel.canViewChannel || !channel.canAddReactions) return false
         if (channel.isPrivate && channel.privateKeyHex.isNullOrBlank()) return false
         // Restricted-but-not-locked channels keep reactions on the shared read plane.
