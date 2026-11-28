@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -84,7 +85,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.darkwisp.app.concord.ConcordChatMessage
+import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.nostr.NostrSigner
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,6 +109,8 @@ fun ConcordRoomScreen(
     val channelSync = channelSyncByCommunity[communityId] ?: ConcordCommunityViewModel.ChannelSyncState()
     val membersByCommunity by viewModel.membersByCommunity.collectAsState()
     val membersState = membersByCommunity[communityId] ?: ConcordCommunityViewModel.MembersState(communityId = communityId)
+    val rolesByCommunity by viewModel.rolesByCommunity.collectAsState()
+    val rolesState = rolesByCommunity[communityId] ?: ConcordCommunityViewModel.RolesState()
     val inviteState by viewModel.invite.collectAsState()
     val communityIcons by viewModel.communityIcons.collectAsState()
     val communityIcon = communityIcons[communityId]
@@ -149,6 +154,16 @@ fun ConcordRoomScreen(
     var showCommunityMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showChannelMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showRolesDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showRoleEditorDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var showMemberRolesDialog by rememberSaveable(communityId) { mutableStateOf(false) }
+    var editingRoleId by rememberSaveable(communityId) { mutableStateOf<String?>(null) }
+    var roleDraftName by rememberSaveable(communityId) { mutableStateOf("") }
+    var roleDraftPosition by rememberSaveable(communityId) { mutableStateOf("1") }
+    var roleDraftPermissions by remember(communityId) { mutableStateOf(ConcordPermissions.NONE) }
+    var roleDialogError by remember { mutableStateOf<String?>(null) }
+    var memberRolesTarget by remember(communityId) { mutableStateOf<ConcordCommunityRepository.CommunityMember?>(null) }
+    var memberRoleSelection by remember(communityId) { mutableStateOf<Set<String>>(emptySet()) }
     var showDirectInviteDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showCreateChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var showManageChannelDialog by rememberSaveable(communityId) { mutableStateOf(false) }
@@ -475,6 +490,15 @@ fun ConcordRoomScreen(
                             expanded = showCommunityMenu,
                             onDismissRequest = { showCommunityMenu = false },
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Manage roles") },
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showRolesDialog = true
+                                    roleDialogError = null
+                                    viewModel.refreshRoles(communityId, signer)
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Members") },
                                 onClick = {
@@ -1166,6 +1190,28 @@ fun ConcordRoomScreen(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
+                                            Text(
+                                                if (member.roleNames.isEmpty()) "No assigned roles" else member.roleNames.joinToString(" · "),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+                                    if (rolesState.canManageRoles && !rolesState.rolesV2) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.End,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            TextButton(
+                                                enabled = !rolesState.isLoading && !managementBusy,
+                                                onClick = {
+                                                    memberRolesTarget = member
+                                                    memberRoleSelection = member.roleIds.toSet()
+                                                    roleDialogError = null
+                                                    showMemberRolesDialog = true
+                                                    viewModel.refreshRoles(communityId, signer)
+                                                },
+                                            ) { Text("Manage roles") }
                                         }
                                     }
                                     if (member.canKick || member.canBan) {
@@ -1198,6 +1244,283 @@ fun ConcordRoomScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showMembersDialog = false }) { Text("Close") }
+            },
+        )
+    }
+
+    if (showRolesDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!rolesState.isLoading && !managementBusy) showRolesDialog = false },
+            title = { Text("Community roles") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    when {
+                        rolesState.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Text("Reading the complete Control Plane…", modifier = Modifier.padding(start = 10.dp))
+                        }
+                        rolesState.error != null -> Text(rolesState.error!!, color = MaterialTheme.colorScheme.error)
+                        rolesState.rolesV2 -> Text(
+                            "This community uses Concord Roles v2. The legacy role editor is intentionally disabled because its events would not be authoritative here. Roles v2 management is not yet available in Postilla.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        !rolesState.canManageRoles -> Text(
+                            "This account does not have MANAGE_ROLES permission.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> {
+                            Text(
+                                "Roles are ordered by authority. You can edit only roles below your rank and delegate only permissions you hold.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(
+                                enabled = signer != null,
+                                onClick = {
+                                    editingRoleId = null
+                                    roleDraftName = ""
+                                    roleDraftPosition = ((rolesState.roles.maxOfOrNull { it.position } ?: 0L) + 1L).toString()
+                                    roleDraftPermissions = ConcordPermissions.NONE
+                                    roleDialogError = null
+                                    showRoleEditorDialog = true
+                                },
+                            ) { Text("Create role") }
+                            if (rolesState.roles.isEmpty()) {
+                                Text("No legacy roles are defined yet.", style = MaterialTheme.typography.bodySmall)
+                            }
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(rolesState.roles, key = { it.id }) { role ->
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            Text(role.name.ifBlank { role.id.take(10) }, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                "Position ${role.position} · ${role.id.take(12)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                                TextButton(
+                                                    enabled = role.canEdit && signer != null,
+                                                    onClick = {
+                                                        editingRoleId = role.id
+                                                        roleDraftName = role.name
+                                                        roleDraftPosition = role.position.toString()
+                                                        roleDraftPermissions = role.permissions
+                                                        roleDialogError = null
+                                                        showRoleEditorDialog = true
+                                                    },
+                                                ) { Text("Edit") }
+                                                TextButton(
+                                                    enabled = role.canEdit && signer != null && !managementBusy,
+                                                    onClick = {
+                                                        scope.launch {
+                                                            managementBusy = true
+                                                            roleDialogError = null
+                                                            try {
+                                                                viewModel.deleteRole(communityId, role.id, signer)
+                                                            } catch (error: Exception) {
+                                                                roleDialogError = error.message ?: "Role deletion failed"
+                                                            } finally {
+                                                                managementBusy = false
+                                                            }
+                                                        }
+                                                    },
+                                                ) { Text("Delete") }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            roleDialogError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !rolesState.isLoading && !managementBusy,
+                    onClick = { showRolesDialog = false },
+                ) { Text("Close") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !rolesState.isLoading && !managementBusy,
+                    onClick = { viewModel.refreshRoles(communityId, signer) },
+                ) { Text("Refresh") }
+            },
+        )
+    }
+
+    if (showRoleEditorDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showRoleEditorDialog = false },
+            title = { Text(if (editingRoleId == null) "Create role" else "Edit role") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = roleDraftName,
+                        onValueChange = { roleDraftName = it; roleDialogError = null },
+                        label = { Text("Role name") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = roleDraftPosition,
+                        onValueChange = { value -> roleDraftPosition = value.filter(Char::isDigit); roleDialogError = null },
+                        label = { Text("Authority position") },
+                        supportingText = { Text("0 belongs to the owner; assignable roles start at 1.") },
+                        singleLine = true,
+                    )
+                    Text("Delegable permissions", style = MaterialTheme.typography.titleSmall)
+                    if (rolesState.delegablePermissionBits.isEmpty()) {
+                        Text(
+                            "This account holds no delegable role permissions.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        rolesState.delegablePermissionBits.forEach { bit ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = roleDraftPermissions.has(bit),
+                                    onCheckedChange = { checked ->
+                                        roleDraftPermissions = if (checked) {
+                                            roleDraftPermissions.with(bit)
+                                        } else {
+                                            roleDraftPermissions.without(bit)
+                                        }
+                                    },
+                                )
+                                Text(concordRolePermissionLabel(bit), style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                    roleDialogError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && signer != null &&
+                        roleDraftName.isNotBlank() && (roleDraftPosition.toLongOrNull() ?: 0L) > 0L,
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            roleDialogError = null
+                            try {
+                                val position = roleDraftPosition.toLong()
+                                val id = editingRoleId
+                                if (id == null) {
+                                    viewModel.createRole(communityId, roleDraftName, position, roleDraftPermissions, signer)
+                                } else {
+                                    viewModel.updateRole(communityId, id, roleDraftName, position, roleDraftPermissions, signer)
+                                }
+                                showRoleEditorDialog = false
+                            } catch (error: Exception) {
+                                roleDialogError = error.message ?: "Role save failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Saving…" else "Save role") }
+            },
+            dismissButton = {
+                TextButton(enabled = !managementBusy, onClick = { showRoleEditorDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showMemberRolesDialog && memberRolesTarget != null) {
+        val target = memberRolesTarget!!
+        AlertDialog(
+            onDismissRequest = { if (!managementBusy) showMemberRolesDialog = false },
+            title = { Text("Roles for ${target.pubkey.take(12)}…") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 450.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    when {
+                        rolesState.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Text("Loading roles…", modifier = Modifier.padding(start = 10.dp))
+                        }
+                        rolesState.error != null -> Text(rolesState.error!!, color = MaterialTheme.colorScheme.error)
+                        rolesState.rolesV2 -> Text("Roles v2 assignment is not yet available in Postilla.")
+                        else -> {
+                            Text(
+                                "Select the complete set of roles this member should hold. Changes are published as one Grant edition.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            LazyColumn {
+                                items(rolesState.roles, key = { it.id }) { role ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Checkbox(
+                                            checked = role.id in memberRoleSelection,
+                                            enabled = role.canEdit,
+                                            onCheckedChange = { checked ->
+                                                memberRoleSelection = if (checked) memberRoleSelection + role.id
+                                                else memberRoleSelection - role.id
+                                            },
+                                        )
+                                        Column {
+                                            Text(role.name.ifBlank { role.id.take(10) })
+                                            Text(
+                                                "Position ${role.position}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    roleDialogError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !managementBusy && !rolesState.isLoading && !rolesState.rolesV2 &&
+                        rolesState.error == null && signer != null,
+                    onClick = {
+                        scope.launch {
+                            managementBusy = true
+                            roleDialogError = null
+                            try {
+                                viewModel.setMemberRoles(communityId, target.pubkey, memberRoleSelection, signer)
+                                showMemberRolesDialog = false
+                            } catch (error: Exception) {
+                                roleDialogError = error.message ?: "Role assignment failed"
+                            } finally {
+                                managementBusy = false
+                            }
+                        }
+                    },
+                ) { Text(if (managementBusy) "Saving…" else "Save assignment") }
+            },
+            dismissButton = {
+                TextButton(enabled = !managementBusy, onClick = { showMemberRolesDialog = false }) { Text("Cancel") }
             },
         )
     }
@@ -1430,4 +1753,19 @@ fun ConcordRoomScreen(
     }
     }
 }
+}
+
+
+private fun concordRolePermissionLabel(bit: Int): String = when (bit) {
+    ConcordPermissions.MANAGE_ROLES -> "Manage roles"
+    ConcordPermissions.MANAGE_CHANNELS -> "Manage channels"
+    ConcordPermissions.MANAGE_METADATA -> "Manage community details"
+    ConcordPermissions.KICK -> "Kick members"
+    ConcordPermissions.BAN -> "Ban members"
+    ConcordPermissions.MANAGE_MESSAGES -> "Manage messages"
+    ConcordPermissions.CREATE_INVITE -> "Create invite links"
+    ConcordPermissions.VIEW_AUDIT_LOG -> "View audit log"
+    ConcordPermissions.MENTION_EVERYONE -> "Mention everyone"
+    ConcordPermissions.PIN_MESSAGES -> "Pin messages"
+    else -> "Permission $bit"
 }

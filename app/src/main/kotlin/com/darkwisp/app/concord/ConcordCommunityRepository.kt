@@ -531,6 +531,7 @@ class ConcordCommunityRepository(
         val roles: List<CommunityRole>,
         val rolesV2: Boolean,
         val canManageRoles: Boolean,
+        val delegablePermissionBits: List<Int>,
     )
 
     /** Reads the complete Control Plane before exposing roles for a management operation. */
@@ -547,7 +548,12 @@ class ConcordCommunityRepository(
         if (control.state.isRolesV2) {
             // Quartz exposes Roles v2 folding, but this client has not yet implemented the VSK-13
             // editor. Never present the legacy role editor for a Roles v2 community.
-            return CommunityRolesSnapshot(emptyList(), rolesV2 = true, canManageRoles = canManage)
+            return CommunityRolesSnapshot(
+                roles = emptyList(),
+                rolesV2 = true,
+                canManageRoles = canManage,
+                delegablePermissionBits = emptyList(),
+            )
         }
         val actorRank = authority.rank(signer.pubKey)
         val roles = authority.roles().entries
@@ -564,7 +570,24 @@ class ConcordCommunityRepository(
                         authority.canWriteRole(signer.pubKey, id, role),
                 )
             }
-        return CommunityRolesSnapshot(roles, rolesV2 = false, canManageRoles = canManage)
+        val delegableBits = listOf(
+            ConcordPermissions.MANAGE_ROLES,
+            ConcordPermissions.MANAGE_CHANNELS,
+            ConcordPermissions.MANAGE_METADATA,
+            ConcordPermissions.KICK,
+            ConcordPermissions.BAN,
+            ConcordPermissions.MANAGE_MESSAGES,
+            ConcordPermissions.CREATE_INVITE,
+            ConcordPermissions.VIEW_AUDIT_LOG,
+            ConcordPermissions.MENTION_EVERYONE,
+            ConcordPermissions.PIN_MESSAGES,
+        ).filter { authority.hasPermission(signer.pubKey, it) }
+        return CommunityRolesSnapshot(
+            roles = roles,
+            rolesV2 = false,
+            canManageRoles = canManage,
+            delegablePermissionBits = delegableBits,
+        )
     }
 
     /**
@@ -764,6 +787,82 @@ class ConcordCommunityRepository(
         }
         val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
             authority.roles()[id]?.let { acc union it.permissionBits() } ?: acc
+        }
+        val controlWrap = if (effective.hasAny(ConcordPermissions.STAFF_BITS)) {
+            val root = membership.controlRoot
+                ?: throw IllegalStateException("The current Control Plane write key is unavailable")
+            ControlRootWrap.build(signer, target, membership.rootEpoch, root.hexToByteArray())
+        } else {
+            null
+        }
+        val grant = GrantEntity(member = target, roleIds = roleIds, controlWrap = controlWrap)
+        val grantId = ConcordKeyDerivation.grantCoordinate(membership.id.hexToByteArray(), targetBytes)
+        val heads = ConcordCommunityState.authorizedHeads(
+            control.editions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val head = heads[grantId.toHexKey()]
+        val content = ConcordJson.encodePreserving(
+            GrantEntity.serializer(),
+            grant,
+            head?.known?.content,
+        )
+        val event = if (hadStaffPermissions && !effective.hasAny(ConcordPermissions.STAFF_BITS)) {
+            val pendingEdition = buildControlEdition(
+                signer, membership, control, ControlEntityKind.GRANT, grantId, content,
+                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
+            )
+            refoundCommunity(signer, communityId, extraControlEvents = listOf(pendingEdition))
+            pendingEdition
+        } else {
+            publishControlEdition(
+                signer, membership, control, ControlEntityKind.GRANT, grantId, content,
+                ConcordPermissions.MANAGE_ROLES, head?.version, head?.hashHex,
+            )
+        }
+        return event.id
+    }
+
+    suspend fun setMemberRoles(
+        signer: PostillaQuartzSigner,
+        communityId: String,
+        memberPubKey: String,
+        requestedRoleIds: Collection<String>,
+    ): String {
+        val target = memberPubKey.lowercase()
+        val targetBytes = target.hexToByteArray()
+        require(targetBytes.size == 32) { "Member public key must be 32 bytes" }
+        require(target != signer.pubKey.lowercase()) { "An account cannot edit its own role grant" }
+        val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
+            ?: throw IllegalArgumentException("Community membership is not available")
+        val control = loadControlPlaneSnapshot(membership)
+        requireLegacyRoleActions(control.state)
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        require(authority.canActOn(signer.pubKey, target, ConcordPermissions.MANAGE_ROLES)) {
+            "The actor cannot manage this member's roles"
+        }
+        require(!authority.isBanned(target)) { "A banned member cannot receive roles" }
+
+        val roleIds = requestedRoleIds.map { it.lowercase() }.distinct().sorted()
+        val actorRank = authority.rank(signer.pubKey)
+            ?: throw IllegalStateException("The actor has no valid role rank")
+        val roles = authority.roles()
+        roleIds.forEach { id ->
+            val role = roles[id] ?: throw IllegalArgumentException("Role $id does not exist")
+            require(!role.deleted && role.isWellFormedAt(id)) { "Role $id is not assignable" }
+            require(actorRank < role.position) { "The actor does not outrank role $id" }
+        }
+        val currentRoleIds = authority.rolesOf(target).distinct().sorted()
+        if (roleIds == currentRoleIds) return ""
+        val hadStaffPermissions = currentRoleIds.any { id ->
+            roles[id]?.permissionBits()?.hasAny(ConcordPermissions.STAFF_BITS) == true
+        }
+        val effective = roleIds.fold(ConcordPermissions.NONE) { acc, id ->
+            roles[id]?.let { acc union it.permissionBits() } ?: acc
         }
         val controlWrap = if (effective.hasAny(ConcordPermissions.STAFF_BITS)) {
             val root = membership.controlRoot

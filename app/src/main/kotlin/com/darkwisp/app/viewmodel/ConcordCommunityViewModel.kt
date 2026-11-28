@@ -13,6 +13,7 @@ import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityListEntry
 import com.vitorpamplona.quartz.concord.cord05Invites.OpenedDirectInvite
+import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +65,15 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
 
+    data class RolesState(
+        val isLoading: Boolean = false,
+        val roles: List<ConcordCommunityRepository.CommunityRole> = emptyList(),
+        val rolesV2: Boolean = false,
+        val canManageRoles: Boolean = false,
+        val delegablePermissionBits: List<Int> = emptyList(),
+        val error: String? = null,
+    )
+
     data class CommunityItem(
         val id: String,
         val name: String,
@@ -112,6 +122,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private val _directInvites = MutableStateFlow(DirectInvitesState())
     val directInvites: StateFlow<DirectInvitesState> = _directInvites
 
+    private val _rolesByCommunity = MutableStateFlow<Map<String, RolesState>>(emptyMap())
+    val rolesByCommunity: StateFlow<Map<String, RolesState>> = _rolesByCommunity
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
@@ -139,6 +152,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         _members.value = MembersState()
         _membersByCommunity.value = emptyMap()
         _directInvites.value = DirectInvitesState()
+        _rolesByCommunity.value = emptyMap()
         _communityIcons.value = emptyMap()
         if (signer != null) {
             refreshLocalCommunities(signer)
@@ -719,6 +733,117 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+    }
+
+    private fun setRolesState(communityId: String, state: RolesState) {
+        _rolesByCommunity.value = _rolesByCommunity.value + (communityId to state)
+    }
+
+    private fun requireCurrentWritableSigner(signer: NostrSigner?): NostrSigner {
+        val active = signer ?: throw IllegalStateException("A writable Nostr signer is required")
+        check(signerPubkey?.equals(active.pubkeyHex, ignoreCase = true) == true) {
+            "The active Nostr account changed. Refresh the community before managing roles."
+        }
+        return active
+    }
+
+    private suspend fun refreshRolesSnapshot(
+        communityId: String,
+        signer: NostrSigner,
+        requestedOwner: String,
+    ) {
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        val snapshot = repo.loadCommunityRoles(PostillaQuartzSigner(signer), communityId)
+        if (signerPubkey?.lowercase() != requestedOwner) return
+        setRolesState(
+            communityId,
+            RolesState(
+                roles = snapshot.roles,
+                rolesV2 = snapshot.rolesV2,
+                canManageRoles = snapshot.canManageRoles,
+                delegablePermissionBits = snapshot.delegablePermissionBits,
+            ),
+        )
+    }
+
+    fun refreshRoles(communityId: String, signer: NostrSigner?) {
+        val repo = repository ?: return
+        if (signer == null) {
+            setRolesState(communityId, RolesState(error = "A writable Nostr signer is required"))
+            return
+        }
+        val requestedOwner = signer.pubkeyHex.lowercase()
+        val current = _rolesByCommunity.value[communityId] ?: RolesState()
+        if (current.isLoading) return
+        setRolesState(communityId, current.copy(isLoading = true, error = null))
+        viewModelScope.launch {
+            try {
+                refreshRolesSnapshot(communityId, signer, requestedOwner)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (signerPubkey?.lowercase() != requestedOwner) return@launch
+                val latest = _rolesByCommunity.value[communityId] ?: current
+                setRolesState(
+                    communityId,
+                    latest.copy(isLoading = false, error = error.message ?: "Could not load community roles"),
+                )
+            }
+        }
+    }
+
+    suspend fun createRole(
+        communityId: String,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+        signer: NostrSigner?,
+    ): String {
+        val active = requireCurrentWritableSigner(signer)
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        val owner = active.pubkeyHex.lowercase()
+        val roleId = repo.createRole(PostillaQuartzSigner(active), communityId, name, position, permissions)
+        refreshRolesSnapshot(communityId, active, owner)
+        return roleId
+    }
+
+    suspend fun updateRole(
+        communityId: String,
+        roleId: String,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+        signer: NostrSigner?,
+    ): String {
+        val active = requireCurrentWritableSigner(signer)
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        val owner = active.pubkeyHex.lowercase()
+        val eventId = repo.updateRole(PostillaQuartzSigner(active), communityId, roleId, name, position, permissions)
+        refreshRolesSnapshot(communityId, active, owner)
+        return eventId
+    }
+
+    suspend fun deleteRole(communityId: String, roleId: String, signer: NostrSigner?) {
+        val active = requireCurrentWritableSigner(signer)
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        val owner = active.pubkeyHex.lowercase()
+        repo.deleteRole(PostillaQuartzSigner(active), communityId, roleId)
+        refreshRolesSnapshot(communityId, active, owner)
+        loadMembers(communityId, active)
+    }
+
+    suspend fun setMemberRoles(
+        communityId: String,
+        memberPubKey: String,
+        roleIds: Collection<String>,
+        signer: NostrSigner?,
+    ) {
+        val active = requireCurrentWritableSigner(signer)
+        val repo = repository ?: throw IllegalStateException("Community service is not initialized")
+        val owner = active.pubkeyHex.lowercase()
+        repo.setMemberRoles(PostillaQuartzSigner(active), communityId, memberPubKey, roleIds)
+        refreshRolesSnapshot(communityId, active, owner)
+        loadMembers(communityId, active)
     }
 
     suspend fun sendDirectInvite(communityId: String, recipient: String, signer: NostrSigner?) {
