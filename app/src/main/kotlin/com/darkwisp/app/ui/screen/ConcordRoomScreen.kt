@@ -122,11 +122,12 @@ fun ConcordRoomScreen(
     val selectedChannelAccessible = selectedChannel?.let {
         it.canViewChannel && (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
     } ?: false
-    // Fail closed until the channel catalogue and all required per-account permissions are loaded.
+    // Relay EOSE completeness is diagnostic, not a prerequisite for using an
+    // authenticated/folded Control Plane snapshot. Restricted channels still require
+    // the recipient's current, cryptographically validated CORD-03 writer credential.
     val selectedChannelCanSend = selectedChannel?.let {
         !channelSync.isLoading &&
-            channelSync.controlComplete &&
-            (!it.writeRestricted || channelSync.writerAccessComplete == true) &&
+            channelSync.controlReady &&
             it.canSendMessages &&
             (!it.writeRestricted || it.writerCredential?.canSendMessages == true) &&
             (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
@@ -606,10 +607,15 @@ fun ConcordRoomScreen(
                         when {
                             !selectedChannel.canSendMessages ->
                                 "This account does not have SEND_MESSAGES permission in this channel."
-                            selectedChannel.writeRestricted ->
-                                "This channel requires a current CORD-03 writer delivery. Refresh channel access before sending."
+                            selectedChannel.writeRestricted &&
+                                selectedChannel.writerCredential?.canSendMessages != true ->
+                                "This channel requires a current CORD-03 writer delivery for this account."
                             selectedChannel.isPrivate && selectedChannel.privateKeyHex.isNullOrBlank() ->
                                 "The private channel key is not available on this account."
+                            !channelSync.controlReady ->
+                                "A verified Control Plane snapshot is not available yet. Refresh channels."
+                            channelSync.isLoading ->
+                                "Concord channel synchronization is still in progress."
                             else -> "Channel access is not ready for this account."
                         },
                         color = MaterialTheme.colorScheme.error,
@@ -758,13 +764,16 @@ fun ConcordRoomScreen(
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 val syncMessage = when {
                     channelSync.isLoading -> "Synchronizing Concord channels…"
-                    channelSync.error != null -> "Channel synchronization failed: ${channelSync.error}"
+                    channelSync.error != null -> "Channel synchronization warning: ${channelSync.error}"
                     channelSync.controlRequested == 0 ->
                         "The channel catalogue has not yet been synchronized for this account."
+                    !channelSync.controlReady ->
+                        "No authenticated Control Plane snapshot is available yet. Refresh the channel list and check the community relays."
                     !channelSync.controlComplete ->
-                        "Control Plane read quorum not reached (${channelSync.controlResponded}/${channelSync.controlRequested} relays). Sending stays disabled until enough relays confirm."
-                    channelSync.writerAccessComplete == false ->
-                        "Writer-access read quorum not reached (${channelSync.writerAccessResponded}/${channelSync.writerAccessRequested} relays). Locked channels remain read-only until enough relays confirm."
+                        "Control Plane snapshot available; relay synchronization is partial (${channelSync.controlResponded}/${channelSync.controlRequested} confirmed). Postilla will continue converging without blocking channels whose permissions and keys are already validated."
+                    selectedChannel?.writeRestricted == true &&
+                        selectedChannel.writerCredential?.canSendMessages != true ->
+                        "This channel requires a current CORD-03 writer delivery for this account. Refresh channel access."
                     else -> null
                 }
                 syncMessage?.let { message ->
