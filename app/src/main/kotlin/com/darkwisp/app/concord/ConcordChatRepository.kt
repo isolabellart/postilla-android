@@ -41,6 +41,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -686,58 +688,144 @@ class ConcordChatRepository(
             .distinctBy { it.publicKeyHex.lowercase() }
         val authors = usable.flatMap { (_, pair) -> pair.second }.distinct()
         relayPool.registerConcordStreamKeys(streamKeys, communityRelays)
+        val windowStart = (System.currentTimeMillis() / 1000L - MEMBER_HISTORY_WINDOW_SECONDS).coerceAtLeast(1L)
         val filters = usable.map { (_, pair) ->
             Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
                 authors = pair.second,
+                since = windowStart,
                 limit = MEMBER_ACTIVITY_PAGE_SIZE,
             )
         }
         if (targets.isEmpty() || filters.isEmpty()) return activity
 
+        // A live-channel tail alone misses quiet members. First read the most recent 90-day
+        // page on every relay, then resume a per-relay/per-channel cursor for older pages.
+        // Six pages per relay per call bounds launch latency; a remaining cursor is resumed
+        // on the next sync. A successful short page marks that relay/channel history complete.
+        val relayPermits = Semaphore(MEMBER_HISTORY_RELAY_CONCURRENCY)
         coroutineScope {
             targets.map { relayUrl ->
                 async {
-                    val subscriptionId = "concord-members-${UUID.randomUUID().toString().take(12)}"
-                    val events = ConcurrentHashMap<String, NostrEvent>()
-                    val eose = CompletableDeferred<Unit>()
-                    val request = ClientMessage.req(subscriptionId, filters)
-                    val eventCollector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-                        relayPool.relayEvents
-                            .filter { it.subscriptionId == subscriptionId && it.relayUrl == relayUrl }
-                            .collect { events.putIfAbsent(it.event.id, it.event) }
-                    }
-                    val eoseCollector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-                        relayPool.relayEoseSignals
-                            .filter { it.subscriptionId == subscriptionId && it.relayUrl == relayUrl }
-                            .collect { eose.complete(Unit) }
-                    }
-                    val sent = relayPool.sendToRelayOrEphemeral(
-                        relayUrl,
-                        request,
-                        skipBadCheck = true,
-                        write = false,
-                        autoReconnect = true,
-                        concordStreamAuthors = authors,
-                    )
-                    if (sent) {
-                        val completed = withTimeoutOrNull(HISTORY_PAGE_TIMEOUT_MS) {
-                            eose.await()
-                            true
-                        } ?: false
+                    relayPermits.withPermit {
+                        val subscriptionId = "concord-members-${UUID.randomUUID().toString().take(12)}"
+                        val events = ConcurrentHashMap<String, NostrEvent>()
+                        val eose = CompletableDeferred<Unit>()
+                        val request = ClientMessage.req(subscriptionId, filters)
+                        val eventCollector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                            relayPool.relayEvents
+                                .filter { it.subscriptionId == subscriptionId && it.relayUrl == relayUrl }
+                                .collect { events.putIfAbsent(it.event.id, it.event) }
+                        }
+                        val eoseCollector = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                            relayPool.relayEoseSignals
+                                .filter { it.subscriptionId == subscriptionId && it.relayUrl == relayUrl }
+                                .collect { eose.complete(Unit) }
+                        }
+                        val sent = relayPool.sendToRelayOrEphemeral(
+                            relayUrl,
+                            request,
+                            skipBadCheck = true,
+                            write = false,
+                            autoReconnect = true,
+                            concordStreamAuthors = authors,
+                        )
+                        val completed = if (sent) {
+                            withTimeoutOrNull(HISTORY_PAGE_TIMEOUT_MS) {
+                                eose.await()
+                                true
+                            } ?: false
+                        } else {
+                            false
+                        }
                         if (completed) delay(100)
-                    }
-                    eventCollector.cancel()
-                    eoseCollector.cancel()
-                    relayPool.closeOnAllRelays(subscriptionId)
+                        eventCollector.cancel()
+                        eoseCollector.cancel()
+                        relayPool.closeOnAllRelays(subscriptionId)
 
-                    for (wrap in events.values) {
-                        val candidates = authorsToChannels[wrap.pubkey.lowercase()].orEmpty()
-                        for ((channel, planes) in candidates) {
-                            val decoded = decode(wrap, planes, channel.id) ?: continue
-                            persistEncryptedWrap(ownerPubkey, communityIdHex, channel.id, wrap)
-                            mergeObserved(activity, decoded)
-                            break
+                        val latestEventsByChannel = HashMap<String, MutableList<NostrEvent>>()
+                        for (wrap in events.values) {
+                            val candidates = authorsToChannels[wrap.pubkey.lowercase()].orEmpty()
+                            for ((channel, planes) in candidates) {
+                                latestEventsByChannel.getOrPut(channel.id) { mutableListOf() }.add(wrap)
+                                val decoded = decode(wrap, planes, channel.id) ?: continue
+                                persistEncryptedWrap(ownerPubkey, communityIdHex, channel.id, wrap)
+                                mergeObserved(activity, decoded)
+                                break
+                            }
+                        }
+                        if (!completed) return@withPermit
+
+                        for ((channel, pair) in usable) {
+                            val streamSignature = concordChatHistoryStreamSignature(pair.first)
+                            val cursorKey = memberHistoryCursorKey(
+                                ownerPubkey, communityIdHex, channel.id, streamSignature, relayUrl,
+                            )
+                            val completeKey = memberHistoryCompleteKey(
+                                ownerPubkey, communityIdHex, channel.id, streamSignature, relayUrl,
+                            )
+                            if (historyPrefs.getBoolean(completeKey, false)) continue
+
+                            val latest = latestEventsByChannel[channel.id].orEmpty()
+                            val latestOldest = latest.minOfOrNull { it.created_at }
+                            var until = historyPrefs.getLong(cursorKey, 0L).takeIf { it > 0L }
+                            if (until == null) {
+                                if (latest.size < MEMBER_ACTIVITY_PAGE_SIZE ||
+                                    latestOldest == null ||
+                                    latestOldest <= windowStart
+                                ) {
+                                    historyPrefs.edit().remove(cursorKey).putBoolean(completeKey, true).apply()
+                                    continue
+                                }
+                                until = (latestOldest - 1L).coerceAtLeast(windowStart)
+                                historyPrefs.edit().putLong(cursorKey, until).apply()
+                            }
+
+                            var pageNumber = 0
+                            var historyComplete = false
+                            var keepPaging = true
+                            while (keepPaging && pageNumber < MEMBER_HISTORY_MAX_PAGES_PER_RELAY) {
+                                val page = fetchRelayHistoryPage(
+                                    relayUrl = relayUrl,
+                                    authorKeys = pair.second,
+                                    until = until,
+                                    since = windowStart,
+                                    limit = MEMBER_ACTIVITY_PAGE_SIZE,
+                                )
+                                if (!page.reachedEose) {
+                                    keepPaging = false
+                                    continue
+                                }
+                                for (wrap in page.events) {
+                                    val decoded = decode(wrap, pair.first, channel.id) ?: continue
+                                    persistEncryptedWrap(ownerPubkey, communityIdHex, channel.id, wrap)
+                                    mergeObserved(activity, decoded)
+                                }
+
+                                val oldest = page.events.minOfOrNull { it.created_at }
+                                if (page.events.size < MEMBER_ACTIVITY_PAGE_SIZE ||
+                                    oldest == null ||
+                                    oldest <= windowStart
+                                ) {
+                                    historyComplete = true
+                                    keepPaging = false
+                                } else {
+                                    val nextUntil = oldest - 1L
+                                    if (nextUntil >= (until ?: Long.MAX_VALUE)) {
+                                        keepPaging = false
+                                    } else {
+                                        until = nextUntil
+                                        historyPrefs.edit().putLong(cursorKey, nextUntil).apply()
+                                        pageNumber++
+                                    }
+                                }
+                            }
+
+                            if (historyComplete) {
+                                historyPrefs.edit().remove(cursorKey).putBoolean(completeKey, true).apply()
+                            } else if (until != null) {
+                                historyPrefs.edit().putLong(cursorKey, until).apply()
+                            }
                         }
                     }
                 }
@@ -850,6 +938,8 @@ class ConcordChatRepository(
         relayUrl: String,
         authorKeys: List<String>,
         until: Long?,
+        since: Long? = null,
+        limit: Int = HISTORY_PAGE_SIZE,
     ): ConcordRelayHistoryPage = coroutineScope {
         val subscriptionId = "concord-history-${UUID.randomUUID().toString().take(12)}"
         val events = ConcurrentHashMap<String, NostrEvent>()
@@ -859,8 +949,9 @@ class ConcordChatRepository(
             Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
                 authors = authorKeys,
+                since = since,
                 until = until,
-                limit = HISTORY_PAGE_SIZE,
+                limit = limit,
             ),
         )
 
@@ -1166,6 +1257,22 @@ class ConcordChatRepository(
         relay: String,
     ) = "exhausted|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$streamSignature|$relay"
 
+    private fun memberHistoryCursorKey(
+        owner: String,
+        communityId: String,
+        channelId: String,
+        streamSignature: String,
+        relay: String,
+    ) = "member-cursor|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$streamSignature|$relay"
+
+    private fun memberHistoryCompleteKey(
+        owner: String,
+        communityId: String,
+        channelId: String,
+        streamSignature: String,
+        relay: String,
+    ) = "member-complete|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$streamSignature|$relay"
+
     private fun channelKey(
         communityRootHex: String,
         channelIdHex: String,
@@ -1192,5 +1299,8 @@ class ConcordChatRepository(
         private const val LIVE_OVERLAP_SECONDS = 60L
         private const val CACHE_MESSAGE_LIMIT = 500
         private const val MEMBER_ACTIVITY_PAGE_SIZE = 500
+        private const val MEMBER_HISTORY_WINDOW_SECONDS = 90L * 24L * 60L * 60L
+        private const val MEMBER_HISTORY_MAX_PAGES_PER_RELAY = 6
+        private const val MEMBER_HISTORY_RELAY_CONCURRENCY = 6
     }
 }

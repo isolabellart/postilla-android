@@ -716,9 +716,9 @@ fun ConcordRoomScreen(
                     channelSync.controlRequested == 0 ->
                         "The channel catalogue has not yet been synchronized for this account."
                     !channelSync.controlComplete ->
-                        "Control Plane partially synchronized (${channelSync.controlResponded}/${channelSync.controlRequested} relays). Sending is disabled until the full read completes."
+                        "Control Plane read quorum not reached (${channelSync.controlResponded}/${channelSync.controlRequested} relays). Sending stays disabled until enough relays confirm."
                     channelSync.writerAccessComplete == false ->
-                        "Writer-access streams partially synchronized (${channelSync.writerAccessResponded}/${channelSync.writerAccessRequested} relays). Some locked channels may remain read-only."
+                        "Writer-access read quorum not reached (${channelSync.writerAccessResponded}/${channelSync.writerAccessRequested} relays). Locked channels remain read-only until enough relays confirm."
                     else -> null
                 }
                 syncMessage?.let { message ->

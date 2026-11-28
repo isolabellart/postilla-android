@@ -315,16 +315,21 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                             if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
                             _channelsByCommunity.value = _channelsByCommunity.value + (membership.id to snapshot.channels)
                             _channels.value = snapshot.channels
+                            snapshot.communityName?.let { latestName ->
+                                _communities.value = _communities.value.map {
+                                    if (it.id == membership.id) it.copy(name = latestName) else it
+                                }
+                            }
                             val access = snapshot.writerAccessRead
                             _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
                                 membership.id to ChannelSyncState(
                                     isLoading = false,
                                     controlResponded = snapshot.controlRead.respondedCount,
                                     controlRequested = snapshot.controlRead.requestedCount,
-                                    controlComplete = snapshot.controlRead.isComplete,
+                                    controlComplete = snapshot.controlRead.hasQuorum,
                                     writerAccessResponded = access?.respondedCount,
                                     writerAccessRequested = access?.requestedCount,
-                                    writerAccessComplete = access?.isComplete,
+                                    writerAccessComplete = access?.hasQuorum,
                                     lastSyncAtMs = System.currentTimeMillis(),
                                 )
                             )
@@ -472,16 +477,21 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                 if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 _channelsByCommunity.value = _channelsByCommunity.value + (communityId to snapshot.channels)
                 _channels.value = snapshot.channels
+                snapshot.communityName?.let { latestName ->
+                    _communities.value = _communities.value.map {
+                        if (it.id == communityId) it.copy(name = latestName) else it
+                    }
+                }
                 val access = snapshot.writerAccessRead
                 _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
                     communityId to ChannelSyncState(
                         isLoading = false,
                         controlResponded = snapshot.controlRead.respondedCount,
                         controlRequested = snapshot.controlRead.requestedCount,
-                        controlComplete = snapshot.controlRead.isComplete,
+                        controlComplete = snapshot.controlRead.hasQuorum,
                         writerAccessResponded = access?.respondedCount,
                         writerAccessRequested = access?.requestedCount,
-                        writerAccessComplete = access?.isComplete,
+                        writerAccessComplete = access?.hasQuorum,
                         lastSyncAtMs = System.currentTimeMillis(),
                     )
                 )
@@ -600,7 +610,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         if (channelSync?.controlComplete != true) {
             val detail = channelSync?.let { "${it.controlResponded}/${it.controlRequested}" } ?: "not verified"
             throw IllegalStateException(
-                "The Concord Control Plane read is incomplete ($detail relays). Refresh channels before sending.",
+                "The Concord Control Plane read quorum is not ready ($detail relays). Refresh channels before sending.",
             )
         }
         val channelInfo = findChannel(communityId, channelId)

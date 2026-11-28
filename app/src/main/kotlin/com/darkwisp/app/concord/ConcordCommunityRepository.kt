@@ -100,6 +100,41 @@ internal fun concordRelayReadIsComplete(
 }
 
 /**
+ * A chat read is ready when a safe two-thirds quorum of the requested relays accepted
+ * the subscription and reached EOSE. A relay which did not accept REQ never counts.
+ * Administrative writes continue to use [concordRelayReadIsComplete] and require every
+ * requested relay, so a quorum can never authorize a potentially stale Control Plane edit.
+ */
+internal fun concordRelayReadHasQuorum(
+    requestedRelays: Collection<String>,
+    sentRelays: Collection<String>,
+    eoseRelays: Collection<String>,
+): Boolean {
+    val requested = requestedRelays.toSet()
+    if (requested.isEmpty()) return false
+    val sent = sentRelays.toSet()
+    val eose = eoseRelays.toSet()
+    val confirmed = requested.count { it in sent && it in eose }
+    return confirmed >= ConcordCommunityListWritePolicy.requiredReadRelayResponses(requested.size)
+}
+
+/** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
+internal fun concordRolePermissionAllowsChannelAction(
+    rolesV2: Boolean,
+    isOwner: Boolean,
+    rolePermissionGranted: Boolean,
+): Boolean = !rolesV2 || isOwner || rolePermissionGranted
+
+/** Owner and role-holders are part of the privileged roster even if they have not posted recently. */
+internal fun concordPrivilegedRosterCandidates(
+    ownerPubkey: String,
+    roleHolders: Collection<String>,
+): Set<String> = (listOf(ownerPubkey) + roleHolders)
+    .map { it.trim().lowercase() }
+    .filter(String::isNotBlank)
+    .toCollection(LinkedHashSet())
+
+/**
  * First Concord vertical slice: create a CORD-02 community, publish its two genesis
  * Control Plane wraps, and publish the owner's self-encrypted fragmented membership list.
  *
@@ -152,14 +187,19 @@ class ConcordCommunityRepository(
         val missingRelays: List<String> get() = requestedRelays.filterNot { it in respondedRelays }
         val isComplete: Boolean
             get() = concordRelayReadIsComplete(requestedRelays, sentRelays, respondedRelays)
+        val hasQuorum: Boolean
+            get() = concordRelayReadHasQuorum(requestedRelays, sentRelays, respondedRelays)
     }
 
     data class CommunityChannelSnapshot(
         val channels: List<CommunityChannel>,
         val controlRead: RelayReadSummary,
         val writerAccessRead: RelayReadSummary?,
+        /** Current Control Plane name, when its relay read reached the chat quorum. */
+        val communityName: String? = null,
     ) {
         val isControlReadComplete: Boolean get() = controlRead.isComplete
+        val hasControlReadQuorum: Boolean get() = controlRead.hasQuorum
     }
 
     private data class RelayFetchResult(
@@ -2094,6 +2134,7 @@ class ConcordCommunityRepository(
 
                 val writerLedger = control.state.writers[channelId]
                 val rolesV2 = control.state.isRolesV2
+                val isOwner = signer?.let { control.state.authority.isOwner(it.pubKey) } == true
                 val signerPermissions = signer?.let {
                     control.state.channelPermissions(
                         it.pubKey,
@@ -2101,18 +2142,26 @@ class ConcordCommunityRepository(
                         isPrivate = channel.definition.private,
                     )
                 }
-                val canViewChannel = !rolesV2 || signerPermissions?.has(ConcordPermissions.VIEW_CHANNEL) == true
-                val canSendMessages = !rolesV2 || signerPermissions?.has(ConcordPermissions.SEND_MESSAGES) == true
-                val canAttachFiles = !rolesV2 || signerPermissions?.has(ConcordPermissions.ATTACH_FILES) == true
-                val canAddReactions = !rolesV2 || signerPermissions?.has(ConcordPermissions.ADD_REACTIONS) == true
-                val canConnect = !rolesV2 || signerPermissions?.has(ConcordPermissions.CONNECT) == true
+                val canViewChannel = concordRolePermissionAllowsChannelAction(
+                    rolesV2, isOwner, signerPermissions?.has(ConcordPermissions.VIEW_CHANNEL) == true,
+                )
+                val canSendMessages = concordRolePermissionAllowsChannelAction(
+                    rolesV2, isOwner, signerPermissions?.has(ConcordPermissions.SEND_MESSAGES) == true,
+                )
+                val canAttachFiles = concordRolePermissionAllowsChannelAction(
+                    rolesV2, isOwner, signerPermissions?.has(ConcordPermissions.ATTACH_FILES) == true,
+                )
+                val canAddReactions = concordRolePermissionAllowsChannelAction(
+                    rolesV2, isOwner, signerPermissions?.has(ConcordPermissions.ADD_REACTIONS) == true,
+                )
+                val canConnect = concordRolePermissionAllowsChannelAction(
+                    rolesV2, isOwner, signerPermissions?.has(ConcordPermissions.CONNECT) == true,
+                )
                 val canManageChannel = signer != null && (
-                    control.state.authority.isOwner(signer.pubKey) ||
-                        signerPermissions?.has(ConcordPermissions.MANAGE_CHANNELS) == true
+                    isOwner || signerPermissions?.has(ConcordPermissions.MANAGE_CHANNELS) == true
                     )
                 val canManageMessages = signer != null && (
-                    control.state.authority.isOwner(signer.pubKey) ||
-                        signerPermissions?.has(ConcordPermissions.MANAGE_MESSAGES) == true
+                    isOwner || signerPermissions?.has(ConcordPermissions.MANAGE_MESSAGES) == true
                     )
                 val everyonePermissions = control.state.authority.everyonePermissions()
                 val everyoneScope = control.state.syncs[channelId] ?: channelId
@@ -2221,6 +2270,8 @@ class ConcordCommunityRepository(
             channels = channels,
             controlRead = control.readSummary,
             writerAccessRead = accessRead?.summary,
+            communityName = control.state.metadata?.name
+                ?.takeIf { it.isNotBlank() && control.readSummary.hasQuorum },
         )
     }
 
@@ -2240,17 +2291,25 @@ class ConcordCommunityRepository(
         if (context.authority.isBanned(signer.pubKey)) return null
 
         val rolesV2 = state.isRolesV2
+        val isOwner = context.authority.isOwner(signer.pubKey)
         val permissions = state.channelPermissions(
             signer.pubKey,
             channelIdHex,
             isPrivate = channelPrivate,
         )
-        val canView = !rolesV2 || permissions.has(ConcordPermissions.VIEW_CHANNEL)
-        val canSend = !rolesV2 || permissions.has(ConcordPermissions.SEND_MESSAGES)
-        val canAddReactions = !rolesV2 || permissions.has(ConcordPermissions.ADD_REACTIONS)
-        val canConnect = !rolesV2 || permissions.has(ConcordPermissions.CONNECT)
-        val canManage = context.authority.isOwner(signer.pubKey) ||
-            permissions.has(ConcordPermissions.MANAGE_CHANNELS)
+        val canView = concordRolePermissionAllowsChannelAction(
+            rolesV2, isOwner, permissions.has(ConcordPermissions.VIEW_CHANNEL),
+        )
+        val canSend = concordRolePermissionAllowsChannelAction(
+            rolesV2, isOwner, permissions.has(ConcordPermissions.SEND_MESSAGES),
+        )
+        val canAddReactions = concordRolePermissionAllowsChannelAction(
+            rolesV2, isOwner, permissions.has(ConcordPermissions.ADD_REACTIONS),
+        )
+        val canConnect = concordRolePermissionAllowsChannelAction(
+            rolesV2, isOwner, permissions.has(ConcordPermissions.CONNECT),
+        )
+        val canManage = isOwner || permissions.has(ConcordPermissions.MANAGE_CHANNELS)
         val canManageMessages = context.authority.isOwner(signer.pubKey) ||
             permissions.has(ConcordPermissions.MANAGE_MESSAGES)
         if (!canView) return null
@@ -2678,6 +2737,25 @@ class ConcordCommunityRepository(
         val isPublic = control.state.isPublic
         val coalesced = Guestbook.coalesce(entries, System.currentTimeMillis(), authority)
         val members = LinkedHashMap<String, CommunityMember>()
+
+        // Concord has no relay-owned roster. Match Armada's privileged roster sources:
+        // the owner and every live role-holder are included even when they have not posted.
+        for (pubkey in concordPrivilegedRosterCandidates(membership.owner, authority.roleHolders())) {
+            if (authority.isBanned(pubkey)) continue
+            val activity = observedAuthors[pubkey]
+            val (heldRoleIds, heldRoleNames) = rolesForMember(pubkey)
+            members[pubkey] = CommunityMember(
+                pubkey = pubkey,
+                joinedAt = activity?.firstSeenAtMs?.div(1000L)?.coerceAtLeast(0L) ?: 0L,
+                lastSeenAt = activity?.lastSeenAtMs ?: 0L,
+                roleIds = heldRoleIds,
+                roleNames = heldRoleNames,
+                canKick = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.KICK) &&
+                    (isPublic || authority.hasPermission(signer.pubKey, ConcordPermissions.BAN)),
+                canBan = authority.canActOn(signer.pubKey, pubkey, ConcordPermissions.BAN),
+                requiresRefounding = !isPublic,
+            )
+        }
 
         // Self-reported Guestbook JOINs are the primary membership signal.
         for (entry in coalesced.values.sortedBy { it.createdAt }) {

@@ -45,5 +45,29 @@ class ConcordRelayReadCompletenessTest {
     @Test
     fun emptyRelaySetIsNeverConsideredComplete() {
         assertFalse(concordRelayReadIsComplete(emptyList(), emptyList(), emptyList()))
+        assertFalse(concordRelayReadHasQuorum(emptyList(), emptyList(), emptyList()))
+    }
+
+    @Test
+    fun twoThirdsEoseQuorumMakesChatReadReadyWithoutRelaxingFullCompleteness() {
+        val requested = (1..30).map { "wss://relay$it.example" }
+        val responders = requested.take(21)
+        assertTrue(concordRelayReadHasQuorum(requested, responders, responders))
+        assertFalse(concordRelayReadIsComplete(requested, responders, responders))
+    }
+
+    @Test
+    fun fewerThanTwoThirdsConfirmedRelaysDoesNotMakeChatReadReady() {
+        val requested = (1..30).map { "wss://relay$it.example" }
+        val responders = requested.take(19)
+        assertFalse(concordRelayReadHasQuorum(requested, responders, responders))
+    }
+
+    @Test
+    fun aRelayMustBeBothSentAndEoseConfirmedToCountTowardQuorum() {
+        val requested = (1..6).map { "wss://relay$it.example" }
+        val sent = requested.take(5)
+        val eose = requested.take(4)
+        assertFalse(concordRelayReadHasQuorum(requested, sent, eose))
     }
 }
