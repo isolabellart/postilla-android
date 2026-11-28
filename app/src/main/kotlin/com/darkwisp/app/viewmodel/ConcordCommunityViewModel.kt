@@ -216,6 +216,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         _members.value = MembersState()
         _membersByCommunity.value = emptyMap()
         _directInvites.value = DirectInvitesState()
+        _inviteLinksByCommunity.value = emptyMap()
         _rolesByCommunity.value = emptyMap()
         _communityIcons.value = emptyMap()
         if (signer != null) {
