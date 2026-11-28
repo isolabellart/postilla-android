@@ -3,6 +3,7 @@ package com.darkwisp.app.concord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
+import com.vitorpamplona.quartz.concord.crypto.GroupKey
 
 class ConcordChatCacheKeyTest {
     @Test
@@ -36,4 +37,47 @@ class ConcordChatCacheKeyTest {
     fun blankRoomKeyIsRejected() {
         concordChatCacheRecordKey("", "ab".repeat(32))
     }
+
+    @Test
+    fun historySignatureIsStableForTheSamePlaneSetInAnyOrder() {
+        val first = readPlane(1, epoch = 0)
+        val second = readPlane(2, epoch = 1)
+
+        assertEquals(
+            concordChatHistoryStreamSignature(listOf(first, second)),
+            concordChatHistoryStreamSignature(listOf(second, first, first)),
+        )
+    }
+
+    @Test
+    fun addingAWriterOrHistoricalPlaneStartsANewHistoryCursor() {
+        val readPlane = readPlane(1, epoch = 0)
+        val newlyDiscoveredWriterPlane = readPlane(2, epoch = 0)
+
+        assertNotEquals(
+            concordChatHistoryStreamSignature(listOf(readPlane)),
+            concordChatHistoryStreamSignature(listOf(readPlane, newlyDiscoveredWriterPlane)),
+        )
+    }
+
+    @Test
+    fun aChangedChannelEpochStartsANewHistoryCursorEvenWhenAddressIsUnchanged() {
+        val epochZero = readPlane(7, epoch = 0)
+        val epochOne = readPlane(7, epoch = 1)
+
+        assertNotEquals(
+            concordChatHistoryStreamSignature(listOf(epochZero)),
+            concordChatHistoryStreamSignature(listOf(epochOne)),
+        )
+    }
+
+    private fun readPlane(addressByte: Int, epoch: Long): ConcordChatReadPlane =
+        ConcordChatReadPlane(
+            stream = GroupKey(
+                secretKey = ByteArray(32) { 1 },
+                publicKey = ByteArray(32) { addressByte.toByte() },
+                conversationKey = ByteArray(32) { 2 },
+            ),
+            channelEpoch = epoch,
+        )
 }

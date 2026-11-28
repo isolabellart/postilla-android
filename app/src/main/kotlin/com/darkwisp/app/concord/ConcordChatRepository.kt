@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -49,6 +50,30 @@ internal fun concordChatCacheRecordKey(roomKey: String, eventId: String): String
     require(roomKey.isNotBlank()) { "Room key cannot be blank" }
     require(eventId.isNotBlank()) { "Event ID cannot be blank" }
     return "$roomKey|${eventId.lowercase()}"
+}
+
+/**
+ * A history cursor is valid only for the exact set of read planes used by its filter.
+ * A new writer window, a newly-held historical key, or a root/channel rotation changes
+ * this signature and starts an independent cursor rather than skipping the new stream.
+ */
+internal fun concordChatHistoryStreamSignature(planes: List<ConcordChatReadPlane>): String {
+    val canonical = planes.asSequence()
+        .map { plane ->
+            "${plane.stream.publicKeyHex.lowercase()}:${plane.channelEpoch}:${plane.writerContext?.window?.epoch ?: "read"}"
+        }
+        .distinct()
+        .sorted()
+        .joinToString("|")
+    val digest = MessageDigest.getInstance("SHA-256").digest(canonical.encodeToByteArray())
+    val digits = "0123456789abcdef"
+    return buildString(digest.size * 2) {
+        digest.forEach { byte ->
+            val value = byte.toInt() and 0xff
+            append(digits[value ushr 4])
+            append(digits[value and 0x0f])
+        }
+    }
 }
 
 data class ConcordChatMessage(
@@ -276,6 +301,7 @@ class ConcordChatRepository(
         val channelKey = channelKey(communityRootHex, channelIdHex, epoch, privateChannelKeyHex, privateChannelEpoch)
         val planes = readPlanes.ifEmpty { listOf(ConcordChatReadPlane(channelKey, channelEpoch)) }
         val authorKeys = planes.map { it.stream.publicKeyHex }.distinct()
+        val streamSignature = concordChatHistoryStreamSignature(planes)
         val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
         val roomKey = roomKey(ownerPubkey, communityIdHex, channelIdHex)
         val seen = ConcurrentHashMap.newKeySet<String>()
@@ -329,7 +355,7 @@ class ConcordChatRepository(
         // Each relay owns an independent cursor. A slow or deep relay must not move
         // another relay's cursor forward and silently skip its older events.
         launch {
-            val pages = fetchFirstHistoryPages(ownerPubkey, communityIdHex, channelIdHex, authorKeys, targets)
+            val pages = fetchFirstHistoryPages(ownerPubkey, communityIdHex, channelIdHex, streamSignature, authorKeys, targets)
             for (outer in pages) {
                 val message = decode(outer, planes, channelIdHex) ?: continue
                 persistEncryptedWrap(ownerPubkey, communityIdHex, channelIdHex, outer)
@@ -461,14 +487,23 @@ class ConcordChatRepository(
     ): List<ConcordChatMessage> {
         val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
         val authorKeys = readPlanes.map { it.stream.publicKeyHex }.distinct()
+        val streamSignature = concordChatHistoryStreamSignature(readPlanes)
         val wraps = coroutineScope {
             targets.map { relay ->
                 async {
-                    val exhausted = historyPrefs.getBoolean(exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, relay), false)
+                    val exhausted = historyPrefs.getBoolean(
+                        exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay),
+                        false,
+                    )
                     if (exhausted) return@async emptyList()
-                    val cursor = historyPrefs.getLong(cursorKey(ownerPubkey, communityIdHex, channelIdHex, relay), 0L)
+                    val cursor = historyPrefs.getLong(
+                        cursorKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay),
+                        0L,
+                    )
                     val page = fetchRelayHistoryPage(relay, authorKeys, cursor.takeIf { it > 0L })
-                    if (page.reachedEose) persistCursor(ownerPubkey, communityIdHex, channelIdHex, relay, page.events)
+                    if (page.reachedEose) {
+                        persistCursor(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay, page.events)
+                    }
                     page.events
                 }
             }.awaitAll().flatten().distinctBy { it.id }
@@ -483,10 +518,15 @@ class ConcordChatRepository(
         communityIdHex: String,
         channelIdHex: String,
         communityRelays: List<String>,
+        readPlanes: List<ConcordChatReadPlane> = emptyList(),
     ): Boolean {
         val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
+        val streamSignature = concordChatHistoryStreamSignature(readPlanes)
         return targets.any { relay ->
-            !historyPrefs.getBoolean(exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, relay), false)
+            !historyPrefs.getBoolean(
+                exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay),
+                false,
+            )
         }
     }
 
@@ -494,17 +534,26 @@ class ConcordChatRepository(
         ownerPubkey: String,
         communityIdHex: String,
         channelIdHex: String,
+        streamSignature: String,
         authorKeys: List<String>,
         targets: List<String>,
     ): List<NostrEvent> = coroutineScope {
         targets.map { relay ->
             async {
-                val exhausted = historyPrefs.getBoolean(exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, relay), false)
-                val cursor = historyPrefs.getLong(cursorKey(ownerPubkey, communityIdHex, channelIdHex, relay), 0L)
+                val exhausted = historyPrefs.getBoolean(
+                    exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay),
+                    false,
+                )
+                val cursor = historyPrefs.getLong(
+                    cursorKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay),
+                    0L,
+                )
                 if (exhausted || cursor > 0L) emptyList()
                 else {
                     val page = fetchRelayHistoryPage(relay, authorKeys, null)
-                    if (page.reachedEose) persistCursor(ownerPubkey, communityIdHex, channelIdHex, relay, page.events)
+                    if (page.reachedEose) {
+                        persistCursor(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relay, page.events)
+                    }
                     page.events
                 }
             }
@@ -567,6 +616,7 @@ class ConcordChatRepository(
         ownerPubkey: String,
         communityIdHex: String,
         channelIdHex: String,
+        streamSignature: String,
         relayUrl: String,
         events: List<NostrEvent>,
     ) {
@@ -574,8 +624,8 @@ class ConcordChatRepository(
         val cursor = if (oldest == null) 0L else (oldest - 1L).coerceAtLeast(1L)
         val exhausted = events.size < HISTORY_PAGE_SIZE
         historyPrefs.edit()
-            .putLong(cursorKey(ownerPubkey, communityIdHex, channelIdHex, relayUrl), cursor)
-            .putBoolean(exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, relayUrl), exhausted)
+            .putLong(cursorKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relayUrl), cursor)
+            .putBoolean(exhaustedKey(ownerPubkey, communityIdHex, channelIdHex, streamSignature, relayUrl), exhausted)
             .apply()
     }
 
@@ -718,11 +768,21 @@ class ConcordChatRepository(
     private fun roomKey(owner: String, communityId: String, channelId: String) =
         "concord|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}"
 
-    private fun cursorKey(owner: String, communityId: String, channelId: String, relay: String) =
-        "cursor|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$relay"
+    private fun cursorKey(
+        owner: String,
+        communityId: String,
+        channelId: String,
+        streamSignature: String,
+        relay: String,
+    ) = "cursor|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$streamSignature|$relay"
 
-    private fun exhaustedKey(owner: String, communityId: String, channelId: String, relay: String) =
-        "exhausted|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$relay"
+    private fun exhaustedKey(
+        owner: String,
+        communityId: String,
+        channelId: String,
+        streamSignature: String,
+        relay: String,
+    ) = "exhausted|${owner.lowercase()}|${communityId.lowercase()}|${channelId.lowercase()}|$streamSignature|$relay"
 
     private fun channelKey(
         communityRootHex: String,
