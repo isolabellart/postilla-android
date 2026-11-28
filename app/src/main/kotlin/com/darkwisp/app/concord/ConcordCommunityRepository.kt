@@ -130,6 +130,29 @@ class ConcordCommunityRepository(
         val isFullyPublished: Boolean get() = pendingEventIds.isEmpty() && publishedCount == totalCount
     }
 
+    data class RelayReadSummary(
+        val requestedCount: Int,
+        val sentCount: Int,
+        val respondedCount: Int,
+        val missingRelays: List<String>,
+    ) {
+        val isComplete: Boolean
+            get() = requestedCount > 0 && sentCount == requestedCount && missingRelays.isEmpty()
+    }
+
+    data class CommunityChannelSnapshot(
+        val channels: List<CommunityChannel>,
+        val controlRead: RelayReadSummary,
+        val writerAccessRead: RelayReadSummary?,
+    ) {
+        val isControlReadComplete: Boolean get() = controlRead.isComplete
+    }
+
+    private data class RelayFetchResult(
+        val events: List<NostrEvent>,
+        val summary: RelayReadSummary,
+    )
+
     /**
      * Creates a community using Quartz's reference factory and wire encoders.
      * Each event is journaled before publication; an unconfirmed event remains available
@@ -1000,6 +1023,7 @@ class ConcordCommunityRepository(
                 wraps = fetchedControl.wraps + extraWraps,
                 editions = allEditions,
                 state = ConcordCommunityState.fold(allEditions, membership.id.hexToByteArray(), membership.owner),
+                readSummary = fetchedControl.readSummary,
             )
         }
         val authority = control.state.authority
@@ -1295,6 +1319,7 @@ class ConcordCommunityRepository(
         val wraps: List<Event>,
         val editions: List<ControlEdition>,
         val state: ConcordCommunityState,
+        val readSummary: RelayReadSummary,
     )
 
     private suspend fun loadControlPlaneSnapshot(
@@ -1308,7 +1333,7 @@ class ConcordCommunityRepository(
             controlPk = membership.controlPk,
             controlRoot = membership.controlRoot,
         )
-        val events = fetchEventsFromRelays(
+        val relayRead = fetchEventsFromRelaysDetailed(
             relays = membership.relays,
             filter = Filter(
                 kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
@@ -1318,7 +1343,7 @@ class ConcordCommunityRepository(
             label = "control-state",
             requireAllResponders = requireAllResponders,
         )
-        val wraps = events.map { Event.fromJson(it.toJson()) }
+        val wraps = relayRead.events.map { Event.fromJson(it.toJson()) }
         val editions = wraps.map { wrap ->
             val opened = ConcordStreamEnvelope.open(wrap, keys)
             ControlEdition.fromOpened(opened)
@@ -1326,7 +1351,7 @@ class ConcordCommunityRepository(
         }
         if (editions.isEmpty()) throw IllegalStateException("The community Control Plane is empty or unavailable")
         val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
-        return ControlPlaneSnapshot(keys, wraps, editions, state)
+        return ControlPlaneSnapshot(keys, wraps, editions, state, relayRead.summary)
     }
 
     /** Downloads and decrypts the community icon using its member-sealed CORD-02 pointer. */
@@ -1377,7 +1402,13 @@ class ConcordCommunityRepository(
     suspend fun loadCommunityChannels(
         membership: ConcordCommunityListEntry,
         signer: PostillaQuartzSigner? = null,
-    ): List<CommunityChannel> {
+    ): List<CommunityChannel> = loadCommunityChannelSnapshot(membership, signer).channels
+
+    /** Same snapshot with explicit relay completeness, so the UI never mistakes partial data for a full catalogue. */
+    suspend fun loadCommunityChannelSnapshot(
+        membership: ConcordCommunityListEntry,
+        signer: PostillaQuartzSigner? = null,
+    ): CommunityChannelSnapshot {
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
         val accessPlanes = if (signer == null) emptyMap() else control.state.writers
             .filterValues { it.live != null }
@@ -1390,10 +1421,10 @@ class ConcordCommunityRepository(
                 )
             }
         val accessTargets = (membership.relays + relayPool.getReadRelayUrls()).distinct()
-        val accessEventsByAddress = if (accessPlanes.isEmpty() || accessTargets.isEmpty()) {
-            emptyMap()
+        val accessRead = if (accessPlanes.isEmpty() || accessTargets.isEmpty()) {
+            null
         } else {
-            fetchEventsFromRelays(
+            fetchEventsFromRelaysDetailed(
                 relays = accessTargets,
                 filter = Filter(
                     kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
@@ -1402,9 +1433,10 @@ class ConcordCommunityRepository(
                 ),
                 label = "writer-access-${membership.id.take(12)}",
                 requireAllResponders = false,
-            ).groupBy { it.pubkey.lowercase() }
+            )
         }
-        return control.state.channels.values
+        val accessEventsByAddress = accessRead?.events?.groupBy { it.pubkey.lowercase() }.orEmpty()
+        val channels = control.state.channels.values
             .map { channel ->
                 val channelId = channel.channelIdHex
                 val privateEntry = if (channel.definition.private) {
@@ -1581,6 +1613,11 @@ class ConcordCommunityRepository(
                 )
             }
             .sortedWith(compareBy<CommunityChannel> { it.name.lowercase() }.thenBy { it.id })
+        return CommunityChannelSnapshot(
+            channels = channels,
+            controlRead = control.readSummary,
+            writerAccessRead = accessRead?.summary,
+        )
     }
 
     private suspend fun openWriterCredential(
@@ -2329,13 +2366,26 @@ class ConcordCommunityRepository(
         filter: Filter,
         label: String,
         requireAllResponders: Boolean = false,
-    ): List<NostrEvent> {
+    ): List<NostrEvent> = fetchEventsFromRelaysDetailed(
+        relays = relays,
+        filter = filter,
+        label = label,
+        requireAllResponders = requireAllResponders,
+    ).events
+
+    private suspend fun fetchEventsFromRelaysDetailed(
+        relays: List<String>,
+        filter: Filter,
+        label: String,
+        requireAllResponders: Boolean = false,
+    ): RelayFetchResult {
         val targets = relays.distinct()
         require(targets.isNotEmpty()) { "No bootstrap relays were supplied for $label discovery" }
         val subscriptionId = "concord-$label-${UUID.randomUUID().toString().take(12)}"
         val request = ClientMessage.req(subscriptionId, listOf(filter))
         val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
         val responded = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        var sent: List<String> = emptyList()
 
         coroutineScope {
             val eventCollector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -2348,7 +2398,7 @@ class ConcordCommunityRepository(
                     .filter { it.subscriptionId == subscriptionId && it.relayUrl in targets }
                     .collect { responded.add(it.relayUrl) }
             }
-            val sent = targets.filter {
+            sent = targets.filter {
                 relayPool.sendToRelayOrEphemeral(it, request, skipBadCheck = true, write = false)
             }
             if (sent.isEmpty()) {
@@ -2366,15 +2416,21 @@ class ConcordCommunityRepository(
             if (responded.isEmpty()) {
                 throw IllegalStateException("No bootstrap relay completed $label discovery")
             }
-            if (requireAllResponders && !concordRelayReadIsComplete(targets, sent, responded)) {
-                val missing = targets.filterNot { it in responded }
-                throw IllegalStateException(
-                    "The $label data is incomplete: " + missing.size + "/" + targets.size +
-                        " relays did not confirm the read.",
-                )
-            }
         }
-        return events.values.toList()
+        val missing = targets.filterNot { it in responded }
+        val summary = RelayReadSummary(
+            requestedCount = targets.size,
+            sentCount = sent.size,
+            respondedCount = responded.size,
+            missingRelays = missing,
+        )
+        if (requireAllResponders && !summary.isComplete) {
+            throw IllegalStateException(
+                "The $label data is incomplete: " + missing.size + "/" + targets.size +
+                    " relays did not confirm the read.",
+            )
+        }
+        return RelayFetchResult(events.values.toList(), summary)
     }
 
     /**

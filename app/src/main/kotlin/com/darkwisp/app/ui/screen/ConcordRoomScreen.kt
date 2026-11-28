@@ -102,6 +102,8 @@ fun ConcordRoomScreen(
     val channelsByCommunity by viewModel.channelsByCommunity.collectAsState()
     val channels = channelsByCommunity[communityId].orEmpty()
     val visibleChannels = channels.filter { it.canViewChannel }
+    val channelSyncByCommunity by viewModel.channelSyncByCommunity.collectAsState()
+    val channelSync = channelSyncByCommunity[communityId] ?: ConcordCommunityViewModel.ChannelSyncState()
     val membersByCommunity by viewModel.membersByCommunity.collectAsState()
     val membersState = membersByCommunity[communityId] ?: ConcordCommunityViewModel.MembersState(communityId = communityId)
     val inviteState by viewModel.invite.collectAsState()
@@ -115,7 +117,8 @@ fun ConcordRoomScreen(
     } ?: false
     // Fail closed until the channel catalogue and all required per-account permissions are loaded.
     val selectedChannelCanSend = selectedChannel?.let {
-        it.canSendMessages &&
+        channelSync.controlComplete &&
+            it.canSendMessages &&
             (!it.writeRestricted || it.writerCredential?.canSendMessages == true) &&
             (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
     } ?: false
@@ -675,6 +678,38 @@ fun ConcordRoomScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                val syncMessage = when {
+                    channelSync.isLoading -> "Synchronizing Concord channels…"
+                    channelSync.error != null -> "Channel synchronization failed: ${channelSync.error}"
+                    !channelSync.controlComplete ->
+                        "Control Plane partially synchronized (${channelSync.controlResponded}/${channelSync.controlRequested} relays). Sending is disabled until the full read completes."
+                    channelSync.writerAccessComplete == false ->
+                        "Writer-access streams partially synchronized (${channelSync.writerAccessResponded}/${channelSync.writerAccessRequested} relays). Some locked channels may remain read-only."
+                    else -> null
+                }
+                syncMessage?.let { message ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                message,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(
+                                enabled = !channelSync.isLoading,
+                                onClick = { viewModel.refreshChannels(communityId) },
+                            ) { Text("Retry") }
+                        }
+                    }
+                }
                 if (channels.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
