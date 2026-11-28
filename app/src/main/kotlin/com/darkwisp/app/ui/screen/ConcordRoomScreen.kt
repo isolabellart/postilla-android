@@ -190,7 +190,6 @@ fun ConcordRoomScreen(
         it.kind == 1111 && selectedThreadRoot != null &&
             (it.rootId == selectedThreadRoot?.id || it.replyToId == selectedThreadRoot?.id)
     }.sortedBy { it.orderingAtMs }
-    var showCommunityMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showChannelMenu by rememberSaveable(communityId) { mutableStateOf(false) }
     var showMembersDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var memberSearchQuery by rememberSaveable(communityId) { mutableStateOf("") }
@@ -496,6 +495,51 @@ fun ConcordRoomScreen(
                     }
                     item {
                         NavigationDrawerItem(
+                            label = { Text("Edit group details") },
+                            icon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            selected = false,
+                            enabled = signer != null,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                metadataDraftName = community?.name.orEmpty()
+                                metadataDraftDescription = community?.description.orEmpty()
+                                metadataDraftRelays = community?.relays.orEmpty().joinToString("\n")
+                                managementError = null
+                                showEditMetadataDialog = true
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Manage roles") },
+                            icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                            selected = false,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showRolesDialog = true
+                                roleDialogError = null
+                                viewModel.refreshRoles(communityId, signer)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
+                            label = { Text("Manage public invite links") },
+                            icon = { Icon(Icons.Default.Link, contentDescription = null) },
+                            selected = false,
+                            enabled = signer != null,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                showInviteLinksDialog = true
+                                viewModel.refreshInviteLinks(communityId, signer)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    item {
+                        NavigationDrawerItem(
                             label = { Text("Members") },
                             icon = { Icon(Icons.Default.Group, contentDescription = null) },
                             selected = false,
@@ -617,93 +661,6 @@ fun ConcordRoomScreen(
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                         Icon(Icons.Default.Menu, contentDescription = "Open community navigation")
                     }
-                    Box {
-                        IconButton(onClick = { showCommunityMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Community actions")
-                        }
-                        DropdownMenu(
-                            expanded = showCommunityMenu,
-                            onDismissRequest = { showCommunityMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Edit group details") },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    metadataDraftName = community?.name.orEmpty()
-                                    metadataDraftDescription = community?.description.orEmpty()
-                                    metadataDraftRelays = community?.relays.orEmpty().joinToString("\n")
-                                    managementError = null
-                                    showEditMetadataDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Manage roles") },
-                                leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showRolesDialog = true
-                                    roleDialogError = null
-                                    viewModel.refreshRoles(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Members") },
-                                leadingIcon = { Icon(Icons.Default.Group, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showMembersDialog = true
-                                    viewModel.loadMembers(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Invite by npub") },
-                                leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showDirectInviteDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (inviteState.isCreating) "Preparing invite link…" else "Share public invite link") },
-                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                                enabled = signer != null && !inviteState.isCreating,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    viewModel.createInviteLink(communityId, signer)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Manage public invite links") },
-                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showInviteLinksDialog = true
-                                    viewModel.refreshInviteLinks(communityId, signer)
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Create public channel") },
-                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showCreateChannelDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Refresh channels") },
-                                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    viewModel.refreshChannels(communityId)
-                                },
-                            )
-                        }
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
@@ -717,8 +674,8 @@ fun ConcordRoomScreen(
                     modifier = Modifier.fillMaxWidth()
                         .imePadding()
                         .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     if (selectedChannel != null && !selectedChannelCanSend) {
                         val accessMessage = when {
@@ -843,12 +800,12 @@ fun ConcordRoomScreen(
                                 }
                                 Box(
                                     modifier = Modifier.weight(1f)
-                                        .heightIn(min = 54.dp, max = 144.dp)
+                                        .heightIn(min = 42.dp, max = 112.dp)
                                         .background(
                                             MaterialTheme.colorScheme.surface,
                                             RoundedCornerShape(18.dp),
                                         )
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
                                     contentAlignment = Alignment.CenterStart,
                                 ) {
                                     BasicTextField(
@@ -907,12 +864,6 @@ fun ConcordRoomScreen(
                                     }
                                 }
                             }
-                            Text(
-                                "Enter adds a new line. Messages are sent only after relay confirmation.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 4.dp),
-                            )
                         }
                     }
                 }
@@ -1438,8 +1389,8 @@ fun ConcordRoomScreen(
                                         Icon(
                                             painter = painterResource(R.drawable.ic_bolt),
                                             contentDescription = "Zap author without exposing this group message",
-                                            tint = if (!ownMessage && signer != null) WispThemeColors.zapColor
-                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                            // A zap action being available is not proof that a zap was received.
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(17.dp),
                                         )
                                     }
