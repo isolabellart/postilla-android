@@ -1,6 +1,7 @@
 package com.darkwisp.app.ui.screen
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -9,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import coil3.compose.AsyncImage
@@ -17,6 +19,8 @@ import com.darkwisp.app.viewmodel.ConcordCommunityViewModel
 import com.darkwisp.app.nostr.Blossom
 import com.vitorpamplona.crypto.aes.AESGCM
 import com.vitorpamplona.crypto.random.RandomInstance
+import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
+import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
 import com.darkwisp.app.repo.EventRepository
 import com.darkwisp.app.repo.BlossomRepository
@@ -31,6 +35,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
