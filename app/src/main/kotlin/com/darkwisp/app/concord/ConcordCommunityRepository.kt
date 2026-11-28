@@ -705,8 +705,8 @@ class ConcordCommunityRepository(
             "Community description must be at most 10,000 UTF-8 bytes"
         }
         val normalizedRelays = relays.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        require(normalizedRelays.size <= 20) {
-            "Community metadata cannot contain more than 20 relay URLs"
+        require(normalizedRelays.isNotEmpty()) {
+            "A community must retain at least one bootstrap relay"
         }
         require(normalizedRelays.all { it.startsWith("wss://") }) {
             "Community relays must use secure wss:// URLs"
@@ -732,8 +732,10 @@ class ConcordCommunityRepository(
         val updated = standing.copy(
             name = normalizedName,
             description = normalizedDescription,
-            icon = icon,
-            banner = banner,
+            // A null image argument means "leave the existing encrypted pointer untouched".
+            // The editor never replaces or clears an image unless a new encrypted pointer is supplied.
+            icon = icon ?: standing.icon,
+            banner = banner ?: standing.banner,
             relays = normalizedRelays,
         )
         require(ConcordLimits.metadataFits(updated)) {
