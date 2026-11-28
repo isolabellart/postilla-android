@@ -541,6 +541,15 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Invalidates the cached image after a metadata edit and reloads the encrypted
+     * pointer from the community Control Plane.
+     */
+    private fun refreshCommunityIcon(communityId: String) {
+        _communityIcons.value = _communityIcons.value - communityId
+        loadCommunityIcon(communityId)
+    }
+
     private fun findChannel(communityId: String, channelId: String) =
         _channelsByCommunity.value[communityId]?.firstOrNull { it.id == channelId }
 
