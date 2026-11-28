@@ -1,5 +1,7 @@
 package com.darkwisp.app.concord
 
+import com.vitorpamplona.quartz.concord.cord03Channels.ChannelChat
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
