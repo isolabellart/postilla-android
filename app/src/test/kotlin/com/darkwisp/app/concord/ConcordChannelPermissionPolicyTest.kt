@@ -7,6 +7,20 @@ import org.junit.Test
 
 class ConcordChannelPermissionPolicyTest {
     @Test
+    fun relayTargetsAreNormalizedBeforeEoseMatching() {
+        assertEquals(
+            listOf("wss://relay.example", "wss://other.example"),
+            concordNormalizeRelayTargets(
+                listOf(
+                    " wss://relay.example/ ",
+                    "wss://relay.example",
+                    "wss://other.example/",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun writerPublicationsReachBothCurrentAndBootstrapRelays() {
         assertEquals(
             listOf("wss://current.example", "wss://bootstrap.example"),

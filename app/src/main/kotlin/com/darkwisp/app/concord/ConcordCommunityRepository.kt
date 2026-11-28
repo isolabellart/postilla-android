@@ -7,6 +7,7 @@ import androidx.security.crypto.MasterKey
 import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.nostr.Filter
 import com.darkwisp.app.nostr.NostrEvent
+import com.darkwisp.app.relay.RelayConfig
 import com.darkwisp.app.relay.RelayPool
 import com.vitorpamplona.quartz.concord.cord02Community.ConcordCommunityFactory
 import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
@@ -132,6 +133,19 @@ internal fun concordRelayReadHasQuorum(
     )
     return confirmed >= required
 }
+
+/**
+ * Normalize every relay address before using it as a transport key or comparing it
+ * with RelayPool EOSE callbacks. Memberships imported from other Concord clients may
+ * contain trailing slashes or equivalent URL spellings; exact string matching used to
+ * make a real relay response disappear from the read quorum.
+ */
+internal fun concordNormalizeRelayTargets(relays: Collection<String>): List<String> =
+    relays.mapNotNull { raw ->
+        val value = raw.trim()
+        RelayUrlNormalizer.normalizeOrNull(value)?.url
+            ?: value.takeIf { RelayConfig.isLocalRelayUrl(it) }
+    }.distinct()
 
 /** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
 internal fun concordRolePermissionAllowsChannelAction(
@@ -2213,8 +2227,8 @@ class ConcordCommunityRepository(
         requireAllResponders: Boolean = true,
         relayTargets: List<String> = membership.relays,
     ): ControlPlaneSnapshot {
-        val targets = relayTargets.distinct()
-        require(targets.isNotEmpty()) { "No relays were supplied for the community Control Plane" }
+        val targets = concordNormalizeRelayTargets(relayTargets)
+        require(targets.isNotEmpty()) { "No valid relays were supplied for the community Control Plane" }
         val keys = ControlPlaneKeys.of(
             communityRoot = membership.root.hexToByteArray(),
             communityId = membership.id.hexToByteArray(),
@@ -4076,8 +4090,8 @@ class ConcordCommunityRepository(
         label: String,
         requireAllResponders: Boolean = false,
     ): RelayFetchResult {
-        val targets = relays.distinct()
-        require(targets.isNotEmpty()) { "No bootstrap relays were supplied for $label discovery" }
+        val targets = concordNormalizeRelayTargets(relays)
+        require(targets.isNotEmpty()) { "No valid bootstrap relays were supplied for $label discovery" }
         val subscriptionId = "concord-$label-${UUID.randomUUID().toString().take(12)}"
         val request = ClientMessage.req(subscriptionId, listOf(filter))
         val events = java.util.concurrent.ConcurrentHashMap<String, NostrEvent>()
