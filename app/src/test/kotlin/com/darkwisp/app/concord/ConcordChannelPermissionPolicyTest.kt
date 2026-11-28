@@ -21,6 +21,45 @@ class ConcordChannelPermissionPolicyTest {
     }
 
     @Test
+    fun controlPlaneUsesCachedRelaysFirstAndBootstrapAsFallback() {
+        assertEquals(
+            listOf(
+                listOf("wss://current.example/"),
+                listOf("wss://bootstrap.example/"),
+            ),
+            concordControlPlaneRelayCandidates(
+                explicitTargets = null,
+                cachedRelays = listOf("wss://current.example"),
+                bootstrapRelays = listOf("wss://bootstrap.example/"),
+            ),
+        )
+    }
+
+    @Test
+    fun explicitControlRelayTargetsDoNotFallBackToUnrelatedHints() {
+        assertEquals(
+            listOf(listOf("wss://writer.example/")),
+            concordControlPlaneRelayCandidates(
+                explicitTargets = listOf("wss://writer.example"),
+                cachedRelays = listOf("wss://cached.example/"),
+                bootstrapRelays = listOf("wss://bootstrap.example/"),
+            ),
+        )
+    }
+
+    @Test
+    fun emptyCachedControlRelaysFallBackToBootstrapMembershipRelays() {
+        assertEquals(
+            listOf(listOf("wss://bootstrap.example/")),
+            concordControlPlaneRelayCandidates(
+                explicitTargets = null,
+                cachedRelays = emptyList(),
+                bootstrapRelays = listOf("wss://bootstrap.example/"),
+            ),
+        )
+    }
+
+    @Test
     fun writerPublicationsReachBothCurrentAndBootstrapRelays() {
         assertEquals(
             listOf("wss://current.example/", "wss://bootstrap.example/"),

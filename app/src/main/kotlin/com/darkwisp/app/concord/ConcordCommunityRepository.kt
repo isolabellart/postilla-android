@@ -151,6 +151,24 @@ internal fun concordNormalizeRelayTargets(relays: Collection<String>): List<Stri
             ?: value.takeIf { RelayConfig.isLocalRelayUrl(it) && it.startsWith("ws://") }
     }.distinct()
 
+internal fun concordControlPlaneRelayCandidates(
+    explicitTargets: List<String>?,
+    cachedRelays: Collection<String>,
+    bootstrapRelays: Collection<String>,
+): List<List<String>> {
+    if (explicitTargets != null) {
+        return concordNormalizeRelayTargets(explicitTargets)
+            .takeIf { it.isNotEmpty() }
+            ?.let(::listOf)
+            .orEmpty()
+    }
+    val cached = concordNormalizeRelayTargets(cachedRelays)
+    val bootstrap = concordNormalizeRelayTargets(bootstrapRelays)
+    return listOf(cached, bootstrap)
+        .filter { it.isNotEmpty() }
+        .distinct()
+}
+
 /** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
 internal fun concordRolePermissionAllowsChannelAction(
     rolesV2: Boolean,
@@ -2219,13 +2237,42 @@ class ConcordCommunityRepository(
         val readSummary: RelayReadSummary,
     )
 
+    private fun controlRelayHintsKey(communityId: String): String =
+        "concord_control_relay_hints_${communityId.lowercase()}"
+
+    private fun cachedControlRelayHints(communityId: String): List<String> =
+        securePrefs.getString(controlRelayHintsKey(communityId), null)
+            ?.lineSequence()
+            ?.map(String::trim)
+            ?.filter(String::isNotBlank)
+            ?.toList()
+            .orEmpty()
+
+    /**
+     * Cache only the public relay addresses from a successfully opened and folded
+     * Control Plane. These are discovery hints, never authorization or signing material.
+     */
+    private fun persistControlRelayHints(communityId: String, relays: Collection<String>) {
+        val normalized = concordNormalizeRelayTargets(relays)
+            .filter { it.startsWith("wss://", ignoreCase = true) }
+        if (normalized.isEmpty()) return
+        securePrefs.edit()
+            .putString(controlRelayHintsKey(communityId), normalized.joinToString("\\n"))
+            .apply()
+    }
+
     private suspend fun loadControlPlaneSnapshot(
         membership: ConcordCommunityListEntry,
         requireAllResponders: Boolean = true,
-        relayTargets: List<String> = membership.relays,
+        relayTargets: List<String>? = null,
     ): ControlPlaneSnapshot {
-        val targets = concordNormalizeRelayTargets(relayTargets)
-        require(targets.isNotEmpty()) { "No valid relays were supplied for the community Control Plane" }
+        val cachedTargets = if (relayTargets == null) cachedControlRelayHints(membership.id) else emptyList()
+        val candidates = concordControlPlaneRelayCandidates(
+            explicitTargets = relayTargets,
+            cachedRelays = cachedTargets,
+            bootstrapRelays = membership.relays,
+        )
+        require(candidates.isNotEmpty()) { "No valid relays were supplied for the community Control Plane" }
         val keys = ControlPlaneKeys.of(
             communityRoot = membership.root.hexToByteArray(),
             communityId = membership.id.hexToByteArray(),
@@ -2240,28 +2287,58 @@ class ConcordCommunityRepository(
             keys.readKey.publicKeyHex.equals(keys.address, ignoreCase = true) -> keys.readKey
             else -> null
         }
-        if (controlAuthKey != null) {
-            relayPool.registerConcordStreamKeys(listOf(controlAuthKey), targets)
+        var lastFailure: Exception? = null
+        for (targets in candidates) {
+            try {
+                if (controlAuthKey != null) {
+                    relayPool.registerConcordStreamKeys(listOf(controlAuthKey), targets)
+                }
+                val relayRead = fetchEventsFromRelaysDetailed(
+                    relays = targets,
+                    filter = Filter(
+                        kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
+                        authors = listOf(keys.address),
+                        limit = 5000,
+                    ),
+                    label = "control-state",
+                    requireAllResponders = requireAllResponders,
+                )
+                val valid = mutableListOf<Pair<Event, ControlEdition>>()
+                for (raw in relayRead.events) {
+                    val wrap = Event.fromJson(raw.toJson())
+                    val edition = try {
+                        val opened = ConcordStreamEnvelope.open(wrap, keys)
+                        ControlEdition.fromOpened(opened)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    } ?: continue
+                    valid += wrap to edition
+                }
+                if (valid.isEmpty()) {
+                    throw IllegalStateException("The community Control Plane is empty or contains no valid canonical editions")
+                }
+                val editions = valid.map { it.second }
+                val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
+                // Persist only after the envelopes and canonical editions were opened and
+                // the authorized Control Plane fold completed. A cache entry cannot grant
+                // access; all callers still derive keys and re-check permissions from Nostr.
+                persistControlRelayHints(membership.id, state.metadata?.relays.orEmpty())
+                return ControlPlaneSnapshot(
+                    keys,
+                    valid.map { it.first },
+                    editions,
+                    state,
+                    relayRead.summary,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                lastFailure = error
+            }
         }
-        val relayRead = fetchEventsFromRelaysDetailed(
-            relays = targets,
-            filter = Filter(
-                kinds = listOf(ConcordStreamEnvelope.KIND_WRAP),
-                authors = listOf(keys.address),
-                limit = 5000,
-            ),
-            label = "control-state",
-            requireAllResponders = requireAllResponders,
-        )
-        val wraps = relayRead.events.map { Event.fromJson(it.toJson()) }
-        val editions = wraps.map { wrap ->
-            val opened = ConcordStreamEnvelope.open(wrap, keys)
-            ControlEdition.fromOpened(opened)
-                ?: throw IllegalStateException("A Control Plane edition is not canonical")
-        }
-        if (editions.isEmpty()) throw IllegalStateException("The community Control Plane is empty or unavailable")
-        val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
-        return ControlPlaneSnapshot(keys, wraps, editions, state, relayRead.summary)
+        throw lastFailure ?: IllegalStateException("The community Control Plane is unavailable")
     }
 
     /** Downloads and decrypts the community icon using its member-sealed CORD-02 pointer. */
@@ -2319,7 +2396,7 @@ class ConcordCommunityRepository(
         membership: ConcordCommunityListEntry,
         signer: PostillaQuartzSigner? = null,
         requireAllResponders: Boolean = false,
-        controlRelayTargets: List<String> = membership.relays,
+        controlRelayTargets: List<String>? = null,
     ): CommunityChannelSnapshot {
         val control = loadControlPlaneSnapshot(
             membership,
