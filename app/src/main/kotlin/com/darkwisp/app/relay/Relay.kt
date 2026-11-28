@@ -137,6 +137,7 @@ class Relay(
             webSocket = clientProvider().newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.d("RLC", "[Relay] ws#$socketId onOpen ${config.url} | isConnected was=$isConnected")
+                    lastChallenge = null
                     isConnected = true
                     // Successful connection — reset attempt tracking
                     synchronized(attemptLock) { connectAttempts.clear() }

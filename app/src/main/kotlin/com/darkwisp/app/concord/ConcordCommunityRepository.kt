@@ -1531,6 +1531,16 @@ class ConcordCommunityRepository(
             controlPk = membership.controlPk,
             controlRoot = membership.controlRoot,
         )
+        // Only register a key that derives the queried Control Plane address.
+        // Split member read keys are not write/auth credentials for a separate signer.
+        val controlAuthKey = when {
+            keys.signer?.publicKeyHex?.equals(keys.address, ignoreCase = true) == true -> keys.signer
+            keys.readKey.publicKeyHex.equals(keys.address, ignoreCase = true) -> keys.readKey
+            else -> null
+        }
+        if (controlAuthKey != null) {
+            relayPool.registerConcordStreamKeys(listOf(controlAuthKey), membership.relays)
+        }
         val relayRead = fetchEventsFromRelaysDetailed(
             relays = membership.relays,
             filter = Filter(
@@ -1619,6 +1629,9 @@ class ConcordCommunityRepository(
                 )
             }
         val accessTargets = (membership.relays + relayPool.getReadRelayUrls()).distinct()
+        if (accessPlanes.isNotEmpty()) {
+            relayPool.registerConcordStreamKeys(accessPlanes.values, accessTargets)
+        }
         val accessRead = if (accessPlanes.isEmpty() || accessTargets.isEmpty()) {
             null
         } else {
@@ -1740,6 +1753,7 @@ class ConcordCommunityRepository(
                         channelContext = channelContext,
                     )
                 }.distinctBy { "${it.stream.publicKeyHex}:${it.channelEpoch}" }
+                relayPool.registerConcordStreamKeys(directPlanes.map { it.stream }, accessTargets)
 
                 val writerPlanes = writerLedger?.let { ledger ->
                     ledger.windows.flatMap { window ->
@@ -1787,6 +1801,9 @@ class ConcordCommunityRepository(
                     )
                 } else {
                     null
+                }
+                writerCredential?.streamKey?.let {
+                    relayPool.registerConcordStreamKeys(listOf(it), accessTargets)
                 }
 
                 CommunityChannel(
@@ -2237,6 +2254,7 @@ class ConcordCommunityRepository(
             communityId = membership.id.hexToByteArray(),
             epoch = membership.rootEpoch,
         )
+        relayPool.registerConcordStreamKeys(listOf(guestbookKey), membership.relays)
         val events = fetchEventsFromRelays(
             relays = membership.relays,
             filter = Filter(
@@ -2865,7 +2883,13 @@ class ConcordCommunityRepository(
                     .collect { responded.add(it.relayUrl) }
             }
             sent = targets.filter {
-                relayPool.sendToRelayOrEphemeral(it, request, skipBadCheck = true, write = false)
+                relayPool.sendToRelayOrEphemeral(
+                    it,
+                    request,
+                    skipBadCheck = true,
+                    write = false,
+                    concordStreamAuthors = filter.authors,
+                )
             }
             if (sent.isEmpty()) {
                 eventCollector.cancelAndJoin()

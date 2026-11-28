@@ -7,6 +7,7 @@ import com.darkwisp.app.nostr.ClientMessage
 import com.darkwisp.app.repo.DiagnosticLogger
 import com.darkwisp.app.nostr.NostrEvent
 import com.darkwisp.app.nostr.RelayMessage
+import com.vitorpamplona.quartz.concord.crypto.GroupKey
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.CopyOnWriteArrayList
@@ -227,6 +229,215 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
     private val authSessions = mutableMapOf<String, PendingAuthRequest>()
     private val authenticatedRelays = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    private data class ConcordStreamAuthKey(
+        val publicKey: String,
+        val secretKey: ByteArray,
+        val relayUrls: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet(),
+    )
+
+    private data class PendingConcordStreamAuth(
+        val relayUrl: String,
+        val publicKey: String,
+        val challenge: String,
+    )
+
+    private class ConcordSubscriptionAuth(
+        val relayUrl: String,
+        val subscriptionId: String,
+        val request: String,
+        val requiredAuthors: Set<String>,
+        @Volatile var awaitingAuth: Boolean = false,
+        @Volatile var retryCount: Int = 0,
+        @Volatile var retrying: Boolean = false,
+    )
+
+    /** Only the matching community's relays may receive each in-memory stream secret. */
+    private val concordStreamAuthKeys = java.util.concurrent.ConcurrentHashMap<String, ConcordStreamAuthKey>()
+    private val concordStreamAuthChallenges = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val concordStreamAuthAcks = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
+    private val pendingConcordStreamAuth = java.util.concurrent.ConcurrentHashMap<String, PendingConcordStreamAuth>()
+    private val concordSubscriptionAuth = java.util.concurrent.ConcurrentHashMap<String, ConcordSubscriptionAuth>()
+
+    private fun concordSubscriptionKey(relayUrl: String, subscriptionId: String) =
+        "$relayUrl\\u0000$subscriptionId"
+
+    /**
+     * Register stream keys before querying a Concord stream. Secrets remain only in
+     * memory, scoped to the supplied community relays, and are erased on account change.
+     */
+    fun registerConcordStreamKeys(keys: Collection<GroupKey>, relayUrls: Collection<String>) {
+        val targets = relayUrls.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() && (RelayConfig.isValidUrl(it) || RelayConfig.isLocalRelayUrl(it)) }
+            .distinct()
+            .toList()
+        if (targets.isEmpty()) return
+
+        for (key in keys) {
+            if (key.secretKey.size != 32 || key.publicKeyHex.length != 64) continue
+            val publicKey = key.publicKeyHex.lowercase()
+            val entry = concordStreamAuthKeys.compute(publicKey) { _, existing ->
+                if (existing == null) {
+                    ConcordStreamAuthKey(publicKey, key.secretKey.copyOf())
+                } else {
+                    if (!existing.secretKey.contentEquals(key.secretKey)) {
+                        Log.e("RelayPool", "Conflicting secret material for Concord stream " + publicKey.take(12))
+                    }
+                    existing
+                }
+            } ?: continue
+            targets.forEach { entry.relayUrls.add(it) }
+            for (url in targets) {
+                val relay = relayIndex[url] ?: continue
+                val challenge = relay.lastChallenge ?: continue
+                if (relay.isConnected) {
+                    scope.launch { authenticateConcordStreamKeys(relay, challenge, setOf(publicKey)) }
+                }
+            }
+        }
+    }
+
+    private fun registeredConcordAuthors(relayUrl: String, authors: Collection<String>): Set<String> =
+        authors.asSequence()
+            .map { it.lowercase() }
+            .filter { publicKey -> concordStreamAuthKeys[publicKey]?.relayUrls?.contains(relayUrl) == true }
+            .toSet()
+
+    private fun trackConcordSubscriptionAuth(
+        relayUrl: String,
+        subscriptionId: String,
+        request: String,
+        authors: Collection<String>?,
+    ) {
+        if (authors.isNullOrEmpty()) return
+        val required = registeredConcordAuthors(relayUrl, authors)
+        if (required.isEmpty()) return
+        concordSubscriptionAuth[concordSubscriptionKey(relayUrl, subscriptionId)] =
+            ConcordSubscriptionAuth(relayUrl, subscriptionId, request, required)
+    }
+
+    private suspend fun authenticateConcordStreamKeys(
+        relay: Relay,
+        challenge: String,
+        onlyPublicKeys: Set<String>? = null,
+    ) {
+        val relayUrl = relay.config.url
+        if (!relay.isConnected || relay.lastChallenge != challenge) return
+        val previousChallenge = concordStreamAuthChallenges.put(relayUrl, challenge)
+        if (previousChallenge != challenge) {
+            concordStreamAuthAcks.remove(relayUrl)
+            pendingConcordStreamAuth.entries.removeIf { it.value.relayUrl == relayUrl }
+            concordSubscriptionAuth.values.filter { it.relayUrl == relayUrl }.forEach {
+                it.retryCount = 0
+                it.retrying = false
+            }
+        }
+
+        val acknowledged = concordStreamAuthAcks[relayUrl]
+        val candidates = concordStreamAuthKeys.values
+            .filter { relayUrl in it.relayUrls && (onlyPublicKeys == null || it.publicKey in onlyPublicKeys) }
+            .sortedBy { it.publicKey }
+
+        for (entry in candidates) {
+            if (acknowledged?.contains(entry.publicKey) == true) continue
+            if (pendingConcordStreamAuth.values.any {
+                    it.relayUrl == relayUrl && it.publicKey == entry.publicKey && it.challenge == challenge
+                }
+            ) continue
+            if (!relay.isConnected || relay.lastChallenge != challenge) return
+
+            val signed = try {
+                withContext(Dispatchers.Default) {
+                    signConcordStreamAuthEvent(
+                        GroupKey(entry.secretKey.copyOf(), entry.publicKey.hexToByteArray(), ByteArray(0)),
+                        relayUrl,
+                        challenge,
+                    )
+                }
+            } catch (error: Exception) {
+                Log.e("RelayPool", "Could not sign Concord stream AUTH for " + entry.publicKey.take(12), error)
+                continue
+            }
+
+            val pending = PendingConcordStreamAuth(relayUrl, entry.publicKey, challenge)
+            pendingConcordStreamAuth[signed.id] = pending
+            if (!relay.send(ClientMessage.auth(signed), queueIfDisconnected = false)) {
+                pendingConcordStreamAuth.remove(signed.id, pending)
+            } else {
+                Log.d("RelayPool", "Sent Concord stream AUTH " + entry.publicKey.take(12) + " to " + relayUrl)
+            }
+        }
+    }
+
+    private fun recordConcordStreamAuthAck(relayUrl: String, eventId: String, accepted: Boolean, message: String) {
+        val pending = pendingConcordStreamAuth.remove(eventId) ?: return
+        if (pending.relayUrl != relayUrl) return
+        if (!accepted || concordStreamAuthChallenges[relayUrl] != pending.challenge) {
+            Log.w("RelayPool", "Concord stream AUTH rejected for " + pending.publicKey.take(12) + " at " + relayUrl + ": " + message)
+            return
+        }
+        concordStreamAuthAcks.getOrPut(relayUrl) { java.util.concurrent.ConcurrentHashMap.newKeySet() }
+            .add(pending.publicKey)
+        Log.d("RelayPool", "Concord stream AUTH acknowledged " + pending.publicKey.take(12) + " at " + relayUrl)
+        retryPendingConcordSubscriptions(relayUrl)
+    }
+
+    private fun retryPendingConcordSubscriptions(relayUrl: String) {
+        val acknowledged = concordStreamAuthAcks[relayUrl] ?: return
+        concordSubscriptionAuth.values
+            .filter { it.relayUrl == relayUrl && it.awaitingAuth && it.retryCount == 0 && !it.retrying }
+            .forEach { subscription ->
+                if (!acknowledged.containsAll(subscription.requiredAuthors)) return@forEach
+                synchronized(subscription) {
+                    if (!subscription.awaitingAuth || subscription.retryCount > 0 || subscription.retrying) return@synchronized
+                    subscription.retrying = true
+                }
+                scope.launch {
+                    delay(75)
+                    val key = concordSubscriptionKey(relayUrl, subscription.subscriptionId)
+                    val stillTracked = concordSubscriptionAuth[key] === subscription
+                    val relay = relayIndex[relayUrl]
+                    val sent = stillTracked && relay?.isConnected == true &&
+                        relay.send(subscription.request, queueIfDisconnected = false)
+                    synchronized(subscription) {
+                        if (sent) {
+                            subscription.retryCount++
+                            subscription.awaitingAuth = false
+                            Log.i("RelayPool", "Retried Concord subscription " + subscription.subscriptionId + " after stream AUTH at " + relayUrl)
+                        }
+                        subscription.retrying = false
+                    }
+                }
+            }
+    }
+
+    private fun clearConcordStreamAuthSession(relayUrl: String) {
+        concordStreamAuthChallenges.remove(relayUrl)
+        concordStreamAuthAcks.remove(relayUrl)
+        pendingConcordStreamAuth.entries.removeIf { it.value.relayUrl == relayUrl }
+        concordSubscriptionAuth.values.filter { it.relayUrl == relayUrl }.forEach {
+            it.retryCount = 0
+            it.retrying = false
+        }
+    }
+
+    private fun clearConcordStreamAuthRegistry() {
+        concordStreamAuthKeys.values.forEach { it.secretKey.fill(0) }
+        concordStreamAuthKeys.clear()
+        concordStreamAuthChallenges.clear()
+        concordStreamAuthAcks.clear()
+        pendingConcordStreamAuth.clear()
+        concordSubscriptionAuth.clear()
+    }
+
+    private fun isConcordAuthRequired(message: String): Boolean {
+        val normalized = message.lowercase()
+        return normalized.contains("auth-required") ||
+            normalized.contains("auth required") ||
+            normalized.contains("authentication required") ||
+            normalized.contains("not authenticated")
+    }
+
     /**
      * Register a signer for NIP-42 AUTH challenges.
      * The lambda receives the relay URL and challenge string and must return a signed kind-22242 event.
@@ -251,6 +462,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
             userApprovedAuthRelays.clear()
             pinnedRelayUrls = emptySet()
         }
+        clearConcordStreamAuthRegistry()
     }
 
     private fun clearAuthSessions() {
@@ -562,6 +774,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                         unsupportedCounts.remove(relay.config.url) // Relay works, clear counter
                     }
                     is RelayMessage.Ok -> {
+                        recordConcordStreamAuthAck(relay.config.url, msg.eventId, msg.accepted, msg.message)
                         _publishResults.tryEmit(PublishResult(
                             relayUrl = relay.config.url,
                             eventId = msg.eventId,
@@ -602,6 +815,12 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                         }
                     }
                     is RelayMessage.Closed -> {
+                        if (isConcordAuthRequired(msg.message)) {
+                            concordSubscriptionAuth[concordSubscriptionKey(relay.config.url, msg.subscriptionId)]?.let {
+                                it.awaitingAuth = true
+                                retryPendingConcordSubscriptions(relay.config.url)
+                            }
+                        }
                         addConsoleEntry(ConsoleLogEntry(
                             relayUrl = relay.config.url,
                             type = ConsoleLogType.NOTICE,
@@ -642,6 +861,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                 } else {
                     if (appIsActive && !isReconnecting) healthTracker?.closeSession(relay.config.url)
                     clearRelayAuthSession(relay.config.url)
+                    clearConcordStreamAuthSession(relay.config.url)
                     subscriptionTracker.untrackRelay(relay.config.url)
                 }
             }
@@ -654,22 +874,34 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         scope.launch(parentJob) {
             relay.authChallenges.collect { challenge ->
                 val url = relay.config.url
+                // Stream-key AUTH is an independent proof of Concord plane access;
+                // it does not replace account identity AUTH or tier-2 user approval.
+                scope.launch { authenticateConcordStreamKeys(relay, challenge) }
+
                 val request = synchronized(authLock) {
-                    if (authSigner == null || relayIndex[url] !== relay || !relay.isConnected) return@collect
-                    clearRelayAuthSession(url)
-                    val trusted = url in pinnedRelayUrls || dmRelays.any { it.config.url == url }
-                    val needsApproval = url in dmDeliveryTargets || url in groupRelayAuthTargets
-                    if (trusted && !relay.config.auth) return@collect
-                    if (!trusted && !needsApproval) return@collect
-                    val request = PendingAuthRequest(url, challenge)
-                    authSessions[url] = request
-                    if (!trusted && url !in userApprovedAuthRelays) {
-                        _pendingAuthRequest.value = request
-                        return@collect
+                    if (authSigner == null || relayIndex[url] !== relay || !relay.isConnected) {
+                        null
+                    } else {
+                        clearRelayAuthSession(url)
+                        val trusted = url in pinnedRelayUrls || dmRelays.any { it.config.url == url }
+                        val needsApproval = url in dmDeliveryTargets || url in groupRelayAuthTargets
+                        when {
+                            trusted && !relay.config.auth -> null
+                            !trusted && !needsApproval -> null
+                            else -> {
+                                val pending = PendingAuthRequest(url, challenge)
+                                authSessions[url] = pending
+                                if (!trusted && url !in userApprovedAuthRelays) {
+                                    _pendingAuthRequest.value = pending
+                                    null
+                                } else {
+                                    pending
+                                }
+                            }
+                        }
                     }
-                    request
                 }
-                sendAuth(request)
+                if (request != null) sendAuth(request)
             }
         }
     }
@@ -1254,7 +1486,8 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         message: String,
         skipBadCheck: Boolean = false,
         write: Boolean = false,
-        autoReconnect: Boolean = false
+        autoReconnect: Boolean = false,
+        concordStreamAuthors: Collection<String>? = null,
     ): Boolean {
         if (url in blockedUrls) return false
         if (!skipBadCheck && healthTracker?.isBad(url) == true) return false
@@ -1276,6 +1509,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
                     }
                     subscriptionTracker.track(url, subId)
                     trackSubscription(url, subId, message)
+                    trackConcordSubscriptionAuth(url, subId, message, concordStreamAuthors)
                 }
                 existing.send(message)
                 return true
@@ -1325,6 +1559,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
             if (!subscriptionTracker.hasCapacity(url, subId)) return false
             subscriptionTracker.track(url, subId)
             trackSubscription(url, subId, message)
+            trackConcordSubscriptionAuth(url, subId, message, concordStreamAuthors)
             logSubStart(subId, message)
         }
         ephemeralLastUsed[url] = System.currentTimeMillis()
@@ -1606,6 +1841,7 @@ class RelayPool(private var prefs: SharedPreferences? = null) {
         for (relayMap in activeSubscriptions.values) {
             relayMap.remove(subscriptionId)
         }
+        concordSubscriptionAuth.entries.removeIf { it.value.subscriptionId == subscriptionId }
         val msg = ClientMessage.close(subscriptionId)
         for (relay in relays) relay.send(msg)
         for (relay in dmRelays) relay.send(msg)

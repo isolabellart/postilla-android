@@ -571,6 +571,7 @@ class ConcordChatRepository(
         val authorKeys = planes.map { it.stream.publicKeyHex }.distinct()
         val streamSignature = concordChatHistoryStreamSignature(planes)
         val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
+        relayPool.registerConcordStreamKeys(planes.map { it.stream }, targets)
         val roomKey = roomKey(ownerPubkey, communityIdHex, channelIdHex)
         val seen = ConcurrentHashMap.newKeySet<String>()
 
@@ -613,7 +614,14 @@ class ConcordChatRepository(
             ),
         )
         val sent = targets.count { url ->
-            relayPool.sendToRelayOrEphemeral(url, liveRequest, skipBadCheck = true, write = false, autoReconnect = true)
+            relayPool.sendToRelayOrEphemeral(
+                url,
+                liveRequest,
+                skipBadCheck = true,
+                write = false,
+                autoReconnect = true,
+                concordStreamAuthors = authorKeys,
+            )
         }
         if (sent == 0) {
             liveCollector.cancel()
@@ -755,6 +763,7 @@ class ConcordChatRepository(
     ): List<ConcordChatMessage> {
         val targets = (communityRelays + relayPool.getReadRelayUrls()).distinct()
         val authorKeys = readPlanes.map { it.stream.publicKeyHex }.distinct()
+        relayPool.registerConcordStreamKeys(readPlanes.map { it.stream }, targets)
         val streamSignature = concordChatHistoryStreamSignature(readPlanes)
         val wraps = coroutineScope {
             targets.map { relay ->
@@ -858,7 +867,12 @@ class ConcordChatRepository(
         }
 
         val sent = relayPool.sendToRelayOrEphemeral(
-            relayUrl, request, skipBadCheck = true, write = false, autoReconnect = true,
+            relayUrl,
+            request,
+            skipBadCheck = true,
+            write = false,
+            autoReconnect = true,
+            concordStreamAuthors = authorKeys,
         )
         if (!sent) {
             eventCollector.cancel()
