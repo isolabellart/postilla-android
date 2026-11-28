@@ -169,6 +169,40 @@ internal fun concordControlPlaneRelayCandidates(
         .distinct()
 }
 
+/**
+ * Select the best independently verifiable relay cohort after a multi-cohort read.
+ * Writer deliveries are published to both current metadata relays and bootstrap
+ * relays. A quorum across their union can be impossible when one old cohort is offline,
+ * so readiness is measured against either cohort, while events are collected from both.
+ */
+internal fun concordBestRelayReadTargets(
+    currentTargets: Collection<String>,
+    bootstrapTargets: Collection<String>,
+    sentRelays: Collection<String>,
+    eoseRelays: Collection<String>,
+): List<String> {
+    val sent = concordNormalizeRelayTargets(sentRelays).toSet()
+    val eose = concordNormalizeRelayTargets(eoseRelays).toSet()
+    val candidates = listOf(currentTargets, bootstrapTargets)
+        .map(::concordNormalizeRelayTargets)
+        .filter { it.isNotEmpty() }
+        .distinct()
+
+    fun confirmed(targets: List<String>): Int =
+        targets.count { it in sent && it in eose }
+
+    return candidates.maxWithOrNull(
+        compareBy<List<String>> { targets ->
+            when {
+                concordRelayReadIsComplete(targets, sent, eose) -> 2
+                concordRelayReadHasQuorum(targets, sent, eose) -> 1
+                else -> 0
+            }
+        }.thenBy(::confirmed)
+            .thenBy { targets -> confirmed(targets).toDouble() / targets.size.coerceAtLeast(1) },
+    ).orEmpty()
+}
+
 /** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
 internal fun concordRolePermissionAllowsChannelAction(
     rolesV2: Boolean,
@@ -863,7 +897,10 @@ class ConcordCommunityRepository(
     ): CommunityRolesSnapshot {
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
-        val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
+        require(control.readSummary.hasQuorum) {
+            "The Control Plane did not reach a verified relay quorum to read the current roles"
+        }
         val authority = control.state.authority
         val canManage = authority.isOwner(signer.pubKey) ||
             authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)
@@ -2288,6 +2325,7 @@ class ConcordCommunityRepository(
             else -> null
         }
         var lastFailure: Exception? = null
+        val successfulReads = mutableListOf<ControlPlaneSnapshot>()
         for (targets in candidates) {
             try {
                 if (controlAuthKey != null) {
@@ -2321,24 +2359,72 @@ class ConcordCommunityRepository(
                 }
                 val editions = valid.map { it.second }
                 val state = ConcordCommunityState.fold(editions, membership.id.hexToByteArray(), membership.owner)
-                // Persist only after the envelopes and canonical editions were opened and
-                // the authorized Control Plane fold completed. A cache entry cannot grant
-                // access; all callers still derive keys and re-check permissions from Nostr.
-                persistControlRelayHints(membership.id, state.metadata?.relays.orEmpty())
-                return ControlPlaneSnapshot(
+                val snapshot = ControlPlaneSnapshot(
                     keys,
                     valid.map { it.first },
                     editions,
                     state,
                     relayRead.summary,
                 )
+                if (requireAllResponders) {
+                    if (!relayRead.summary.isComplete) {
+                        throw IllegalStateException(
+                            "The Control Plane read did not reach every requested relay " +
+                                "(${relayRead.summary.respondedCount}/${relayRead.summary.requestedCount})",
+                        )
+                    }
+                    // Authority-changing operations are based on one complete,
+                    // independently read cohort, never a partial union of relay snapshots.
+                    persistControlRelayHints(membership.id, state.metadata?.relays.orEmpty())
+                    return snapshot
+                }
+                successfulReads += snapshot
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 lastFailure = error
             }
         }
-        throw lastFailure ?: IllegalStateException("The community Control Plane is unavailable")
+
+        if (successfulReads.isEmpty()) {
+            throw lastFailure ?: IllegalStateException("The community Control Plane is unavailable")
+        }
+
+        // Cached current relays and bootstrap relays can each hold editions missing from
+        // the other cohort. Merge only opened canonical editions, deduplicated by signed
+        // event ID, then fold the combined authenticated history to adopt the newest heads.
+        val editionsByWrapId = linkedMapOf<String, Pair<Event, ControlEdition>>()
+        successfulReads.forEach { snapshot ->
+            snapshot.wraps.zip(snapshot.editions).forEach { (wrap, edition) ->
+                editionsByWrapId.putIfAbsent(wrap.id, wrap to edition)
+            }
+        }
+        val merged = editionsByWrapId.values.toList()
+        val mergedEditions = merged.map { it.second }
+        val state = ConcordCommunityState.fold(
+            mergedEditions,
+            membership.id.hexToByteArray(),
+            membership.owner,
+        )
+        val bestRead = successfulReads.maxWithOrNull(
+            compareBy<ControlPlaneSnapshot> { it.readSummary.isComplete }
+                .thenBy { it.readSummary.hasQuorum }
+                .thenBy {
+                    it.readSummary.respondedCount.toDouble() /
+                        it.readSummary.requestedCount.coerceAtLeast(1)
+                }
+                .thenBy { it.readSummary.respondedCount },
+        ) ?: throw IllegalStateException("The community Control Plane could not be folded")
+        // Persist only after the combined envelopes were opened and the authorized fold
+        // completed. Cached URLs remain discovery hints, not authority or signing material.
+        persistControlRelayHints(membership.id, state.metadata?.relays.orEmpty())
+        return ControlPlaneSnapshot(
+            keys,
+            merged.map { it.first },
+            mergedEditions,
+            state,
+            bestRead.readSummary,
+        )
     }
 
     /** Downloads and decrypts the community icon using its member-sealed CORD-02 pointer. */
@@ -2427,11 +2513,12 @@ class ConcordCommunityRepository(
                 )
             }
             .toMap()
-        val accessTargets = currentCommunityRelays
+        val bootstrapRelays = concordNormalizeRelayTargets(membership.relays)
+        val accessTargets = concordNormalizeRelayTargets(currentCommunityRelays + bootstrapRelays)
         if (accessPlanes.isNotEmpty()) {
             relayPool.registerConcordStreamKeys(accessPlanes.values, accessTargets)
         }
-        val accessRead = if (accessPlanes.isEmpty() || accessTargets.isEmpty()) {
+        val accessReadRaw = if (accessPlanes.isEmpty() || accessTargets.isEmpty()) {
             null
         } else {
             fetchEventsFromRelaysDetailed(
@@ -2443,6 +2530,22 @@ class ConcordCommunityRepository(
                 ),
                 label = "writer-access-${membership.id.take(12)}",
                 requireAllResponders = requireAllResponders,
+            )
+        }
+        val accessRead = accessReadRaw?.let { fetched ->
+            val bestTargets = concordBestRelayReadTargets(
+                currentTargets = currentCommunityRelays,
+                bootstrapTargets = bootstrapRelays,
+                sentRelays = fetched.summary.sentRelays,
+                eoseRelays = fetched.summary.respondedRelays,
+            )
+            RelayFetchResult(
+                events = fetched.events,
+                summary = RelayReadSummary(
+                    requestedRelays = bestTargets,
+                    sentRelays = fetched.summary.sentRelays.filter { it in bestTargets },
+                    respondedRelays = fetched.summary.respondedRelays.filter { it in bestTargets },
+                ),
             )
         }
         val accessEventsByAddress = accessRead?.events?.groupBy { it.pubkey.lowercase() }.orEmpty()

@@ -60,6 +60,67 @@ class ConcordChannelPermissionPolicyTest {
     }
 
     @Test
+    fun writerAccessReadCanUseBootstrapQuorumWhenCurrentRelaysAreSilent() {
+        val current = listOf(
+            "wss://current-1.example/",
+            "wss://current-2.example/",
+            "wss://current-3.example/",
+        )
+        val bootstrap = listOf(
+            "wss://bootstrap-1.example/",
+            "wss://bootstrap-2.example/",
+            "wss://bootstrap-3.example/",
+        )
+        assertEquals(
+            bootstrap,
+            concordBestRelayReadTargets(
+                currentTargets = current,
+                bootstrapTargets = bootstrap,
+                sentRelays = bootstrap,
+                eoseRelays = bootstrap,
+            ),
+        )
+    }
+
+    @Test
+    fun writerAccessReadPrefersCurrentCohortWhenItHasVerifiedQuorum() {
+        val current = listOf(
+            "wss://current-1.example/",
+            "wss://current-2.example/",
+            "wss://current-3.example/",
+        )
+        val bootstrap = listOf(
+            "wss://bootstrap-1.example/",
+            "wss://bootstrap-2.example/",
+            "wss://bootstrap-3.example/",
+        )
+        assertEquals(
+            current,
+            concordBestRelayReadTargets(
+                currentTargets = current,
+                bootstrapTargets = bootstrap,
+                sentRelays = current + bootstrap.take(1),
+                eoseRelays = current + bootstrap.take(1),
+            ),
+        )
+    }
+
+    @Test
+    fun writerAccessReadFallsBackToBestResponsiveCohortWithoutQuorum() {
+        val current = listOf("wss://current-1.example/", "wss://current-2.example/", "wss://current-3.example/")
+        val bootstrap = listOf("wss://bootstrap-1.example/", "wss://bootstrap-2.example/", "wss://bootstrap-3.example/")
+        assertEquals(
+            bootstrap,
+            concordBestRelayReadTargets(
+                currentTargets = current,
+                bootstrapTargets = bootstrap,
+                sentRelays = current + bootstrap,
+                eoseRelays = current.take(1) + bootstrap.take(2),
+            ),
+        )
+    }
+
+    @Test
     fun writerPublicationsReachBothCurrentAndBootstrapRelays() {
         assertEquals(
             listOf("wss://current.example/", "wss://bootstrap.example/"),

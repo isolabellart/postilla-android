@@ -10,6 +10,7 @@ import com.darkwisp.app.concord.VectorHubListing
 import com.vitorpamplona.quartz.nip92IMeta.IMetaTag
 import com.vitorpamplona.quartz.concord.cord02Community.ImagePointer
 import com.darkwisp.app.concord.ConcordCommunityRepository
+import com.darkwisp.app.concord.concordNormalizeRelayTargets
 import com.darkwisp.app.concord.PostillaQuartzSigner
 import com.darkwisp.app.nostr.NostrSigner
 import com.darkwisp.app.relay.RelayPool
@@ -121,6 +122,13 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
      * ConcordCommunityListEntry is intentionally not a data class, so preserve every key
      * and extension explicitly when refreshing these hints in the in-memory session.
      */
+    private fun communityRelayTargets(
+        communityId: String,
+        membership: ConcordCommunityListEntry,
+    ): List<String> = concordNormalizeRelayTargets(
+        _communities.value.firstOrNull { it.id == communityId }?.relays.orEmpty() + membership.relays,
+    )
+
     private fun membershipWithCurrentMetadata(
         membership: ConcordCommunityListEntry,
         name: String?,
@@ -135,7 +143,9 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         controlRoot = membership.controlRoot,
         heldRoots = membership.heldRoots,
         privateChannels = membership.privateChannels,
-        relays = relays.ifEmpty { membership.relays },
+        // Preserve the encrypted membership's original bootstrap relay hints.
+        // Current metadata relays are kept separately in CommunityItem.
+        relays = membership.relays.ifEmpty { relays },
         name = name?.takeIf { it.isNotBlank() } ?: membership.name,
         addedAt = membership.addedAt,
         inviteRef = membership.inviteRef,
@@ -372,7 +382,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                         it.copy(
                                             name = sessionMembership.name,
                                             description = snapshot.communityDescription,
-                                            relays = sessionMembership.relays,
+                                            relays = snapshot.communityRelays.ifEmpty { sessionMembership.relays },
                                         )
                                     } else it
                                 }
@@ -439,7 +449,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                                     ownerPubkey = requestedOwner,
                                     communityIdHex = membership.id,
                                     channels = snapshot.channels,
-                                    communityRelays = sessionMembership.relays,
+                                    communityRelays = communityRelayTargets(membership.id, membership),
                                 )
                                 if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
                                 val loadedMembers = repo.loadMembers(PostillaQuartzSigner(signer), membership.id, observed)
@@ -628,7 +638,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                             it.copy(
                                 name = sessionMembership.name,
                                 description = snapshot.communityDescription,
-                                relays = sessionMembership.relays,
+                                relays = snapshot.communityRelays.ifEmpty { sessionMembership.relays },
                             )
                         } else it
                     }
@@ -690,7 +700,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             communityRootHex = entry.root,
             channelIdHex = channelId,
             epoch = entry.rootEpoch,
-            communityRelays = entry.relays,
+            communityRelays = communityRelayTargets(communityId, entry),
             privateChannelKeyHex = channel?.privateKeyHex,
             privateChannelEpoch = channel?.privateChannelEpoch,
             readPlanes = channel?.readPlanes.orEmpty(),
@@ -795,7 +805,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             text = text,
             privateChannelKeyHex = channelInfo.privateKeyHex,
             privateChannelEpoch = channelInfo.privateChannelEpoch,
-            communityRelays = entry.relays,
+            communityRelays = communityRelayTargets(communityId, entry),
             writerCredential = channelInfo.writerCredential,
             extraTags = extraTags,
             imetas = imetas,
@@ -818,7 +828,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             communityIdHex = entry.id,
             channelIdHex = channelId,
             readPlanes = channel.readPlanes,
-            communityRelays = entry.relays,
+            communityRelays = communityRelayTargets(communityId, entry),
         ).orEmpty()
     }
 
@@ -850,7 +860,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             reaction = reaction,
             privateChannelKeyHex = channel.privateKeyHex,
             privateChannelEpoch = channel.privateChannelEpoch,
-            communityRelays = entry.relays,
+            communityRelays = communityRelayTargets(communityId, entry),
             writerCredential = channel.writerCredential,
         ) ?: false
     }
@@ -1128,7 +1138,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                     ownerPubkey = signer.pubkeyHex,
                     communityIdHex = entry.id,
                     channels = channelSnapshot.channels,
-                    communityRelays = channelSnapshot.communityRelays.ifEmpty { entry.relays },
+                    communityRelays = concordNormalizeRelayTargets(channelSnapshot.communityRelays + entry.relays),
                 ).orEmpty()
                 val loaded = repo.loadMembers(PostillaQuartzSigner(signer), communityId, observed)
                 if (signerPubkey?.lowercase() != requestedOwner) return@launch
