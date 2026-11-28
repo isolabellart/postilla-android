@@ -1481,7 +1481,7 @@ class ConcordCommunityRepository(
                         ledger = writerLedger,
                         context = liveWriterContext,
                         accessPlane = accessPlanes[channelId],
-                        accessEvents = accessEventsByAddress[accessPlanes[channelId]?.publicKeyHex?.lowercase()].orEmpty(),
+                        accessEvents = accessPlanes[channelId]?.publicKeyHex?.lowercase()?.let(accessEventsByAddress::get).orEmpty(),
                     )
                 } else {
                     null
