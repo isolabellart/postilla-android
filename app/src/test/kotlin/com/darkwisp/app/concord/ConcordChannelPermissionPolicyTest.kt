@@ -31,21 +31,23 @@ class ConcordChannelPermissionPolicyTest {
     }
 
     @Test
-    fun metadataRelaysAreAdoptedOnlyAfterControlPlaneQuorum() {
+    fun authenticatedPartialControlSnapshotCanAdoptNewMetadataRelays() {
+        // A valid encrypted/folded metadata edition is useful even while some relays
+        // have not sent EOSE; otherwise clients can remain stranded on stale bootstrap URLs.
+        assertEquals(
+            listOf("wss://new-relay.example"),
+            concordEffectiveCommunityRelays(
+                metadataRelays = listOf("wss://new-relay.example/"),
+                fallbackRelays = listOf("wss://bootstrap.example"),
+                controlReadHasQuorum = false,
+            ),
+        )
         assertEquals(
             listOf("wss://new-relay.example"),
             concordEffectiveCommunityRelays(
                 metadataRelays = listOf("wss://new-relay.example/"),
                 fallbackRelays = listOf("wss://bootstrap.example"),
                 controlReadHasQuorum = true,
-            ),
-        )
-        assertEquals(
-            listOf("wss://bootstrap.example"),
-            concordEffectiveCommunityRelays(
-                metadataRelays = listOf("wss://new-relay.example"),
-                fallbackRelays = listOf("wss://bootstrap.example"),
-                controlReadHasQuorum = false,
             ),
         )
     }
