@@ -39,8 +39,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -629,7 +629,37 @@ fun ConcordRoomScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text        bottomBar = {
+                                text = { Text("Manage public invite links") },
+                                enabled = signer != null,
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showInviteLinksDialog = true
+                                    viewModel.refreshInviteLinks(communityId, signer)
+                                },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Create public channel") },
+                                enabled = signer != null,
+                                onClick = {
+                                    showCommunityMenu = false
+                                    showCreateChannelDialog = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Refresh channels") },
+                                onClick = {
+                                    showCommunityMenu = false
+                                    viewModel.refreshChannels(communityId)
+                                },
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+        bottomBar = {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 4.dp,
@@ -839,34 +869,7 @@ fun ConcordRoomScreen(
                 }
             }
         },
-           sending = true
-                                val sendResult = runCatching {
-                                    viewModel.sendChannelMessage(
-                                        communityId, selectedChannelId, outgoing, signer,
-                                        replyTo = replyToMessage,
-                                    )
-                                }
-                                val sent = sendResult.getOrNull()
-                                if (sent != null) {
-                                    if (messages.none { it.id == sent.id }) messages.add(sent)
-                                    messages.sortBy { it.orderingAtMs }
-                                    text = ""
-                                    replyToMessage = null
-                                    inlineReplyMode = false
-                                } else {
-                                    sendError = sendResult.exceptionOrNull()?.message
-                                        ?: "Message not confirmed by a relay"
-                                }
-                                sending = false
-                            }
-                        },
-                    ) {
-                        if (sending) CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                        else Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
-                    }
-                }
-            }
-        },
+
     ) { padding ->
         if (community == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
