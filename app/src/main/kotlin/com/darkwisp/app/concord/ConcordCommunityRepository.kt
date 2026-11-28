@@ -42,6 +42,8 @@ import com.vitorpamplona.quartz.concord.cord04Roles.RoleEntity
 import com.vitorpamplona.quartz.concord.cord04Roles.RoleScope
 import com.vitorpamplona.quartz.concord.cord04Roles.ControlRootWrap
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
+import com.vitorpamplona.quartz.concord.cord04Roles.RankKey
+import com.vitorpamplona.quartz.concord.cord04Roles.RankedRoster
 import com.vitorpamplona.quartz.concord.cord05Invites.ConcordInviteLink
 import com.vitorpamplona.quartz.concord.cord05Invites.InviteBundleStatus
 import com.vitorpamplona.quartz.concord.crypto.ControlPlaneKeys
@@ -76,6 +78,9 @@ import java.util.UUID
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -531,6 +536,10 @@ class ConcordCommunityRepository(
         val position: Long,
         val permissions: ConcordPermissions,
         val canEdit: Boolean,
+        val rankKey: String? = null,
+        val color: Long = 0L,
+        val display: Boolean = false,
+        val mentionable: Boolean = false,
     )
 
     data class CommunityRolesSnapshot(
@@ -552,13 +561,46 @@ class ConcordCommunityRepository(
         val canManage = authority.isOwner(signer.pubKey) ||
             authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)
         if (control.state.isRolesV2) {
-            // Quartz exposes Roles v2 folding, but this client has not yet implemented the VSK-13
-            // editor. Never present the legacy role editor for a Roles v2 community.
+            val roster = authority.rankedRoster()
+                ?: throw IllegalStateException("The Roles v2 Control Plane did not produce a roster")
+            check(roster.converged) {
+                "The Roles v2 roster is still converging. Refresh before managing roles."
+            }
+            val actorRank = authority.rank(signer.pubKey)
+            val roles = roster.roles
+                .sortedWith(compareBy({ it.position }, { it.rank }, { it.roleId }))
+                .map { role ->
+                    val head = roster.heads[role.roleId]
+                    val support = if (authority.isOwner(signer.pubKey)) {
+                        ConcordPermissions.ALL
+                    } else {
+                        roster.permissionsAbove(signer.pubKey, role.position) union
+                            (head?.let { authority.sealedFor(signer.pubKey, it.hashHex, role.position) }
+                                ?: ConcordPermissions.NONE)
+                    }
+                    CommunityRole(
+                        id = role.roleId,
+                        name = role.name,
+                        position = role.position,
+                        permissions = role.permissions,
+                        canEdit = canManage && (authority.isOwner(signer.pubKey) ||
+                            (actorRank != null && actorRank < role.position &&
+                                support.has(ConcordPermissions.MANAGE_ROLES) &&
+                                (role.permissions minus support).isEmpty())),
+                        rankKey = role.rank,
+                        color = role.color,
+                        display = role.display,
+                        mentionable = role.mentionable,
+                    )
+                }
+            val delegableBits = (0..29)
+                .filterNot { it == 7 || it == 10 || it == 12 || it == 27 }
+                .filter { authority.effectivePermissions(signer.pubKey).has(it) }
             return CommunityRolesSnapshot(
-                roles = emptyList(),
+                roles = roles,
                 rolesV2 = true,
                 canManageRoles = canManage,
-                delegablePermissionBits = emptyList(),
+                delegablePermissionBits = delegableBits,
             )
         }
         val actorRank = authority.rank(signer.pubKey)
@@ -646,6 +688,332 @@ class ConcordCommunityRepository(
         }
     }
 
+
+    private fun rolesV2RoleContent(
+        roleId: String,
+        name: String,
+        rank: String,
+        permissions: ConcordPermissions,
+        color: Long,
+        display: Boolean,
+        mentionable: Boolean,
+        previous: ControlEdition? = null,
+    ): String = buildJsonObject {
+        val prior = previous?.let {
+            runCatching { ConcordJson.instance.parseToJsonElement(it.content) as? JsonObject }.getOrNull()
+        }
+        prior?.forEach { (key, value) -> put(key, value) }
+        put("role_id", roleId.lowercase())
+        put("name", name)
+        put("rank", rank)
+        put("permissions", permissions.toWire())
+        put("color", JsonPrimitive(color))
+        put("display", JsonPrimitive(display))
+        put("mentionable", JsonPrimitive(mentionable))
+        remove("deleted")
+    }.toString()
+
+    private fun rolesV2GrantContent(
+        member: String,
+        roleIds: Collection<String>,
+        controlWrap: String?,
+    ): String = buildJsonObject {
+        put("member", member.lowercase())
+        put("role_ids", buildJsonArray {
+            roleIds.map { it.lowercase() }.distinct().sorted().forEach { add(JsonPrimitive(it)) }
+        })
+        controlWrap?.let { put("control_wrap", it) }
+    }.toString()
+
+    private fun rolesV2PositionForWrite(
+        state: ConcordCommunityState,
+        requestedPosition: Long,
+        excludingRoleId: String? = null,
+    ): Pair<String, Long> {
+        val roster = state.authority.rankedRoster()
+            ?: throw IllegalStateException("Roles v2 roster is unavailable")
+        val orderedKeys = roster.roles
+            .filterNot { excludingRoleId != null && it.roleId.equals(excludingRoleId, ignoreCase = true) }
+            .map { it.rank }
+            .distinct()
+            .sorted()
+        val target = requestedPosition.coerceIn(1L, orderedKeys.size.toLong() + 1L).toInt()
+        val lower = orderedKeys.getOrNull(target - 2)
+        val upper = orderedKeys.getOrNull(target - 1)
+        val key = RankKey.between(lower, upper)
+            ?: throw IllegalStateException("No valid rank key fits at this position. Move another role first.")
+        return key to target.toLong()
+    }
+
+    private fun requireRolesV2RoleAuthority(
+        state: ConcordCommunityState,
+        actor: String,
+        position: Long,
+        permissions: ConcordPermissions,
+        currentHeadHash: String? = null,
+    ) {
+        val authority = state.authority
+        if (authority.isOwner(actor)) return
+        if (!authority.hasPermission(actor, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        val actorRank = authority.rank(actor)
+            ?: throw IllegalStateException("The actor has no ranked role authority")
+        require(actorRank < position) {
+            "The actor must strictly outrank the role's current and proposed position"
+        }
+        val roster = authority.rankedRoster()
+            ?: throw IllegalStateException("Roles v2 roster is unavailable")
+        val sealed = currentHeadHash?.let { authority.sealedFor(actor, it, position) }
+            ?: ConcordPermissions.NONE
+        val support = roster.permissionsAbove(actor, position) union sealed
+        require(support.has(ConcordPermissions.MANAGE_ROLES)) {
+            "The actor must hold MANAGE_ROLES above the role's rank"
+        }
+        require((permissions minus support).isEmpty()) {
+            "A role cannot grant permissions this account does not hold above its rank"
+        }
+    }
+
+    private suspend fun buildRolesV2ControlEvent(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        entityKind: ControlEntityKind,
+        entityId: ByteArray,
+        content: String,
+        previous: ControlEdition?,
+    ): NostrEvent {
+        val authority = control.state.authority
+        if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
+            throw IllegalStateException("This account cannot manage community roles")
+        }
+        check(control.keys.signer != null) { "The Control Plane write key is unavailable on this device" }
+        val citation = authority.citationFor(signer.pubKey)
+        if (!authority.isOwner(signer.pubKey) && citation == null) {
+            throw IllegalStateException("The actor's current Grant head is not synchronized. Refresh before publishing.")
+        }
+        val rumor = ControlEditionBuilder.rumor(
+            authorPubKey = signer.pubKey,
+            entityKind = entityKind,
+            entityId = entityId,
+            version = (previous?.version ?: 0L) + 1L,
+            prevHash = previous?.hash,
+            content = content,
+            createdAt = System.currentTimeMillis() / 1000L,
+            authorityCitation = citation,
+            binding = RankedRoster.bindingForWrite(
+                authority, membership.id.hexToByteArray(), entityKind,
+            ),
+        )
+        return NostrEvent.fromJson(
+            ConcordStreamEnvelope.wrap(
+                rumor = rumor,
+                keys = control.keys,
+                authorSigner = signer,
+                encrypted = false,
+            ).toJson(),
+        )
+    }
+
+    private suspend fun publishRolesV2ControlEvent(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        entityKind: ControlEntityKind,
+        entityId: ByteArray,
+        content: String,
+        previous: ControlEdition?,
+    ): NostrEvent {
+        val event = buildRolesV2ControlEvent(signer, membership, control, entityKind, entityId, content, previous)
+        withContext(Dispatchers.IO) { journalEvents(membership.id, listOf(event)) }
+        if (!publishConfirmed(event, membership.relays)) {
+            throw IllegalStateException("The Roles v2 Control Plane edition was not confirmed by a community relay")
+        }
+        return event
+    }
+
+    private suspend fun createRolesV2Role(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+    ): String {
+        val normalized = name.trim()
+        require(normalized.isNotBlank() && normalized.encodeToByteArray().size <= 64) {
+            "Role name must be 1–64 UTF-8 bytes"
+        }
+        val roster = control.state.authority.rankedRoster()
+            ?: throw IllegalStateException("Roles v2 roster is unavailable")
+        check(roster.converged) { "The Roles v2 roster is incomplete. Refresh before creating a role." }
+        require(roster.roles.size < 100) { "The Roles v2 community already has the maximum of 100 roles" }
+        val (rank, densePosition) = rolesV2PositionForWrite(control.state, position)
+        requireRolesV2RoleAuthority(control.state, signer.pubKey, densePosition, permissions)
+        val roleIdBytes = RandomInstance.bytes(32)
+        val roleId = roleIdBytes.toHexKey()
+        val content = rolesV2RoleContent(roleId, normalized, rank, permissions, 0L, true, false)
+        publishRolesV2ControlEvent(
+            signer, membership, control, ControlEntityKind.RANKED_ROLE,
+            roleIdBytes, content, null,
+        )
+        return roleId
+    }
+
+    private suspend fun updateRolesV2Role(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        roleId: String,
+        name: String,
+        position: Long,
+        permissions: ConcordPermissions,
+    ): String {
+        val roleKey = roleId.lowercase()
+        val normalized = name.trim()
+        require(normalized.isNotBlank() && normalized.encodeToByteArray().size <= 64) {
+            "Role name must be 1–64 UTF-8 bytes"
+        }
+        val roster = control.state.authority.rankedRoster()
+            ?: throw IllegalStateException("Roles v2 roster is unavailable")
+        check(roster.converged) { "The Roles v2 roster is incomplete. Refresh before editing a role." }
+        val current = roster.role(roleKey) ?: throw IllegalArgumentException("Roles v2 role does not exist")
+        val head = roster.heads[roleKey] ?: throw IllegalStateException("The role's current head is unavailable")
+        val (rank, densePosition) = if (position == current.position) {
+            current.rank to current.position
+        } else {
+            rolesV2PositionForWrite(control.state, position, roleKey)
+        }
+        requireRolesV2RoleAuthority(control.state, signer.pubKey, current.position, current.permissions, head.hashHex)
+        requireRolesV2RoleAuthority(control.state, signer.pubKey, densePosition, permissions, head.hashHex)
+        require(current.permissions.hasAny(ConcordPermissions.STAFF_BITS) ==
+            permissions.hasAny(ConcordPermissions.STAFF_BITS)) {
+            "Changing STAFF permissions on an existing role needs coordinated Control Root redistribution. No change was published."
+        }
+        val content = rolesV2RoleContent(
+            roleKey, normalized, rank, permissions, current.color, current.display, current.mentionable, head,
+        )
+        val event = publishRolesV2ControlEvent(
+            signer, membership, control, ControlEntityKind.RANKED_ROLE,
+            roleKey.hexToByteArray(), content, head,
+        )
+        return event.id
+    }
+
+    private suspend fun deleteRolesV2Role(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        roleId: String,
+    ): String {
+        val roleKey = roleId.lowercase()
+        val roster = control.state.authority.rankedRoster()
+            ?: throw IllegalStateException("Roles v2 roster is unavailable")
+        check(roster.converged) { "The Roles v2 roster is incomplete. Refresh before deleting a role." }
+        val current = roster.role(roleKey) ?: throw IllegalArgumentException("Roles v2 role does not exist")
+        val holders = roster.grants.filter { roleKey in it.roleIds }.map { it.member }
+        require(holders.isEmpty()) {
+            "This role is still assigned to members. Remove its assignments first; deletion was not published."
+        }
+        val head = roster.heads[roleKey] ?: throw IllegalStateException("The role's current head is unavailable")
+        requireRolesV2RoleAuthority(control.state, signer.pubKey, current.position, current.permissions, head.hashHex)
+        val content = buildJsonObject {
+            val prior = runCatching { ConcordJson.instance.parseToJsonElement(head.content) as? JsonObject }.getOrNull()
+            prior?.forEach { (key, value) -> put(key, value) }
+            put("role_id", roleKey)
+            put("deleted", JsonPrimitive(true))
+        }.toString()
+        val event = publishRolesV2ControlEvent(
+            signer, membership, control, ControlEntityKind.RANKED_ROLE,
+            roleKey.hexToByteArray(), content, head,
+        )
+        return event.id
+    }
+
+    private suspend fun setRolesV2MemberRoles(
+        signer: PostillaQuartzSigner,
+        membership: ConcordCommunityListEntry,
+        control: ControlPlaneSnapshot,
+        memberPubKey: String,
+        requestedRoleIds: Collection<String>,
+    ): String {
+        val target = memberPubKey.lowercase()
+        val targetBytes = target.hexToByteArray()
+        require(targetBytes.size == 32) { "Member public key must be 32 bytes" }
+        require(target != signer.pubKey.lowercase()) { "An account cannot edit its own role grant" }
+        val authority = control.state.authority
+        val roster = authority.rankedRoster()
+            ?: throw IllegalStateException("Roles v2 roster is unavailable")
+        check(roster.converged) { "The Roles v2 roster is incomplete. Refresh before changing member roles." }
+        require(authority.canActOn(signer.pubKey, target, ConcordPermissions.MANAGE_ROLES)) {
+            "The actor does not outrank this member or cannot manage member roles"
+        }
+        require(!authority.isBanned(target)) { "A banned member cannot receive roles" }
+        val roleIds = requestedRoleIds.map { it.lowercase() }.distinct().sorted()
+        require(roleIds.size <= 64) { "A member cannot hold more than 64 roles" }
+        val currentRoleIds = roster.rolesOf(target).map { it.roleId }.distinct().sorted()
+        if (roleIds == currentRoleIds) return ""
+        val selected = roleIds.map { id ->
+            roster.role(id) ?: throw IllegalArgumentException("Roles v2 role " + id + " does not exist")
+        }
+        if (!authority.isOwner(signer.pubKey)) {
+            val reach = selected.minOfOrNull { it.position } ?: RankedRoster.BENEATH_EVERY_ROLE
+            val support = roster.permissionsAbove(signer.pubKey, reach)
+            require(support.has(ConcordPermissions.MANAGE_ROLES)) {
+                "The actor must hold MANAGE_ROLES above every role being assigned"
+            }
+            selected.forEach { role ->
+                require((role.permissions minus support).isEmpty()) {
+                    "The actor cannot delegate every permission held by role " + role.name
+                }
+            }
+        }
+
+        // Do not revoke an ACL-based private-channel permission while the target still has its old key.
+        val removedRoleIds = currentRoleIds.filterNot { it in roleIds }.toSet()
+        val privateAccessRemoval = control.state.channels.values.any { channel ->
+            if (!channel.definition.private || channel.definition.deleted) return@any false
+            val scope = control.state.syncs[channel.channelIdHex] ?: channel.channelIdHex
+            control.state.overwrites.any { overwrite ->
+                overwrite.scope == scope && overwrite.targetKind == "role" &&
+                    overwrite.targetId in removedRoleIds &&
+                    overwrite.allow.has(ConcordPermissions.VIEW_CHANNEL)
+            }
+        }
+        require(!privateAccessRemoval) {
+            "Removing this role would revoke private-channel access. Rotate the affected channel key first; no Grant was published."
+        }
+
+        val hadStaff = authority.isStaff(target)
+        val everyoneStaff = roster.everyone?.hasAny(ConcordPermissions.STAFF_BITS) == true
+        val permissions = selected.fold(ConcordPermissions.NONE) { acc, role -> acc union role.permissions }
+        val willHaveStaff = everyoneStaff || permissions.hasAny(ConcordPermissions.STAFF_BITS)
+        val controlWrap = if (willHaveStaff) {
+            val root = membership.controlRoot
+                ?: throw IllegalStateException("The Control Root is unavailable; the staff key handoff cannot be created")
+            ControlRootWrap.build(signer, target, membership.rootEpoch, root.hexToByteArray())
+        } else null
+
+        val grantId = ConcordKeyDerivation.grantCoordinate(membership.id.hexToByteArray(), targetBytes)
+        val head = roster.heads[grantId.toHexKey()]
+        val content = rolesV2GrantContent(target, roleIds, controlWrap)
+        val event = buildRolesV2ControlEvent(
+            signer, membership, control, ControlEntityKind.GRANT,
+            grantId, content, head,
+        )
+        val published = if (hadStaff && !willHaveStaff) {
+            refoundCommunity(signer, membership.id, extraControlEvents = listOf(event))
+            event
+        } else {
+            withContext(Dispatchers.IO) { journalEvents(membership.id, listOf(event)) }
+            if (!publishConfirmed(event, membership.relays)) {
+                throw IllegalStateException("The Roles v2 Grant was not confirmed by a community relay")
+            }
+            event
+        }
+        return published.id
+    }
     suspend fun createRole(
         signer: PostillaQuartzSigner,
         communityId: String,
@@ -658,6 +1026,9 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.isRolesV2) {
+            return createRolesV2Role(signer, membership, control, name, position, permissions)
+        }
         requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
@@ -699,6 +1070,11 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.isRolesV2) {
+            val current = control.state.authority.rankedRoster()?.rolesOf(memberPubKey)?.map { it.roleId }.orEmpty()
+            require(roleId.lowercase() !in current) { "The member already holds this role" }
+            return setMemberRoles(signer, communityId, memberPubKey, current + roleId.lowercase())
+        }
         requireLegacyRoleActions(control.state)
         val current = control.state.authority.rolesOf(memberPubKey.lowercase())
         require(roleId.lowercase() !in current) { "The member already holds this role" }
@@ -714,6 +1090,11 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.isRolesV2) {
+            val current = control.state.authority.rankedRoster()?.rolesOf(memberPubKey)?.map { it.roleId }.orEmpty()
+            require(roleId.lowercase() in current) { "The member does not hold this role" }
+            return setMemberRoles(signer, communityId, memberPubKey, current.filterNot { it == roleId.lowercase() })
+        }
         requireLegacyRoleActions(control.state)
         val current = control.state.authority.rolesOf(memberPubKey.lowercase())
         require(roleId.lowercase() in current) { "The member does not hold this role" }
@@ -733,6 +1114,9 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.isRolesV2) {
+            return setRolesV2MemberRoles(signer, membership, control, target, requestedRoleIds)
+        }
         requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
@@ -854,6 +1238,9 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.isRolesV2) {
+            return updateRolesV2Role(signer, membership, control, roleIdBytes.toHexKey(), normalizedName, position, permissions)
+        }
         requireLegacyRoleActions(control.state)
         val authority = control.state.authority
         if (!authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
@@ -913,6 +1300,9 @@ class ConcordCommunityRepository(
         val membership = loadLocalMemberships(signer).firstOrNull { it.id == communityId }
             ?: throw IllegalArgumentException("Community membership is not available")
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = true)
+        if (control.state.isRolesV2) {
+            return deleteRolesV2Role(signer, membership, control, roleIdBytes.toHexKey())
+        }
         requireLegacyRoleActions(control.state)
         if (!control.state.authority.hasPermission(signer.pubKey, ConcordPermissions.MANAGE_ROLES)) {
             throw IllegalStateException("This account cannot manage community roles")
