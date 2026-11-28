@@ -143,8 +143,12 @@ internal fun concordRelayReadHasQuorum(
 internal fun concordNormalizeRelayTargets(relays: Collection<String>): List<String> =
     relays.mapNotNull { raw ->
         val value = raw.trim()
-        RelayUrlNormalizer.normalizeOrNull(value)?.url
-            ?: value.takeIf { RelayConfig.isLocalRelayUrl(it) }
+        // Quartz rejects malformed entries by logging through android.util.Log. That logger
+        // is not available in local JVM unit tests, so contain its possible platform exception
+        // and treat malformed relay hints as absent rather than crashing channel discovery.
+        runCatching { RelayUrlNormalizer.normalizeOrNull(value)?.url }
+            .getOrNull()
+            ?: value.takeIf { RelayConfig.isLocalRelayUrl(it) && it.startsWith("ws://") }
     }.distinct()
 
 /** The community owner retains the ordinary channel capabilities even if an overwrite denies them. */
@@ -166,12 +170,8 @@ internal fun concordEffectiveCommunityRelays(
     fallbackRelays: Collection<String>,
     @Suppress("UNUSED_PARAMETER") controlReadHasQuorum: Boolean,
 ): List<String> {
-    val preferred = metadataRelays
-        .mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
-        .distinct()
-    return preferred.ifEmpty {
-        fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
-    }
+    val preferred = concordNormalizeRelayTargets(metadataRelays)
+    return preferred.ifEmpty { concordNormalizeRelayTargets(fallbackRelays) }
 }
 
 /**
@@ -188,14 +188,11 @@ internal fun concordCommunityRelayTargets(
     // sensitive publications keep the stricter quorum policy and always include the
     // encrypted bootstrap relays as a recovery path.
     val verifiedMetadataRelays = if (controlReadHasQuorum) {
-        metadataRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
+        concordNormalizeRelayTargets(metadataRelays)
     } else {
         emptyList()
     }
-    return (
-        verifiedMetadataRelays +
-            fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
-        ).distinct()
+    return (verifiedMetadataRelays + concordNormalizeRelayTargets(fallbackRelays)).distinct()
 }
 
 /**

@@ -9,7 +9,7 @@ class ConcordChannelPermissionPolicyTest {
     @Test
     fun relayTargetsAreNormalizedBeforeEoseMatching() {
         assertEquals(
-            listOf("wss://relay.example", "wss://other.example"),
+            listOf("wss://relay.example/", "wss://other.example/"),
             concordNormalizeRelayTargets(
                 listOf(
                     " wss://relay.example/ ",
@@ -23,10 +23,10 @@ class ConcordChannelPermissionPolicyTest {
     @Test
     fun writerPublicationsReachBothCurrentAndBootstrapRelays() {
         assertEquals(
-            listOf("wss://current.example", "wss://bootstrap.example"),
+            listOf("wss://current.example/", "wss://bootstrap.example/"),
             concordCommunityRelayTargets(
                 metadataRelays = listOf("wss://current.example/"),
-                fallbackRelays = listOf("wss://bootstrap.example"),
+                fallbackRelays = listOf("wss://bootstrap.example/"),
                 controlReadHasQuorum = true,
             ),
         )
@@ -35,10 +35,10 @@ class ConcordChannelPermissionPolicyTest {
     @Test
     fun writerPublicationsDoNotAdoptUnverifiedMetadataRelays() {
         assertEquals(
-            listOf("wss://bootstrap.example"),
+            listOf("wss://bootstrap.example/"),
             concordCommunityRelayTargets(
                 metadataRelays = listOf("wss://unverified.example"),
-                fallbackRelays = listOf("wss://bootstrap.example"),
+                fallbackRelays = listOf("wss://bootstrap.example/"),
                 controlReadHasQuorum = false,
             ),
         )
@@ -49,18 +49,18 @@ class ConcordChannelPermissionPolicyTest {
         // A valid encrypted/folded metadata edition is useful even while some relays
         // have not sent EOSE; otherwise clients can remain stranded on stale bootstrap URLs.
         assertEquals(
-            listOf("wss://new-relay.example"),
+            listOf("wss://new-relay.example/"),
             concordEffectiveCommunityRelays(
                 metadataRelays = listOf("wss://new-relay.example/"),
-                fallbackRelays = listOf("wss://bootstrap.example"),
+                fallbackRelays = listOf("wss://bootstrap.example/"),
                 controlReadHasQuorum = false,
             ),
         )
         assertEquals(
-            listOf("wss://new-relay.example"),
+            listOf("wss://new-relay.example/"),
             concordEffectiveCommunityRelays(
                 metadataRelays = listOf("wss://new-relay.example/"),
-                fallbackRelays = listOf("wss://bootstrap.example"),
+                fallbackRelays = listOf("wss://bootstrap.example/"),
                 controlReadHasQuorum = true,
             ),
         )
@@ -69,10 +69,10 @@ class ConcordChannelPermissionPolicyTest {
     @Test
     fun invalidMetadataRelaysFallBackToExistingBootstrapHints() {
         assertEquals(
-            listOf("wss://bootstrap.example"),
+            listOf("wss://bootstrap.example/"),
             concordEffectiveCommunityRelays(
                 metadataRelays = listOf("not a relay"),
-                fallbackRelays = listOf("wss://bootstrap.example"),
+                fallbackRelays = listOf("wss://bootstrap.example/"),
                 controlReadHasQuorum = true,
             ),
         )
