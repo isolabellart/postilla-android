@@ -2243,8 +2243,8 @@ class ConcordCommunityRepository(
     private fun cachedControlRelayHints(communityId: String): List<String> =
         securePrefs.getString(controlRelayHintsKey(communityId), null)
             ?.lineSequence()
-            ?.map(String::trim)
-            ?.filter(String::isNotBlank)
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
             ?.toList()
             .orEmpty()
 
@@ -2257,7 +2257,7 @@ class ConcordCommunityRepository(
             .filter { it.startsWith("wss://", ignoreCase = true) }
         if (normalized.isEmpty()) return
         securePrefs.edit()
-            .putString(controlRelayHintsKey(communityId), normalized.joinToString("\\n"))
+            .putString(controlRelayHintsKey(communityId), normalized.joinToString("\n"))
             .apply()
     }
 
