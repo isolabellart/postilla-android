@@ -1562,15 +1562,16 @@ class ConcordCommunityRepository(
             val certificate = delivery.certs[signer.pubKey.lowercase()]
             val canManage = permissions.has(ConcordPermissions.MANAGE_CHANNELS)
             val privileged = canManage || context.authority.isOwner(signer.pubKey)
+            val certifier = live.certifier
             val certificateValid = if (certificate == null) {
-                live.certifier == null || privileged
+                certifier == null || privileged
             } else {
-                live.certifier != null && ConcordWritersLedger.verifyCertificate(
+                certifier != null && ConcordWritersLedger.verifyCertificate(
                     membership.id.hexToByteArray(),
                     channelIdHex.hexToByteArray(),
                     live.epoch,
                     signer.pubKey,
-                    live.certifier,
+                    certifier,
                     certificate,
                 )
             }
