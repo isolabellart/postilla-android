@@ -702,15 +702,14 @@ class ConcordCommunityRepository(
         val prior = previous?.let {
             runCatching { ConcordJson.instance.parseToJsonElement(it.content) as? JsonObject }.getOrNull()
         }
-        prior?.forEach { (key, value) -> put(key, value) }
-        put("role_id", roleId.lowercase())
-        put("name", name)
-        put("rank", rank)
-        put("permissions", permissions.toWire())
+        prior?.filterKeys { it != "deleted" }?.forEach { (key, value) -> put(key, value) }
+        put("role_id", JsonPrimitive(roleId.lowercase()))
+        put("name", JsonPrimitive(name))
+        put("rank", JsonPrimitive(rank))
+        put("permissions", JsonPrimitive(permissions.toWire()))
         put("color", JsonPrimitive(color))
         put("display", JsonPrimitive(display))
         put("mentionable", JsonPrimitive(mentionable))
-        remove("deleted")
     }.toString()
 
     private fun rolesV2GrantContent(
@@ -718,11 +717,11 @@ class ConcordCommunityRepository(
         roleIds: Collection<String>,
         controlWrap: String?,
     ): String = buildJsonObject {
-        put("member", member.lowercase())
+        put("member", JsonPrimitive(member.lowercase()))
         put("role_ids", buildJsonArray {
             roleIds.map { it.lowercase() }.distinct().sorted().forEach { add(JsonPrimitive(it)) }
         })
-        controlWrap?.let { put("control_wrap", it) }
+        controlWrap?.let { put("control_wrap", JsonPrimitive(it)) }
     }.toString()
 
     private fun rolesV2PositionForWrite(
@@ -921,7 +920,7 @@ class ConcordCommunityRepository(
         val content = buildJsonObject {
             val prior = runCatching { ConcordJson.instance.parseToJsonElement(head.content) as? JsonObject }.getOrNull()
             prior?.forEach { (key, value) -> put(key, value) }
-            put("role_id", roleKey)
+            put("role_id", JsonPrimitive(roleKey))
             put("deleted", JsonPrimitive(true))
         }.toString()
         val event = publishRolesV2ControlEvent(
