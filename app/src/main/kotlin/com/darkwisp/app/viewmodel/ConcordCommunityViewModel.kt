@@ -1120,12 +1120,15 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val entry = memberships[communityId]
                     ?: throw IllegalArgumentException("Community membership is not available")
-                val channels = repo.loadCommunityChannels(entry, PostillaQuartzSigner(signer))
+                val channelSnapshot = repo.loadCommunityChannelSnapshot(
+                    entry,
+                    PostillaQuartzSigner(signer),
+                )
                 val observed = chatRepository?.loadObservedAuthorActivity(
                     ownerPubkey = signer.pubkeyHex,
                     communityIdHex = entry.id,
-                    channels = channels,
-                    communityRelays = entry.relays,
+                    channels = channelSnapshot.channels,
+                    communityRelays = channelSnapshot.communityRelays.ifEmpty { entry.relays },
                 ).orEmpty()
                 val loaded = repo.loadMembers(PostillaQuartzSigner(signer), communityId, observed)
                 if (signerPubkey?.lowercase() != requestedOwner) return@launch

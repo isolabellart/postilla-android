@@ -683,11 +683,14 @@ class ConcordChatRepository(
             }
         }
 
-        val targets = communityRelays.distinct()
+        // Always query the current relay set exposed by the authenticated Control Plane
+        // snapshot. Bootstrap membership URLs may be stale after an Armada-side metadata edit.
+        // Canonicalize before registering stream keys and matching URL-aware EOSE callbacks.
+        val targets = concordNormalizeRelayTargets(communityRelays)
         val streamKeys = usable.flatMap { (_, pair) -> pair.first.map { it.stream } }
             .distinctBy { it.publicKeyHex.lowercase() }
         val authors = usable.flatMap { (_, pair) -> pair.second }.distinct()
-        relayPool.registerConcordStreamKeys(streamKeys, communityRelays)
+        relayPool.registerConcordStreamKeys(streamKeys, targets)
         val windowStart = (System.currentTimeMillis() / 1000L - MEMBER_HISTORY_WINDOW_SECONDS).coerceAtLeast(1L)
         val filters = usable.map { (_, pair) ->
             Filter(
