@@ -1,6 +1,7 @@
 package com.darkwisp.app.ui.screen
 
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +40,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -88,6 +90,7 @@ import com.darkwisp.app.concord.ConcordChatMessage
 import com.darkwisp.app.concord.ConcordCommunityRepository
 import com.darkwisp.app.nostr.NostrSigner
 import com.vitorpamplona.quartz.concord.cord04Roles.ConcordPermissions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -206,6 +209,44 @@ fun ConcordRoomScreen(
             matchesQuery && matchesRole
         }
     }
+    fun submitTextMessage() {
+        val outgoing = text.trim()
+        if (
+            outgoing.isBlank() || sending || signer == null ||
+            selectedChannelId.isBlank() || !selectedChannelAccessible || !selectedChannelCanSend
+        ) return
+
+        sending = true
+        sendError = null
+        scope.launch {
+            try {
+                val sent = viewModel.sendChannelMessage(
+                    communityId = communityId,
+                    channelId = selectedChannelId,
+                    text = outgoing,
+                    signer = signer,
+                    replyTo = replyToMessage,
+                    inlineReply = inlineReplyMode,
+                )
+                if (sent == null) {
+                    sendError = "The relay did not confirm this message. Your draft has been kept."
+                } else {
+                    if (messages.none { it.id == sent.id }) messages.add(sent)
+                    messages.sortBy { it.orderingAtMs }
+                    text = ""
+                    replyToMessage = null
+                    inlineReplyMode = false
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                sendError = error.message ?: "Message could not be sent. Your draft has been kept."
+            } finally {
+                sending = false
+            }
+        }
+    }
+
     var showModerationDialog by rememberSaveable(communityId) { mutableStateOf(false) }
     var moderationTargetPubkey by rememberSaveable(communityId) { mutableStateOf<String?>(null) }
     var moderationAction by rememberSaveable(communityId) { mutableStateOf("") }
@@ -588,136 +629,217 @@ fun ConcordRoomScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Manage public invite links") },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showInviteLinksDialog = true
-                                    viewModel.refreshInviteLinks(communityId, signer)
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Create public channel") },
-                                enabled = signer != null,
-                                onClick = {
-                                    showCommunityMenu = false
-                                    showCreateChannelDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Refresh channels") },
-                                onClick = {
-                                    showCommunityMenu = false
-                                    viewModel.refreshChannels(communityId)
-                                },
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
-        },
-        bottomBar = {
-            Column(
-                modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding()
-                    .background(MaterialTheme.colorScheme.background).padding(horizontal = 12.dp, vertical = 8.dp),
+                                text        bottomBar = {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 4.dp,
             ) {
-                if (selectedChannel != null && !selectedChannelCanSend) {
-                    Text(
-                        when {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                        .imePadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (selectedChannel != null && !selectedChannelCanSend) {
+                        val accessMessage = when {
                             !selectedChannel.canSendMessages ->
                                 "This account does not have SEND_MESSAGES permission in this channel."
                             selectedChannel.writeRestricted &&
                                 selectedChannel.writerCredential?.canSendMessages != true ->
-                                "This channel requires a current CORD-03 writer delivery for this account."
+                                "Writer access is not ready for this account yet."
                             selectedChannel.isPrivate && selectedChannel.privateKeyHex.isNullOrBlank() ->
                                 "The private channel key is not available on this account."
-                            !channelSync.controlReady ->
-                                "A verified Control Plane snapshot is not available yet. Refresh channels."
-                            !channelSync.controlComplete ->
-                                "The Control Plane relay quorum is not verified. Sending remains disabled until permissions are confirmed."
                             channelSync.isLoading ->
-                                "Concord channel synchronization is still in progress."
+                                "Concord is still synchronizing this channel."
+                            !channelSync.controlReady ->
+                                "A verified Control Plane snapshot is not available yet."
+                            !channelSync.controlComplete ->
+                                "The Control Plane relay quorum is not verified. Sending is paused."
                             else -> "Channel access is not ready for this account."
-                        },
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 6.dp),
-                    )
-                }
-                sendError?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                replyToMessage?.let { parent ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            (if (inlineReplyMode) "Quoting " else "Replying to ") + parent.authorPubkey.take(12) + "…",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        TextButton(onClick = {
-                            replyToMessage = null
-                            inlineReplyMode = false
-                        }) { Text("Cancel reply") }
+                        }
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    accessMessage,
+                                    modifier = Modifier.weight(1f),
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                TextButton(
+                                    enabled = !channelSync.isLoading,
+                                    onClick = { viewModel.refreshChannels(communityId) },
+                                ) { Text("Retry") }
+                            }
+                        }
                     }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it; sendError = null },
-                        modifier = Modifier.weight(1f),
-                        enabled = selectedChannelCanSend && selectedChannelAccessible,
-                        placeholder = { Text("Message #" + (selectedChannel?.name ?: "general")) },
-                        maxLines = 4,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannelCanSend) {
-                                    val outgoing = text
-                                    scope.launch {
-                                        sending = true
-                                        val sendResult = runCatching {
-                                            viewModel.sendChannelMessage(
-                                                communityId, selectedChannelId, outgoing, signer,
-                                                replyTo = replyToMessage,
-                                                inlineReply = inlineReplyMode,
+                    sendError?.let {
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(24.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    "MESSAGE TO",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    "#" + (selectedChannel?.name ?: "general"),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    "· Concord",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            replyToMessage?.let { parent ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                if (inlineReplyMode) "Quoting a message" else "Replying to a message",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            )
+                                            Text(
+                                                parent.authorPubkey.take(16) + "…",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                             )
                                         }
-                                        val sent = sendResult.getOrNull()
-                                        if (sent != null) {
-                                            if (messages.none { it.id == sent.id }) messages.add(sent)
-                                            messages.sortBy { it.orderingAtMs }
-                                            text = ""
+                                        TextButton(onClick = {
                                             replyToMessage = null
                                             inlineReplyMode = false
-                                        } else {
-                                            sendError = sendResult.exceptionOrNull()?.message
-                                                ?: "Message not confirmed by a relay"
-                                        }
-                                        sending = false
+                                        }) { Text("Cancel") }
                                     }
                                 }
-                            },
-                        ),
-                    )
-                    IconButton(
-                        enabled = !sending && signer != null && selectedChannelId.isNotBlank() &&
-                            selectedChannelAccessible && selectedChannelCanAttach,
-                        onClick = { imagePicker.launch("image/*") },
-                    ) {
-                        Icon(Icons.Default.Image, contentDescription = "Attach image")
+                            }
+                            Row(
+                                verticalAlignment = Alignment.Bottom,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                IconButton(
+                                    enabled = !sending && signer != null &&
+                                        selectedChannelAccessible && selectedChannelCanAttach,
+                                    onClick = { imagePicker.launch("image/*") },
+                                ) {
+                                    Icon(Icons.Default.Image, contentDescription = "Attach image")
+                                }
+                                Box(
+                                    modifier = Modifier.weight(1f)
+                                        .heightIn(min = 54.dp, max = 144.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surface,
+                                            RoundedCornerShape(18.dp),
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) {
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = text,
+                                        onValueChange = { text = it; sendError = null },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = signer != null && selectedChannelAccessible,
+                                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        ),
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(
+                                            MaterialTheme.colorScheme.primary,
+                                        ),
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                                        maxLines = 6,
+                                        decorationBox = { innerTextField ->
+                                            Box {
+                                                if (text.isBlank()) {
+                                                    Text(
+                                                        "Write a message to #" + (selectedChannel?.name ?: "general"),
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
+                                        },
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = if (
+                                        text.isNotBlank() && !sending && signer != null &&
+                                        selectedChannelAccessible && selectedChannelCanSend
+                                    ) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surface,
+                                ) {
+                                    IconButton(
+                                        enabled = text.isNotBlank() && !sending && signer != null &&
+                                            selectedChannelAccessible && selectedChannelCanSend,
+                                        onClick = { submitTextMessage() },
+                                    ) {
+                                        if (sending) {
+                                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                        } else {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.Send,
+                                                contentDescription = "Send message",
+                                                tint = if (
+                                                    text.isNotBlank() && !sending && signer != null &&
+                                                    selectedChannelAccessible && selectedChannelCanSend
+                                                ) MaterialTheme.colorScheme.onPrimary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Text(
+                                "Enter adds a new line. Messages are sent only after relay confirmation.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp),
+                            )
+                        }
                     }
-                    IconButton(
-                        enabled = text.isNotBlank() && !sending && signer != null && selectedChannelId.isNotBlank() && selectedChannelAccessible && selectedChannelCanSend,
-                        onClick = {
-                            val outgoing = text
-                            scope.launch {
-                                sending = true
+                }
+            }
+        },
+           sending = true
                                 val sendResult = runCatching {
                                     viewModel.sendChannelMessage(
                                         communityId, selectedChannelId, outgoing, signer,
