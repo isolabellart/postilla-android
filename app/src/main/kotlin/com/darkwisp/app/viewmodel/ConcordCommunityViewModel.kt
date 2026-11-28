@@ -286,7 +286,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                             )
 
                             // Channel/control failures are separated from activity/member failures.
-                            val snapshot = try {
+                            var snapshot = try {
                                 repo.loadCommunityChannelSnapshot(membership, PostillaQuartzSigner(signer))
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
@@ -337,6 +337,41 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                             if (general != null) {
                                 _communities.value = _communities.value.map {
                                     if (it.id == membership.id) it.copy(generalChannelId = general.id) else it
+                                }
+                            }
+
+                            try {
+                                val (writerSnapshot, writerError) = prepareWriterAccess(
+                                    repo, membership, signer, snapshot,
+                                )
+                                snapshot = writerSnapshot
+                                if (signerPubkey?.lowercase() != requestedOwner) return@withPermit
+                                _channelsByCommunity.value = _channelsByCommunity.value + (membership.id to snapshot.channels)
+                                _channels.value = snapshot.channels
+                                val writerRead = snapshot.writerAccessRead
+                                val latestSync = _channelSyncByCommunity.value[membership.id] ?: ChannelSyncState()
+                                _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                    membership.id to latestSync.copy(
+                                        controlResponded = snapshot.controlRead.respondedCount,
+                                        controlRequested = snapshot.controlRead.requestedCount,
+                                        controlComplete = snapshot.controlRead.hasQuorum,
+                                        writerAccessResponded = writerRead?.respondedCount,
+                                        writerAccessRequested = writerRead?.requestedCount,
+                                        writerAccessComplete = writerRead?.hasQuorum,
+                                        error = writerError,
+                                        lastSyncAtMs = System.currentTimeMillis(),
+                                    )
+                                )
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                if (signerPubkey?.lowercase() == requestedOwner) {
+                                    val latestSync = _channelSyncByCommunity.value[membership.id] ?: ChannelSyncState()
+                                    _channelSyncByCommunity.value = _channelSyncByCommunity.value + (
+                                        membership.id to latestSync.copy(
+                                            error = error.message ?: "Could not initialize writer access",
+                                        )
+                                    )
                                 }
                             }
 
@@ -455,6 +490,36 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
     private fun findChannel(communityId: String, channelId: String) =
         _channelsByCommunity.value[communityId]?.firstOrNull { it.id == channelId }
 
+    private suspend fun prepareWriterAccess(
+        repo: ConcordCommunityRepository,
+        membership: ConcordCommunityListEntry,
+        signer: NostrSigner,
+        initial: ConcordCommunityRepository.CommunityChannelSnapshot,
+    ): Pair<ConcordCommunityRepository.CommunityChannelSnapshot, String?> {
+        var snapshot = initial
+        var issue: String? = null
+        val candidates = initial.channels.filter { channel ->
+            (channel.isLocked || channel.writeRestricted) &&
+                channel.writerCredential == null &&
+                channel.canManageChannel
+        }
+        for (channel in candidates) {
+            try {
+                snapshot = repo.ensureWriterAccess(
+                    signer = PostillaQuartzSigner(signer),
+                    communityId = membership.id,
+                    channelId = channel.id,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                issue = error.message ?: "Could not initialize Concord writer access"
+                break
+            }
+        }
+        return snapshot to issue
+    }
+
     fun refreshChannels(communityId: String) {
         val repo = repository ?: return
         val membership = memberships[communityId] ?: return
@@ -470,10 +535,16 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             try {
-                val snapshot = repo.loadCommunityChannelSnapshot(
+                var snapshot = repo.loadCommunityChannelSnapshot(
                     membership,
                     signer?.let(::PostillaQuartzSigner),
                 )
+                var writerError: String? = null
+                if (signer != null) {
+                    val prepared = prepareWriterAccess(repo, membership, signer, snapshot)
+                    snapshot = prepared.first
+                    writerError = prepared.second
+                }
                 if (signerPubkey?.lowercase() != requestedOwner) return@launch
                 _channelsByCommunity.value = _channelsByCommunity.value + (communityId to snapshot.channels)
                 _channels.value = snapshot.channels
@@ -492,6 +563,7 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
                         writerAccessResponded = access?.respondedCount,
                         writerAccessRequested = access?.requestedCount,
                         writerAccessComplete = access?.hasQuorum,
+                        error = writerError,
                         lastSyncAtMs = System.currentTimeMillis(),
                     )
                 )

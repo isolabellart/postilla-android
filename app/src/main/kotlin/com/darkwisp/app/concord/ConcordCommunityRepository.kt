@@ -2127,16 +2127,21 @@ class ConcordCommunityRepository(
         requireAllResponders: Boolean = false,
     ): CommunityChannelSnapshot {
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireAllResponders)
+        val heldRootsByEpoch = buildMap<Long, String> {
+            membership.heldRoots.forEach { held -> put(held.epoch, held.key) }
+            put(membership.rootEpoch, membership.root)
+        }
         val accessPlanes = if (signer == null) emptyMap() else control.state.writers
-            .filterValues { it.live != null }
-            .keys
-            .associateWith { channelId ->
-                ConcordChannelAccess.plane(
-                    membership.root.hexToByteArray(),
+            .mapNotNull { (channelId, ledger) ->
+                val live = ledger.live ?: return@mapNotNull null
+                val root = heldRootsByEpoch[live.root] ?: return@mapNotNull null
+                channelId to ConcordChannelAccess.plane(
+                    root.hexToByteArray(),
                     channelId.hexToByteArray(),
-                    membership.rootEpoch,
+                    live.root,
                 )
             }
+            .toMap()
         val accessTargets = membership.relays.distinct()
         if (accessPlanes.isNotEmpty()) {
             relayPool.registerConcordStreamKeys(accessPlanes.values, accessTargets)
