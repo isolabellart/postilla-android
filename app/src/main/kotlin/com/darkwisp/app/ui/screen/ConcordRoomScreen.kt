@@ -695,19 +695,20 @@ fun ConcordRoomScreen(
                             else -> "Channel access is not ready for this account."
                         }
                         Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(10.dp),
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                                modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
                                     accessMessage,
                                     modifier = Modifier.weight(1f),
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall
+                                    maxLines = 2,
                                 )
                                 TextButton(
                                     enabled = !channelSync.isLoading,
@@ -727,38 +728,16 @@ fun ConcordRoomScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(
                             1.dp,
                             MaterialTheme.colorScheme.outlineVariant,
                         ),
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    "MESSAGE TO",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    "#" + (selectedChannel?.name ?: "general"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    "· Concord",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                             replyToMessage?.let { parent ->
                                 Surface(
                                     color = MaterialTheme.colorScheme.primaryContainer,
