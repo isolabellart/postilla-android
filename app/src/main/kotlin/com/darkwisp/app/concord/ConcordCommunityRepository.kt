@@ -79,6 +79,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
+ * A read is complete only when every requested relay accepted the subscription and
+ * returned EOSE. A relay that never accepted REQ must not disappear from the quorum.
+ */
+internal fun concordRelayReadIsComplete(
+    requestedRelays: Collection<String>,
+    sentRelays: Collection<String>,
+    eoseRelays: Collection<String>,
+): Boolean {
+    val requested = requestedRelays.toSet()
+    return requested.isNotEmpty() &&
+        sentRelays.containsAll(requested) &&
+        eoseRelays.containsAll(requested)
+}
+
+/**
  * First Concord vertical slice: create a CORD-02 community, publish its two genesis
  * Control Plane wraps, and publish the owner's self-encrypted fragmented membership list.
  *
@@ -2351,8 +2366,12 @@ class ConcordCommunityRepository(
             if (responded.isEmpty()) {
                 throw IllegalStateException("No bootstrap relay completed $label discovery")
             }
-            if (requireAllResponders && !responded.containsAll(sent)) {
-                throw IllegalStateException("The $label data is incomplete: not every community relay completed the read")
+            if (requireAllResponders && !concordRelayReadIsComplete(targets, sent, responded)) {
+                val missing = targets.filterNot { it in responded }
+                throw IllegalStateException(
+                    "The $label data is incomplete: " + missing.size + "/" + targets.size +
+                        " relays did not confirm the read.",
+                )
             }
         }
         return events.values.toList()
