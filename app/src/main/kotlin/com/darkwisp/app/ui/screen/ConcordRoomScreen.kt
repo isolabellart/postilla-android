@@ -117,7 +117,9 @@ fun ConcordRoomScreen(
     } ?: false
     // Fail closed until the channel catalogue and all required per-account permissions are loaded.
     val selectedChannelCanSend = selectedChannel?.let {
-        channelSync.controlComplete &&
+        !channelSync.isLoading &&
+            channelSync.controlComplete &&
+            (!it.writeRestricted || channelSync.writerAccessComplete == true) &&
             it.canSendMessages &&
             (!it.writeRestricted || it.writerCredential?.canSendMessages == true) &&
             (!it.isPrivate || !it.privateKeyHex.isNullOrBlank())
@@ -681,6 +683,8 @@ fun ConcordRoomScreen(
                 val syncMessage = when {
                     channelSync.isLoading -> "Synchronizing Concord channels…"
                     channelSync.error != null -> "Channel synchronization failed: ${channelSync.error}"
+                    channelSync.controlRequested == 0 ->
+                        "The channel catalogue has not yet been synchronized for this account."
                     !channelSync.controlComplete ->
                         "Control Plane partially synchronized (${channelSync.controlResponded}/${channelSync.controlRequested} relays). Sending is disabled until the full read completes."
                     channelSync.writerAccessComplete == false ->

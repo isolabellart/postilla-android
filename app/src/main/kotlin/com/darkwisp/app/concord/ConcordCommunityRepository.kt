@@ -131,13 +131,16 @@ class ConcordCommunityRepository(
     }
 
     data class RelayReadSummary(
-        val requestedCount: Int,
-        val sentCount: Int,
-        val respondedCount: Int,
-        val missingRelays: List<String>,
+        val requestedRelays: List<String>,
+        val sentRelays: List<String>,
+        val respondedRelays: List<String>,
     ) {
+        val requestedCount: Int get() = requestedRelays.size
+        val sentCount: Int get() = sentRelays.size
+        val respondedCount: Int get() = respondedRelays.size
+        val missingRelays: List<String> get() = requestedRelays.filterNot { it in respondedRelays }
         val isComplete: Boolean
-            get() = requestedCount > 0 && sentCount == requestedCount && missingRelays.isEmpty()
+            get() = concordRelayReadIsComplete(requestedRelays, sentRelays, respondedRelays)
     }
 
     data class CommunityChannelSnapshot(
@@ -2419,10 +2422,9 @@ class ConcordCommunityRepository(
         }
         val missing = targets.filterNot { it in responded }
         val summary = RelayReadSummary(
-            requestedCount = targets.size,
-            sentCount = sent.size,
-            respondedCount = responded.size,
-            missingRelays = missing,
+            requestedRelays = targets,
+            sentRelays = sent,
+            respondedRelays = responded.toList(),
         )
         if (requireAllResponders && !summary.isComplete) {
             throw IllegalStateException(

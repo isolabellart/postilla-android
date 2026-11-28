@@ -403,6 +403,14 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         }
         val channelInfo = findChannel(communityId, channelId)
             ?: throw IllegalStateException("Channel access is not loaded yet. Refresh the channel list before sending.")
+        if (channelInfo.writeRestricted && channelSync.writerAccessComplete != true) {
+            val detail = channelSync.writerAccessResponded?.let { responded ->
+                "$responded/${channelSync.writerAccessRequested ?: 0}"
+            } ?: "not verified"
+            throw IllegalStateException(
+                "Writer-access streams are incomplete ($detail relays). Refresh channel access before sending.",
+            )
+        }
         if (!channelInfo.canViewChannel) {
             throw IllegalStateException("This account does not have VIEW_CHANNEL permission.")
         }
@@ -467,8 +475,10 @@ class ConcordCommunityViewModel(app: Application) : AndroidViewModel(app) {
         val activeSigner = signer ?: return false
         if (signerPubkey?.lowercase() != activeSigner.pubkeyHex.lowercase()) return false
         val entry = memberships[communityId] ?: return false
-        if (_channelSyncByCommunity.value[communityId]?.controlComplete != true) return false
+        val channelSync = _channelSyncByCommunity.value[communityId] ?: return false
+        if (channelSync.controlComplete != true) return false
         val channel = findChannel(communityId, channelId) ?: return false
+        if (channel.isLocked && channelSync.writerAccessComplete != true) return false
         if (!channel.canViewChannel || !channel.canAddReactions) return false
         if (channel.isPrivate && channel.privateKeyHex.isNullOrBlank()) return false
         // Restricted-but-not-locked channels keep reactions on the shared read plane.
