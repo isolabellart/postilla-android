@@ -141,6 +141,25 @@ internal fun concordRolePermissionAllowsChannelAction(
 ): Boolean = !rolesV2 || isOwner || rolePermissionGranted
 
 /**
+ * Current Control Plane relay metadata is trusted only after a verified read quorum.
+ * Until then, keep using the user's encrypted bootstrap relay hints.
+ */
+internal fun concordEffectiveCommunityRelays(
+    metadataRelays: Collection<String>,
+    fallbackRelays: Collection<String>,
+    controlReadHasQuorum: Boolean,
+): List<String> {
+    val preferred = if (controlReadHasQuorum) {
+        metadataRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
+    } else {
+        emptyList()
+    }
+    return preferred.ifEmpty {
+        fallbackRelays.mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }.distinct()
+    }
+}
+
+/**
  * Concord writer streams are required as soon as @everyone cannot send, even when
  * @everyone may still react or connect. A live ledger also keeps the channel on its
  * established writer plane until the ledger is retired.
@@ -2233,11 +2252,11 @@ class ConcordCommunityRepository(
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = requireAllResponders)
         // The private membership relays are bootstrap hints. Once the Control Plane is
         // folded, its current metadata relay set is authoritative for chat and access reads.
-        val currentCommunityRelays = control.state.metadata?.relays
-            .orEmpty()
-            .mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
-            .distinct()
-            .ifEmpty { membership.relays.distinct() }
+        val currentCommunityRelays = concordEffectiveCommunityRelays(
+            metadataRelays = control.state.metadata?.relays.orEmpty(),
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = control.readSummary.hasQuorum,
+        )
         val heldRootsByEpoch = buildMap<Long, String> {
             membership.heldRoots.forEach { held -> put(held.epoch, held.key) }
             put(membership.rootEpoch, membership.root)
@@ -3245,11 +3264,11 @@ class ConcordCommunityRepository(
         // silent. Kick/Ban and every other mutation re-fetch a complete Control Plane
         // immediately before publishing, so this display snapshot cannot authorize a write.
         val control = loadControlPlaneSnapshot(membership, requireAllResponders = false)
-        val memberRelays = control.state.metadata?.relays
-            .orEmpty()
-            .mapNotNull { RelayUrlNormalizer.normalizeOrNull(it)?.url }
-            .distinct()
-            .ifEmpty { membership.relays.distinct() }
+        val memberRelays = concordEffectiveCommunityRelays(
+            metadataRelays = control.state.metadata?.relays.orEmpty(),
+            fallbackRelays = membership.relays,
+            controlReadHasQuorum = control.readSummary.hasQuorum,
+        )
         require(memberRelays.isNotEmpty()) { "This community has no usable relay for member history" }
         if (requireCompleteRead) {
             require(control.readSummary.hasQuorum) {
